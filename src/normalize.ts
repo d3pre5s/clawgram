@@ -48,6 +48,25 @@ function toTimestamp(value: unknown): number | undefined {
   return undefined;
 }
 
+function resolveMessageThreadId(msg: any): string | undefined {
+  const isForumTopic = msg?.replyTo?.forumTopic === true || msg?.forumTopic === true;
+  if (!isForumTopic) {
+    return undefined;
+  }
+
+  const topId =
+    toStringId(msg?.replyTo?.replyToTopId) ??
+    toStringId(msg?.replyToTopId);
+  if (topId) {
+    return topId;
+  }
+
+  return (
+    toStringId(msg?.replyTo?.replyToMsgId) ??
+    toStringId(msg?.replyToMsgId)
+  );
+}
+
 export function normalizeTelegramEvent(event: any, accountId: string): NormalizedInbound | null {
   const msg = event?.message;
   if (!msg) return null;
@@ -70,6 +89,7 @@ export function normalizeTelegramEvent(event: any, accountId: string): Normalize
   const replyToMessageId =
     toStringId(msg.replyTo?.replyToMsgId) ??
     toStringId(msg.replyToMsgId);
+  const messageThreadId = resolveMessageThreadId(msg);
 
   const text =
     typeof msg.message === "string"
@@ -103,6 +123,7 @@ export function normalizeTelegramEvent(event: any, accountId: string): Normalize
     channel: "telegram-userbot",
     accountId,
     chatId,
+    messageThreadId,
     senderId,
     senderUsername,
     senderDisplay: senderDisplay || undefined,

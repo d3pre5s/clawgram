@@ -4,7 +4,10 @@
   "description": "Connect your personal Telegram account to OpenClaw via MTProto. Your AI assistant responds as you.",
   "main": "./dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "telegram-userbot-cli": "node dist/telegram-userbot-cli.js",
+    "telegram-userbot-cli:hello": "node dist/telegram-userbot-cli.js --hello",
+    "telegram-userbot-cli:auth": "node dist/telegram-userbot-cli.js --auth"
   },
   "keywords": [
     "openclaw",

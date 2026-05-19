@@ -35,13 +35,41 @@
               ]
             }
           },
-          "groupPolicy": {
-            "type": "string",
-            "enum": [
-              "open",
-              "mention"
-            ],
-            "default": "mention"
+          "groups": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "groupPolicy": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "mention"
+                  ],
+                  "default": "mention"
+                },
+                "allowFrom": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           },
           "accounts": {
             "type": "object",
@@ -87,13 +115,41 @@
                     ]
                   }
                 },
-                "groupPolicy": {
-                  "type": "string",
-                  "enum": [
-                    "open",
-                    "mention"
-                  ],
-                  "default": "mention"
+                "groups": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "groupPolicy": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "mention"
+                        ],
+                        "default": "mention"
+                      },
+                      "allowFrom": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
                 }
               },
               "required": [

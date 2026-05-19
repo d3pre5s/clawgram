@@ -9,9 +9,13 @@ Telegram Userbot plugin for [OpenClaw](https://github.com/openclaw/openclaw) —
 
 - **MTProto Client API** — operates as a user account, not a bot
 - **DM & Group support** — private chats, groups, supergroups, forum topics
+- **Forum topic routing** — correctly routes replies to the right forum topic thread
 - **@Mention detection** — respond only when mentioned in groups (text, caption, and ID-based mentions)
 - **Read receipts** — mark messages as read
+- **User allowlist** — control which user has access to send messages for direct
+- **Chat allowlist** — control which chats the assistant can access
 - **Multi-account** — run multiple Telegram accounts simultaneously
+- **Per-group settings** — different behavior for different groups
 
 ## Requirements
 
@@ -43,6 +47,14 @@ Log in to your telegram account via cli using API credentials and phone number
 ```bash
 openclaw telegram-userbot --auth
 ```
+
+If the custom OpenClaw cli command hangs, run the standalone authorization script directly:
+
+```bash
+node ~/.openclaw/extensions/telegram-userbot/dist/telegram-userbot-cli.js --auth
+```
+
+> **NOTES**: Starting with OpenClaw `2026.5.12`, hangs have been observed in some environments when running custom plugin cli commands through `openclaw <plugin> ...`. If that happens, use the standalone command above. It runs the same authorization flow, but bypasses the custom cli entrypoint inside OpenClaw.
 
 Follow the steps in the console
 
@@ -78,6 +90,8 @@ Enter account id for config [default]: [2026-05-10T16:01:56.402] [INFO] - [conne
 
 In the next step, you must confirm or reject the automatic update of the openclaw.json configuration file. If you reject it or receive an error updating the file, the cli will display an openclaw.json configuration fragment that you must add manually.
 
+The automatic config update keeps the rest of `openclaw.json` intact and only updates the `channels.telegram-userbot` section for the selected account. A timestamped backup of the config file is created before any write attempt.
+
 Update **yes**
 ```bash
 Update OpenClaw config automatically? [y/N]: y
@@ -110,7 +124,15 @@ JSON fragment for manual insertion:
           "allowFrom": [
             "*"
           ],
-          "groupPolicy": "mention"
+          "groups": {
+            "*": {
+              "enabled": true,
+              "groupPolicy": "mention",
+              "allowFrom": [
+                "*"
+              ]
+            }
+          }
         }
       }
     }
@@ -131,14 +153,101 @@ openclaw gateway restart
 
 ## Configuration Reference
 
+### JSON Reference
+
+```json
+{
+  "channels": {
+    "telegram-userbot": {
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "apiId": 12345678,
+          "apiHash": "apiHash",
+          "sessionString": "sessionString",
+          "allowFrom": [
+            "*"
+          ],
+          "groups": {
+            "*": {
+              "enabled": true,
+              "groupPolicy": "mention",
+              "allowFrom": [
+                "*"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Mention fields 
+
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `apiId` | number | required | Telegram API ID |
 | `apiHash` | string | required | Telegram API hash |
 | `sessionString` | string | `""` | Authenticated StringSession |
-| `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames |
-| `groupPolicy` | `"open"` \| `"mention"` | `"mention"` | Group message handling |
+| `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames for direct messages only |
+| `groups` | object | `{}` | Allowed groups map keyed by explicit group id or `*` |
 
+Group config fields:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Enables or disables replies in the group |
+| `groupPolicy` | `"open"` \| `"mention"` | `"mention"` | `open` replies to any group message, `mention` only on @mention or reply-to-self |
+| `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames inside that group |
+
+
+### Configuration variant for example
+
+```json
+{
+  "channels": {
+    "telegram-userbot": {
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "apiId": 12345678,
+          "apiHash": "apiHash",
+          "sessionString": "sessionString",
+          "allowFrom": [
+            "@nickname1",
+            "@nickname2"
+          ],
+          "groups": {
+            "-1001234567899": {
+              "enabled": true,
+              "groupPolicy": "mention",
+              "allowFrom": [
+                "@nickname1"
+              ]
+            },
+            "-1009876543219": {
+              "enabled": true,
+              "groupPolicy": "mention",
+              "allowFrom": [
+                "*"
+              ]
+            },
+            "-1001234567891": {
+              "enabled": true,
+              "groupPolicy": "open",
+              "allowFrom": [
+                "*"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
 
 ## Multi-Account
 
@@ -146,6 +255,13 @@ The plugin also supports adding multiple accounts. You can run the cli command m
 
 ```bash
 openclaw telegram-userbot --auth
+```
+
+
+If the custom cli command hangs on your OpenClaw version, use the standalone command instead:
+
+```bash
+node ~/.openclaw/extensions/telegram-userbot/dist/telegram-userbot-cli.js --auth
 ```
 
 And in the account ID step, enter a value other than the first [default] or your previously entered one.
@@ -172,7 +288,15 @@ second
           "allowFrom": [
             "*"
           ],
-          "groupPolicy": "mention"
+          "groups": {
+            "*": {
+              "enabled": true,
+              "groupPolicy": "mention",
+              "allowFrom": [
+                "*"
+              ]
+            }
+          }
         },
         "second": {
           "enabled": true,
@@ -182,7 +306,15 @@ second
           "allowFrom": [
             "*"
           ],
-          "groupPolicy": "mention"
+          "groups": {
+            "*": {
+              "enabled": true,
+              "groupPolicy": "mention",
+              "allowFrom": [
+                "*"
+              ]
+            }
+          }
         }
       }
     }
@@ -196,6 +328,18 @@ second
 ```bash
 npm install          # install dependencies
 npm run build        # run build script
+```
+
+For local authorization testing during development, you can also run the standalone cli directly:
+
+```bash
+npm run telegram-userbot-cli -- --auth
+```
+
+or
+
+```bash
+npm run telegram-userbot-cli:auth
 ```
 
 ## License
