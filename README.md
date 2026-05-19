@@ -323,6 +323,72 @@ second
 ```
 
 
+## Multi-agent routing
+
+The Telegram Userbot channel can also be used alongside the regular Telegram channel for configuring OpenClaw multi-agent routing. In that case, accounts connected via the Telegram Userbot channel will have independent agents.
+
+Here is an example of how to configure OpenClaw multi-agent routing using telegram-userbot channel in parallel with main telegram channel.
+
+You can read more about how to set up multi-agent routing in the official [OpenClaw documentation](https://docs.openclaw.ai/concepts/multi-agent)
+
+List model
+```json
+ "list": [
+      {
+        "id": "main",
+        "default": true,
+        "workspace": "/root/.openclaw/workspace"
+      },
+      {
+        "id": "second",
+        "workspace": "/root/.openclaw/workspace-second",
+      },
+      {
+        "id": "userbot-main",
+        "workspace": "/root/.openclaw/workspace-userbot-main",
+      },
+      {
+        "id": "userbot-second",
+        "workspace": "/root/.openclaw/workspace-userbot-second",
+      }
+    ]
+```
+
+Bindings
+```json
+"bindings": [
+    {
+      "agentId": "main",
+      "match": {
+        "channel": "telegram",
+        "accountId": "default"
+      }
+    },
+    {
+      "agentId": "second",
+      "match": {
+        "channel": "telegram",
+        "accountId": "second"
+      }
+    },
+    {
+      "agentId": "userbot-main",
+      "match": {
+        "channel": "telegram-userbot",
+        "accountId": "default"
+      }
+    },
+    {
+      "agentId": "userbot-second",
+      "match": {
+        "channel": "telegram-userbot",
+        "accountId": "second"
+      }
+    }
+  ]
+```
+
+
 ## Development
 
 ```bash
