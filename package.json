@@ -51,6 +51,7 @@
   },
   "installDependencies": true,
   "dependencies": {
+    "json5": "^2.2.3",
     "telegram": "^2.26.22"
   }
 }
