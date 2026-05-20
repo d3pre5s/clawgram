@@ -16,6 +16,8 @@ Telegram Userbot plugin for [OpenClaw](https://github.com/openclaw/openclaw) —
 - **Chat allowlist** — control which chats the assistant can access
 - **Multi-account** — run multiple Telegram accounts simultaneously
 - **Per-group settings** — different behavior for different groups
+- **Slash commands** — [slash commands](https://docs.openclaw.ai/tools/slash-commands) are available in DM to the connected account (`/status`, `/reset`, `/new`, etc.)
+
 
 ## Requirements
 
@@ -54,7 +56,7 @@ If the custom OpenClaw cli command hangs, run the standalone authorization scrip
 node ~/.openclaw/extensions/telegram-userbot/dist/telegram-userbot-cli.js --auth
 ```
 
-> **NOTES**: Starting with OpenClaw `2026.5.12`, hangs have been observed in some environments when running custom plugin cli commands through `openclaw <plugin> ...`. If that happens, use the standalone command above. It runs the same authorization flow, but bypasses the custom cli entrypoint inside OpenClaw.
+> **NOTES**: Starting with OpenClaw `2026.5.12`, hangs have been observed in some environments when running custom plugin cli commands through `openclaw <plugin command> ...`. If that happens, use the standalone command above. It runs the same authorization flow, but bypasses the custom cli entrypoint inside OpenClaw.
 
 Follow the steps in the console
 
@@ -248,6 +250,17 @@ Group config fields:
   }
 }
 ```
+
+
+## Slash commands
+
+OpenClaw provides a robust set of native commands. Just like in a regular Telegram bot, slash commands are also available for a user Telegram account connected via the Telegram userbot plugin. Send the slash command in DM to the connected account.
+
+Use commands like `/status`, `/reset`, `/new` and others.
+
+You can read more about slash commands in the [OpenClaw official documentation](https://docs.openclaw.ai/tools/slash-commands).
+
+
 
 ## Multi-Account
 
