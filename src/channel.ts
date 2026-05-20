@@ -2,9 +2,6 @@ import {
   buildChannelOutboundSessionRoute,
   createSubsystemLogger,
   jsonResult,
-  readStringParam,
-  stripChannelTargetPrefix,
-  stripTargetKindPrefix,
 } from "openclaw/plugin-sdk/core";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam } from "openclaw/plugin-sdk/param-readers";
@@ -14,598 +11,62 @@ import {
   resolveInboundDirectDmAccessWithRuntime,
 } from "openclaw/plugin-sdk/direct-dm";
 import {
-  buildMentionRegexes,
-  matchesMentionWithExplicit,
   resolveInboundMentionDecision,
 } from "openclaw/plugin-sdk/channel-inbound";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-sdk/inbound-envelope";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
-import { readFileSync } from "node:fs";
 import { NewMessage } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
 import type { PluginConfig, RuntimeMap } from "./types";
+import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
+import {
+  normalizeOutboundTarget,
+  resolveConfiguredAccountId,
+  inferOutboundTargetKind,
+  routeKindFromChatType,
+  buildConversationTarget,
+  buildScopedGroupPeerId,
+  readLatestAssistantFallbackFromTranscript,
+  resolveActionTarget,
+  resolveReplyToMessageIdForTarget,
+  readMessageText,
+  resolveAllowFrom,
+  resolveGroups,
+  resolveGroupConfig,
+  resolveActiveUsername,
+  isSenderAllowed,
+  hasTelegramMention,
+  toDisplayName,
+  prefixReplyTextToAddress,
+  resolveReplyTarget,
+  resolveChatTarget,
+  isReplyToSelfMessage,
+  resolveSenderProfile,
+  resolveSenderProfileWithTimeout,
+} from './helpers';
+import { CHANNEL_ID } from './constants';
 
-const CHANNEL_ID = "telegram-userbot";
-const GROUP_REPLY_ADDRESS_TTL_MS = 10 * 60 * 1000;
-const GROUP_REPLY_LATEST_ID = "__latest__";
 const actionLog = createSubsystemLogger("channels/telegram-userbot");
 
-const groupReplyAddresses = new Map<string, { address: string; expiresAt: number }>();
-
-function resolveConfiguredAccountId(cfg: any, preferred?: string | null): string | undefined {
-  if (preferred?.trim()) {
-    return preferred.trim();
+function parseOptionalThreadId(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.trunc(value) : undefined;
   }
 
-  const accounts = cfg?.channels?.[ CHANNEL_ID ]?.accounts;
-  if (!accounts || typeof accounts !== "object") {
+  if (typeof value !== "string") {
     return undefined;
   }
 
-  return Object.keys(accounts).find((accountId) => accounts?.[ accountId ]?.enabled !== false);
-}
-
-function normalizeOutboundTarget(rawTarget: string): string {
-  const withoutChannel = stripChannelTargetPrefix(rawTarget, CHANNEL_ID, "tguserbot", "telegram", "tg");
-  return stripTargetKindPrefix(withoutChannel).trim();
-}
-
-function inferOutboundTargetKind(rawTarget: string, resolvedKind?: "user" | "group" | "channel"): "user" | "group" | "channel" | undefined {
-  if (resolvedKind) {
-    return resolvedKind;
-  }
-
-  const withoutChannel = stripChannelTargetPrefix(rawTarget, CHANNEL_ID, "tguserbot", "telegram", "tg").trim();
-  const prefix = withoutChannel.match(/^(user|channel|group|conversation|room|dm):/i)?.[ 1 ]?.toLowerCase();
-  if (prefix === "group" || prefix === "room" || prefix === "conversation") {
-    return "group";
-  }
-  if (prefix === "channel") {
-    return "channel";
-  }
-  if (prefix === "user" || prefix === "dm") {
-    return "user";
-  }
-
-  const target = normalizeOutboundTarget(rawTarget);
-  if (target.startsWith("-")) {
-    return "group";
-  }
-
-  return undefined;
-}
-
-function routeKindFromChatType(chatType?: "direct" | "group" | "channel"): "direct" | "group" | "channel" {
-  return chatType === "group" || chatType === "channel" ? chatType : "direct";
-}
-
-function buildConversationTarget(chatId: string): string {
-  return `${CHANNEL_ID}:${chatId}`;
-}
-
-function buildScopedGroupPeerId(accountId: string | undefined, chatId: string): string {
-  const scopedAccountId = (accountId ?? "default").trim() || "default";
-  return `${scopedAccountId}:${chatId}`;
-}
-
-function normalizeGroupReplyTarget(rawTarget: unknown): string {
-  if (typeof rawTarget !== "string") {
-    return String(rawTarget ?? "").trim();
-  }
-
-  return normalizeOutboundTarget(rawTarget) || rawTarget.trim();
-}
-
-function stripReplyDirectiveTags(text: string): string {
-  return text
-    .replace(/\[\[\s*reply_to_current\s*\]\]/gi, " ")
-    .replace(/\[\[\s*reply_to\s*:\s*[^\]\n]+\s*\]\]/gi, " ")
-    .replace(/\[\[\s*audio_as_voice\s*\]\]/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function readLatestAssistantFallbackFromTranscript(sessionKey: string): string | undefined {
-  try {
-    const rawStore = readFileSync("/root/.openclaw/agents/main/sessions/sessions.json", "utf8");
-    const store = JSON.parse(rawStore) as Record<string, { sessionFile?: string }>;
-    const sessionFile = typeof store?.[ sessionKey ]?.sessionFile === "string" ? store[ sessionKey ]?.sessionFile : undefined;
-    if (!sessionFile) {
-      return undefined;
-    }
-
-    const lines = readFileSync(sessionFile, "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    for (let index = lines.length - 1; index >= 0; index -= 1) {
-      try {
-        const entry = JSON.parse(lines[ index ]) as {
-          type?: string;
-          message?: {
-            role?: string;
-            content?: Array<{ type?: string; text?: string }>;
-          };
-        };
-
-        if (entry?.type !== "message" || entry?.message?.role !== "assistant" || !Array.isArray(entry.message.content)) {
-          continue;
-        }
-
-        const textPart = entry.message.content.find((part) => part?.type === "text" && typeof part.text === "string" && part.text.trim());
-        if (!textPart?.text) {
-          continue;
-        }
-
-        const cleaned = stripReplyDirectiveTags(textPart.text);
-        if (cleaned) {
-          return cleaned;
-        }
-      } catch {
-        continue;
-      }
-    }
-  } catch {
+  const trimmed = value.trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) {
     return undefined;
   }
 
-  return undefined;
-}
-
-function resolveActionTarget(params: Record<string, unknown>, toolContext?: {
-  currentChannelId?: string;
-}): string {
-  const explicitTo = readStringParam(params, "to") ?? readStringParam(params, "target");
-  if (explicitTo?.trim()) {
-    return explicitTo.trim();
-  }
-
-  const contextTarget = toolContext?.currentChannelId?.trim();
-  if (contextTarget) {
-    return contextTarget;
-  }
-
-  throw new Error("telegram-userbot: message target is required");
-}
-
-function resolveReplyToMessageIdForTarget(rawTarget: string, replyToId?: string | number | null): number | undefined {
-  if (replyToId === null || replyToId === undefined || replyToId === "") {
-    return undefined;
-  }
-
-  const targetKind = inferOutboundTargetKind(rawTarget);
-  if (targetKind === "group" || targetKind === "channel") {
-    return Number(replyToId);
-  }
-
-  return undefined;
-}
-
-function buildGroupReplyAddressKey(input: {
-  accountId?: string | null;
-  chatId: unknown;
-  replyToId?: string | number | null;
-}): string | undefined {
-  const chatId = normalizeGroupReplyTarget(input.chatId);
-  const replyToId = input.replyToId === null || input.replyToId === undefined ? "" : String(input.replyToId).trim();
-  if (!chatId || !replyToId) {
-    return undefined;
-  }
-
-  return [ input.accountId ?? "", chatId, replyToId ].join("\n");
-}
-
-function rememberGroupReplyAddress(input: {
-  accountId?: string | null;
-  chatId: unknown;
-  replyToId?: string | number | null;
-  address?: string;
-}): void {
-  if (!input.address) {
-    return;
-  }
-
-  const key = buildGroupReplyAddressKey(input);
-  if (!key) {
-    return;
-  }
-
-  groupReplyAddresses.set(key, {
-    address: input.address,
-    expiresAt: Date.now() + GROUP_REPLY_ADDRESS_TTL_MS,
-  });
-
-  const latestKey = buildGroupReplyAddressKey({
-    ...input,
-    replyToId: GROUP_REPLY_LATEST_ID,
-  });
-  if (latestKey) {
-    groupReplyAddresses.set(latestKey, {
-      address: input.address,
-      expiresAt: Date.now() + GROUP_REPLY_ADDRESS_TTL_MS,
-    });
-  }
-}
-
-function consumeGroupReplyAddress(input: {
-  accountId?: string | null;
-  chatId: unknown;
-  replyToId?: string | number | null;
-}): string | undefined {
-  const latestKey = buildGroupReplyAddressKey({
-    ...input,
-    replyToId: GROUP_REPLY_LATEST_ID,
-  });
-  const key = buildGroupReplyAddressKey(input) ?? latestKey;
-  if (!key) {
-    return undefined;
-  }
-
-  const stored = groupReplyAddresses.get(key);
-  if (!stored) {
-    return undefined;
-  }
-
-  groupReplyAddresses.delete(key);
-  if (latestKey) {
-    groupReplyAddresses.delete(latestKey);
-  }
-  if (stored.expiresAt < Date.now()) {
-    return undefined;
-  }
-
-  return stored.address;
-}
-
-function readMessageText(params: Record<string, unknown>): string {
-  const message = readStringParam(params, "message", { allowEmpty: true });
-  if (typeof message === "string") {
-    return message;
-  }
-
-  const text = readStringParam(params, "text", { allowEmpty: true });
-  if (typeof text === "string") {
-    return text;
-  }
-
-  return "";
-}
-
-function resolveAllowFrom(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [ "*" ];
-  }
-
-  const entries = value.map((entry) => String(entry).trim()).filter(Boolean);
-  return entries.length > 0 ? entries : [ "*" ];
-}
-
-function resolveGroupPolicy(value: unknown): "open" | "mention" {
-  return value === "open" ? "open" : "mention";
-}
-
-function resolveActiveUsername(source: any): string | undefined {
-  if (typeof source?.username === "string" && source.username.trim()) {
-    return source.username.trim();
-  }
-
-  const activeUsername = Array.isArray(source?.usernames)
-    ? source.usernames.find((entry: any) => entry?.active !== false && typeof entry?.username === "string")?.username
-    : undefined;
-
-  return typeof activeUsername === "string" && activeUsername.trim() ? activeUsername.trim() : undefined;
-}
-
-function normalizeAllowEntry(value: string): string {
-  return value.trim().replace(/^@/, "").toLowerCase();
-}
-
-function isSenderAllowed(input: {
-  allowFrom: string[];
-  senderId?: string;
-  senderUsername?: string;
-}): boolean {
-  if (input.allowFrom.includes("*")) {
-    return true;
-  }
-
-  const senderIds = [
-    input.senderId,
-    input.senderUsername,
-    input.senderUsername ? `@${input.senderUsername}` : undefined,
-  ].filter((value): value is string => Boolean(value)).map(normalizeAllowEntry);
-
-  return input.allowFrom.map(normalizeAllowEntry).some((entry) => senderIds.includes(entry));
-}
-
-function hasTelegramMention(input: {
-  cfg: any;
-  agentId?: string;
-  selfUsername?: string;
-  text: string;
-  message?: any;
-}): boolean {
-  const normalizedText = input.text.trim();
-  const message = input.message;
-  const mentionRegexes = buildMentionRegexes(input.cfg, input.agentId);
-  const selfUsername = input.selfUsername?.replace(/^@/, "").trim();
-  const entities = Array.isArray(message?.entities) ? message.entities : [];
-  const hasAnyMention = Boolean(message?.mentioned) ||
-    entities.some((entity: any) => {
-      const kind = typeof entity?.className === "string" ? entity.className : entity?.type;
-      return kind === "MessageEntityMention" || kind === "mention" || kind === "MessageEntityMentionName" || kind === "InputMessageEntityMentionName";
-    }) ||
-    /(^|\s)@[a-zA-Z0-9_]{5,}\b/.test(normalizedText);
-  const entityExplicitMention = Boolean(selfUsername) && entities.some((entity: any) => {
-    const kind = typeof entity?.className === "string" ? entity.className : entity?.type;
-    if (kind !== "MessageEntityMention" && kind !== "mention") {
-      return false;
-    }
-
-    const offset = typeof entity?.offset === "number" ? entity.offset : -1;
-    const length = typeof entity?.length === "number" ? entity.length : 0;
-    if (offset < 0 || length <= 0) {
-      return false;
-    }
-
-    return normalizedText.slice(offset, offset + length).replace(/^@/, "").trim().toLowerCase() === selfUsername.toLowerCase();
-  });
-  const explicitlyMentioned = Boolean(selfUsername) &&
-    (
-      message?.mentioned === true ||
-      entityExplicitMention ||
-      new RegExp(`(^|\\s)@${selfUsername?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(normalizedText)
-    );
-
-  return matchesMentionWithExplicit({
-    text: normalizedText,
-    mentionRegexes,
-    explicit: {
-      hasAnyMention,
-      isExplicitlyMentioned: explicitlyMentioned,
-      canResolveExplicit: Boolean(selfUsername),
-    },
-  });
-}
-
-function toDisplayName(input: {
-  username?: string;
-  firstName?: string;
-  lastName?: string;
-  fallback?: string;
-}): string {
-  if (input.username) {
-    return `@${input.username}`;
-  }
-
-  const fullName = [ input.firstName, input.lastName ].filter(Boolean).join(" ").trim();
-  return fullName || input.fallback || "Telegram";
-}
-
-function buildGroupReplyAddress(input: {
-  senderUsername?: string;
-  senderDisplay?: string;
-  senderId?: string;
-}): string | undefined {
-  const username = input.senderUsername?.replace(/^@/, "").trim();
-  if (username) {
-    return `@${username}`;
-  }
-
-  const display = input.senderDisplay?.trim();
-  if (display && display !== "Telegram") {
-    return display;
-  }
-
-  return input.senderId;
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | undefined> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
-function prefixReplyTextToAddress(text: string, address?: string): string {
-  const outboundText = text.trim();
-  if (!address) {
-    return outboundText;
-  }
-
-  const lowerText = outboundText.toLowerCase();
-  const lowerAddress = address.toLowerCase();
-  if (
-    lowerText === lowerAddress ||
-    lowerText.startsWith(`${lowerAddress},`) ||
-    lowerText.startsWith(`${lowerAddress}:`) ||
-    lowerText.startsWith(`${lowerAddress} `)
-  ) {
-    return outboundText;
-  }
-
-  return `${address}, ${outboundText}`;
-}
-
-async function resolveReplyTarget(message: any): Promise<unknown> {
-  const directInputSender =
-    typeof message?.getInputSender === "function"
-      ? await message.getInputSender().catch(() => undefined)
-      : undefined;
-  if (directInputSender) {
-    return directInputSender;
-  }
-
-  const sender =
-    typeof message?.getSender === "function"
-      ? await message.getSender().catch(() => undefined)
-      : undefined;
-  if (sender) {
-    return sender;
-  }
-
-  const directInputChat =
-    typeof message?.getInputChat === "function"
-      ? await message.getInputChat().catch(() => undefined)
-      : undefined;
-  if (directInputChat) {
-    return directInputChat;
-  }
-
-  const chat =
-    typeof message?.getChat === "function"
-      ? await message.getChat().catch(() => undefined)
-      : undefined;
-  if (chat) {
-    return chat;
-  }
-
-  return message?.inputSender ?? message?._inputSender ?? message?.sender ?? message?._sender ?? message?.inputChat ?? message?._inputChat ?? message?.chat ?? message?._chat ?? message?.peerId;
-}
-
-async function resolveChatTarget(message: any): Promise<unknown> {
-  const directInputChat =
-    typeof message?.getInputChat === "function"
-      ? await message.getInputChat().catch(() => undefined)
-      : undefined;
-  if (directInputChat) {
-    return directInputChat;
-  }
-
-  const chat =
-    typeof message?.getChat === "function"
-      ? await message.getChat().catch(() => undefined)
-      : undefined;
-  if (chat) {
-    return chat;
-  }
-
-  return message?.inputChat ?? message?._inputChat ?? message?.chat ?? message?._chat ?? message?.peerId;
-}
-
-async function isReplyToSelfMessage(message: any, selfId?: string): Promise<boolean> {
-  if (!selfId) {
-    return false;
-  }
-
-  const replyToMessageId = message?.replyTo?.replyToMsgId ?? message?.replyToMsgId;
-  if (!replyToMessageId) {
-    return false;
-  }
-
-  const replied =
-    typeof message?.getReplyMessage === "function"
-      ? await message.getReplyMessage().catch(() => undefined)
-      : undefined;
-  if (!replied) {
-    return false;
-  }
-
-  if (replied.out === true) {
-    return true;
-  }
-
-  const replySenderId =
-    replied.senderId ??
-    replied.fromId?.userId ??
-    replied.fromId?.channelId;
-  return replySenderId !== undefined && String(replySenderId) === selfId;
-}
-
-async function resolveSenderProfile(message: any, input?: {
-  senderId?: string;
-  client?: any;
-}): Promise<{
-  username?: string;
-  display?: string;
-}> {
-  const pickProfile = (source: any): {
-    username?: string;
-    firstName?: string;
-    lastName?: string;
-  } => {
-    const activeUsername = Array.isArray(source?.usernames)
-      ? source.usernames.find((entry: any) => entry?.active !== false && typeof entry?.username === "string")?.username
-      : undefined;
-
-    return {
-      username: typeof source?.username === "string" ? source.username : activeUsername,
-      firstName: typeof source?.firstName === "string" ? source.firstName : undefined,
-      lastName: typeof source?.lastName === "string" ? source.lastName : undefined,
-    };
-  };
-
-  const sender =
-    typeof message?.getSender === "function"
-      ? await message.getSender().catch(() => undefined)
-      : undefined;
-  const inputSender =
-    typeof message?.getInputSender === "function"
-      ? await message.getInputSender().catch(() => undefined)
-      : undefined;
-  const inputSenderEntity =
-    inputSender && typeof input?.client?.getEntity === "function"
-      ? await input.client.getEntity(inputSender).catch(() => undefined)
-      : undefined;
-  const fromEntity =
-    message?.fromId && typeof input?.client?.getEntity === "function"
-      ? await input.client.getEntity(message.fromId).catch(() => undefined)
-      : undefined;
-  const numericSenderId =
-    input?.senderId && /^\d+$/.test(input.senderId) && Number.isSafeInteger(Number(input.senderId))
-      ? Number(input.senderId)
-      : undefined;
-  const entity =
-    input?.senderId && typeof input?.client?.getEntity === "function"
-      ? await input.client.getEntity(numericSenderId ?? input.senderId).catch(() => undefined)
-      : undefined;
-  const profiles = [
-    pickProfile(sender),
-    pickProfile(inputSenderEntity),
-    pickProfile(fromEntity),
-    pickProfile(entity),
-    pickProfile(message?.sender),
-    pickProfile(message?._sender),
-  ];
-  const profile =
-    profiles.find((candidate) => candidate.username) ??
-    profiles.find((candidate) => candidate.firstName || candidate.lastName);
-
-  const username = profile?.username;
-
-  const display = toDisplayName({
-    username,
-    firstName: profile?.firstName,
-    lastName: profile?.lastName,
-  });
-
-  return {
-    username,
-    display,
-  };
-}
-
-async function resolveSenderProfileWithTimeout(message: any, input?: {
-  senderId?: string;
-  client?: any;
-}, timeoutMs = 1500): Promise<{
-  username?: string;
-  display?: string;
-}> {
-  return await withTimeout(resolveSenderProfile(message, input), timeoutMs) ?? {};
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export const createChannelPlugin = (runtimes: RuntimeMap) => {
@@ -649,10 +110,12 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         "Use telegram-userbot to send Telegram replies from the connected personal account.",
         "When replying in the current Telegram chat, omit `to`/`target` and telegram-userbot will send to the current conversation automatically.",
         "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or telegram-userbot:<target>.",
+        "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
       ],
       messageToolCapabilities: () => [
         "telegram-userbot can reply in the current Telegram conversation when no explicit target is provided.",
         "telegram-userbot can send text messages to direct chats and groups from the connected personal account.",
+        "telegram-userbot supports Telegram forum topics via the `threadId` parameter on group sends.",
       ],
     },
 
@@ -674,7 +137,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           apiHash: String(account?.apiHash ?? ""),
           sessionString: String(account?.sessionString ?? ""),
           allowFrom: resolveAllowFrom(account?.allowFrom),
-          groupPolicy: resolveGroupPolicy(account?.groupPolicy),
+          groups: resolveGroups(account?.groups),
           enabled: account?.enabled,
           accountId,
         };
@@ -799,7 +262,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             }
 
             if (normalized.chatType === "channel") {
-              console.log("telegram-userbot skipping channel inbound", {
+              log?.info?.("telegram-userbot skipping channel inbound", {
                 accountId,
                 chatId: normalized.chatId,
                 chatType: normalized.chatType,
@@ -810,7 +273,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
             const text = normalized.text?.trim();
             if (!text) {
-              console.log("telegram-userbot skipping empty inbound text", {
+              log?.info?.("telegram-userbot skipping empty inbound text", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -819,6 +282,34 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             }
 
             const senderId = normalized.senderId ?? normalized.chatId;
+            const isTelegramServiceDirect = normalized.chatType === "direct" &&
+              (normalized.chatId === "777000" || senderId === "777000");
+            const isSavedMessagesDirect = normalized.chatType === "direct" &&
+              Boolean(selfId) &&
+              normalized.chatId === selfId &&
+              senderId === selfId;
+
+            if (isTelegramServiceDirect) {
+              log?.info?.("telegram-userbot skipping Telegram service direct chat", {
+                accountId,
+                chatId: normalized.chatId,
+                messageId: normalized.messageId,
+                senderId,
+              });
+              return;
+            }
+
+            if (isSavedMessagesDirect) {
+              log?.info?.("telegram-userbot skipping Saved Messages direct chat", {
+                accountId,
+                chatId: normalized.chatId,
+                messageId: normalized.messageId,
+                senderId,
+                selfId,
+              });
+              return;
+            }
+
             const senderUsername = normalized.senderUsername;
             const senderLabel = normalized.senderDisplay || normalized.senderUsername || senderId;
             const conversationTarget = normalized.chatType === "direct"
@@ -839,6 +330,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           const sendTextToConversation = async (args: {
             text: string;
             replyToMessageId?: number;
+            messageThreadId?: number;
           }) => {
             const targets = [ conversationTarget, ...conversationFallbackTargets ];
             let lastError: unknown;
@@ -849,6 +341,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   target,
                   text: args.text,
                   replyToMessageId: args.replyToMessageId,
+                  messageThreadId: args.messageThreadId,
                 });
               } catch (error) {
                 lastError = error;
@@ -861,35 +354,46 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ accountId ] ??
             cfg?.channels?.[ "telegram-userbot" ] ??
             {};
-          const allowFrom = resolveAllowFrom(accountConfig?.allowFrom ?? account?.allowFrom);
-          const groupPolicy = resolveGroupPolicy(accountConfig?.groupPolicy ?? account?.groupPolicy);
-
-            if (!isSenderAllowed({
-              allowFrom,
-              senderId,
-              senderUsername: normalized.senderUsername,
-            })) {
-              if (normalized.chatType === "direct") {
-                log?.info?.("telegram-userbot direct allowFrom mismatch", {
-                  accountId,
-                  senderId,
-                  senderUsername: normalized.senderUsername,
-                  allowFrom,
-                });
-              }
-              log?.info?.("telegram-userbot blocking inbound from non-allowlisted sender", {
-                accountId,
-                chatId: normalized.chatId,
-                messageId: normalized.messageId,
-              senderId,
-              username: normalized.senderUsername,
-            });
-            return;
-          }
-
+          const directAllowFrom = resolveAllowFrom(accountConfig?.allowFrom ?? account?.allowFrom);
+          const groups = resolveGroups(accountConfig?.groups ?? account?.groups);
           const dmPolicy = "open";
 
             if (normalized.chatType === "group") {
+              const groupConfig = resolveGroupConfig(groups, normalized.chatId);
+              if (!groupConfig) {
+                log?.info?.("telegram-userbot skipping group not present in groups config", {
+                  accountId,
+                  chatId: normalized.chatId,
+                  messageId: normalized.messageId,
+                });
+                return;
+              }
+
+              if (groupConfig.enabled === false) {
+                log?.info?.("telegram-userbot skipping disabled group", {
+                  accountId,
+                  chatId: normalized.chatId,
+                  messageId: normalized.messageId,
+                });
+                return;
+              }
+
+              if (!isSenderAllowed({
+                allowFrom: groupConfig.allowFrom,
+                senderId,
+                senderUsername: normalized.senderUsername,
+              })) {
+                log?.info?.("telegram-userbot blocking inbound group sender by allowFrom", {
+                  accountId,
+                  chatId: normalized.chatId,
+                  messageId: normalized.messageId,
+                  senderId,
+                  username: normalized.senderUsername,
+                  allowFrom: groupConfig.allowFrom,
+                });
+                return;
+              }
+
               const scopedGroupPeerId = buildScopedGroupPeerId(accountId, normalized.chatId);
               const { route, buildEnvelope } = resolveInboundRouteEnvelopeBuilderWithRuntime({
                 cfg,
@@ -918,7 +422,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 },
                 policy: {
                   isGroup: true,
-                  requireMention: groupPolicy === "mention",
+                  requireMention: groupConfig.groupPolicy === "mention",
                   allowTextCommands: false,
                   hasControlCommand: false,
                   commandAuthorized: true,
@@ -938,8 +442,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 text,
               });
 
-              if (groupPolicy === "mention" && mentionDecision.shouldSkip && !wasReplyToSelf) {
-                console.log("telegram-userbot skipping group message without mention", {
+              if (groupConfig.groupPolicy === "mention" && mentionDecision.shouldSkip && !wasReplyToSelf) {
+                log?.info?.("telegram-userbot skipping group message without mention", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -979,6 +483,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 MessageSidFull: normalized.messageId,
                 Timestamp: normalized.timestamp,
                 ReplyToId: normalized.replyToMessageId,
+                MessageThreadId: normalized.messageThreadId,
                 NativeChannelId: normalized.chatId,
                 OriginatingChannel: "telegram-userbot",
                 OriginatingTo: conversationRouteTarget,
@@ -995,7 +500,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 address: groupReplyAddress,
               });
 
-              await gram.withTyping(conversationTarget, async () => {
+              const messageThreadId = parseOptionalThreadId(normalized.messageThreadId);
+              const groupTypingTarget = normalized.chatId;
+
+              await gram.withTyping(groupTypingTarget, async () => {
                 await channelRuntime.session.recordInboundSession({
                   storePath,
                   sessionKey: ctxPayload.SessionKey ?? route.sessionKey,
@@ -1007,7 +515,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                     accountId: route.accountId ?? accountId,
                   },
                   onRecordError: (err) => {
-                    console.log("telegram-userbot failed to update group last route", {
+                    log?.info?.("telegram-userbot failed to update group last route", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
@@ -1067,6 +575,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                       await sendTextToConversation({
                         text: prefixReplyTextToAddress(outboundText, rememberedAddress ?? groupReplyAddress),
                         replyToMessageId,
+                        messageThreadId,
                       });
                     },
                     onError: (err, info) => {
@@ -1099,7 +608,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   (dispatchCounts.final ?? 0) === 0;
 
                 if (nothingDelivered) {
-                  const fallbackText = readLatestAssistantFallbackFromTranscript(route.sessionKey);
+                  const fallbackText = readLatestAssistantFallbackFromTranscript(route.sessionKey, storePath);
                   if (fallbackText) {
                     log?.warn?.("telegram-userbot using transcript fallback reply", {
                       accountId,
@@ -1112,6 +621,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                     await sendTextToConversation({
                       text: prefixReplyTextToAddress(fallbackText, groupReplyAddress),
                       replyToMessageId: Number(normalized.messageId),
+                      messageThreadId,
                     });
                   } else {
                     log?.warn?.("telegram-userbot transcript fallback unavailable", {
@@ -1124,9 +634,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 }
               }, {
                 readMessageId: Number(normalized.messageId),
+                messageThreadId,
               });
 
-              console.log("telegram-userbot group inbound handled", {
+              log?.info?.("telegram-userbot group inbound handled", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -1138,12 +649,26 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               return;
             }
 
+            if (!isSenderAllowed({
+              allowFrom: directAllowFrom,
+              senderId,
+              senderUsername: normalized.senderUsername,
+            })) {
+              log?.info?.("telegram-userbot direct allowFrom mismatch", {
+                accountId,
+                senderId,
+                senderUsername: normalized.senderUsername,
+                allowFrom: directAllowFrom,
+              });
+              return;
+            }
+
             const access = await resolveInboundDirectDmAccessWithRuntime({
               cfg,
               channel: "telegram-userbot",
               accountId,
               dmPolicy,
-              allowFrom,
+              allowFrom: directAllowFrom,
               senderId,
               rawBody: text,
               runtime: channelRuntime.commands,
@@ -1156,7 +681,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             });
 
             if (access.access.decision === "block") {
-              console.log("telegram-userbot blocking inbound direct message", {
+              log?.info?.("telegram-userbot blocking inbound direct message", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -1181,7 +706,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   });
                 },
                 onReplyError: (err) => {
-                  console.log("telegram-userbot pairing reply failed", {
+                  log?.info?.("telegram-userbot pairing reply failed", {
                     accountId,
                     chatId: normalized.chatId,
                     senderId,
@@ -1190,7 +715,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 },
               });
 
-              console.log("telegram-userbot pairing required for inbound direct message", {
+              log?.info?.("telegram-userbot pairing required for inbound direct message", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -1240,7 +765,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   });
                 },
                 onRecordError: (err) => {
-                  console.log("telegram-userbot failed to record inbound session", {
+                  log?.info?.("telegram-userbot failed to record inbound session", {
                     accountId,
                     chatId: normalized.chatId,
                     messageId: normalized.messageId,
@@ -1248,7 +773,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   })
                 },
                 onDispatchError: (err, info) => {
-                  console.log("telegram-userbot failed to dispatch reply", {
+                  log?.info?.("telegram-userbot failed to dispatch reply", {
                     accountId,
                     chatId: normalized.chatId,
                     messageId: normalized.messageId,
@@ -1261,7 +786,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               readMessageId: Number(normalized.messageId),
             });
 
-            console.log("telegram-userbot inbound handled", {
+            log?.info?.("telegram-userbot inbound handled", {
               accountId,
               chatId: normalized.chatId,
               messageId: normalized.messageId,
@@ -1277,7 +802,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               messageId: String(rawMessage?.id ?? ""),
               error: String(error),
             });
-            console.log("telegram-userbot inbound preflight failed", {
+            log?.info?.("telegram-userbot inbound preflight failed", {
               accountId,
               chatId: String(rawMessage?.chatId ?? rawMessage?.peerId?.userId ?? rawMessage?.peerId?.chatId ?? rawMessage?.peerId?.channelId ?? ""),
               messageId: String(rawMessage?.id ?? ""),
@@ -1307,6 +832,74 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
     },
 
     messaging: {
+      targetPrefixes: [ CHANNEL_ID, "tguserbot", "telegram", "tg" ] as const,
+
+      normalizeTarget(raw: string) {
+        const normalized = normalizeOutboundTarget(raw);
+        return normalized || undefined;
+      },
+
+      inferTargetChatType(params: {
+        to: string;
+      }) {
+        const kind = inferOutboundTargetKind(params.to);
+        if (kind === "group" || kind === "channel") {
+          return kind;
+        }
+        if (kind === "user") {
+          return "direct";
+        }
+        return undefined;
+      },
+
+      targetResolver: {
+        looksLikeId(raw: string, normalized?: string) {
+          const candidate = (normalized?.trim() || normalizeOutboundTarget(raw)).trim();
+          if (!candidate) {
+            return false;
+          }
+
+          if (candidate === "me" || candidate === "self" || candidate === "saved") {
+            return true;
+          }
+
+          if (candidate.startsWith("@")) {
+            return true;
+          }
+
+          return /^-?\d+$/.test(candidate);
+        },
+
+        async resolveTarget(params: {
+          cfg: any;
+          accountId?: string | null;
+          input: string;
+          normalized: string;
+          preferredKind?: "user" | "group" | "channel";
+        }) {
+          const target = params.normalized?.trim() || normalizeOutboundTarget(params.input);
+          if (!target) {
+            return null;
+          }
+
+          const inferredKind = inferOutboundTargetKind(params.input, params.preferredKind);
+          const accountId = resolveRuntimeAccountId(params.cfg, params.accountId);
+          const gram = accountId ? runtimes.get(accountId) : undefined;
+          const resolved = gram ? await gram.resolvePeer(target, { kind: inferredKind }).catch(() => undefined) : undefined;
+          const kind = resolved?.chatType === "group" || inferredKind === "group"
+            ? "group"
+            : resolved?.chatType === "channel" || inferredKind === "channel"
+              ? "channel"
+              : "user";
+
+          return {
+            to: resolved?.chatId ?? target,
+            kind,
+            source: "normalized" as const,
+          };
+        },
+      },
+
       async resolveOutboundSessionRoute(params: {
         cfg: any;
         agentId: string;
@@ -1404,6 +997,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         const targetKind = inferOutboundTargetKind(rawTo);
         const to = normalizeOutboundTarget(rawTo);
         const replyToId = readStringOrNumberParam(params, "replyToId") ?? readStringOrNumberParam(params, "replyTo");
+        const threadId = readStringOrNumberParam(params, "threadId");
+        const messageThreadId = parseOptionalThreadId(threadId);
         actionLog.info("telegram-userbot handleAction send", {
           requestedAccountId: accountId,
           dryRun: dryRun === true,
@@ -1411,6 +1006,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           to,
           targetKind,
           replyToId: replyToId ?? null,
+          threadId: threadId ?? null,
           toolContextCurrentChannelId: toolContext?.currentChannelId ?? null,
         });
 
@@ -1450,6 +1046,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           text,
           targetKind,
           replyToMessageId: resolveReplyToMessageIdForTarget(rawTo, replyToId),
+          messageThreadId,
         });
 
         actionLog.info("telegram-userbot handleAction send completed", {
@@ -1493,11 +1090,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         to: string;
         text: string;
         replyToId?: string | null;
+        threadId?: string | number | null;
       }) {
         actionLog.info("telegram-userbot outbound sendText", {
           accountId: ctx.accountId,
           rawTo: ctx.to,
           replyToId: ctx.replyToId ?? null,
+          threadId: ctx.threadId ?? null,
           text: ctx.text,
         });
         const gram = runtimes.get(ctx.accountId);
@@ -1512,12 +1111,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         });
         const targetKind = inferOutboundTargetKind(ctx.to);
         const target = normalizeOutboundTarget(ctx.to);
+        const messageThreadId = parseOptionalThreadId(ctx.threadId);
 
         const sent = await gram.sendText({
           target,
           text: prefixReplyTextToAddress(ctx.text, groupReplyAddress),
           targetKind,
           replyToMessageId: resolveReplyToMessageIdForTarget(ctx.to, ctx.replyToId),
+          messageThreadId,
         });
 
         actionLog.info("telegram-userbot outbound sendText completed", {
@@ -1542,6 +1143,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         text?: string;
         caption?: string;
         replyToId?: string | null;
+        threadId?: string | number | null;
       }) {
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
@@ -1552,6 +1154,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           accountId: ctx.accountId,
           to: ctx.to,
           replyToId: ctx.replyToId ?? null,
+          threadId: ctx.threadId ?? null,
           filePath: ctx.filePath ?? null,
           mediaUrl: ctx.mediaUrl ?? null,
           hasText: Boolean(ctx.text),
@@ -1562,12 +1165,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         if (!file) {
           throw new Error("telegram-userbot: sendMedia requires filePath or mediaUrl");
         }
+        const messageThreadId = parseOptionalThreadId(ctx.threadId);
 
         const sent = await gram.sendMedia({
           target: ctx.to,
           file,
           caption: ctx.caption ?? ctx.text,
           replyToMessageId: resolveReplyToMessageIdForTarget(ctx.to, ctx.replyToId),
+          messageThreadId,
         });
 
         actionLog.info("telegram-userbot outbound sendMedia completed", {

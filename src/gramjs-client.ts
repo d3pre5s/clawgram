@@ -56,6 +56,69 @@ function uniqueCandidates(values: unknown[]): unknown[] {
   return result;
 }
 
+function parseTargetWithThread(rawTarget: string): {
+  raw: string;
+  chatId: string;
+  messageThreadId?: number;
+} {
+  const raw = rawTarget.trim();
+  const topicMatch = /^(.+?):topic:(\d+)$/.exec(raw);
+  if (topicMatch) {
+    return {
+      raw,
+      chatId: topicMatch[1],
+      messageThreadId: Number.parseInt(topicMatch[2], 10),
+    };
+  }
+
+  const colonMatch = /^(.+):(\d+)$/.exec(raw);
+  if (colonMatch && /^-?\d+$/.test(colonMatch[1])) {
+    return {
+      raw,
+      chatId: colonMatch[1],
+      messageThreadId: Number.parseInt(colonMatch[2], 10),
+    };
+  }
+
+  return {
+    raw,
+    chatId: raw,
+  };
+}
+
+function buildForumReplyParams(messageThreadId?: number, replyToMessageId?: number): {
+  replyTo?: number;
+  topMsgId?: number;
+} {
+  const normalizedThreadId = typeof messageThreadId === "number" && Number.isFinite(messageThreadId)
+    ? Math.trunc(messageThreadId)
+    : undefined;
+  const normalizedReplyToId = typeof replyToMessageId === "number" && Number.isFinite(replyToMessageId)
+    ? Math.trunc(replyToMessageId)
+    : undefined;
+
+  if (!normalizedThreadId || normalizedThreadId <= 1) {
+    return normalizedReplyToId ? { replyTo: normalizedReplyToId } : {};
+  }
+
+  if (!normalizedReplyToId) {
+    return {
+      replyTo: normalizedThreadId,
+    };
+  }
+
+  if (normalizedReplyToId === normalizedThreadId) {
+    return {
+      replyTo: normalizedReplyToId,
+    };
+  }
+
+  return {
+    replyTo: normalizedReplyToId,
+    topMsgId: normalizedThreadId,
+  };
+}
+
 function buildPeerCandidates(raw: string, kind?: "user" | "group" | "channel"): unknown[] {
   const candidates: unknown[] = [ raw ];
   const numeric = toSafeInteger(raw);
@@ -220,7 +283,9 @@ export class GramJsClientManager {
       };
     }
 
-    const raw = rawTarget.trim();
+    const parsedTarget = parseTargetWithThread(rawTarget);
+    const raw = parsedTarget.raw;
+    const chatLookupTarget = parsedTarget.chatId;
     const kind = options?.kind;
 
     if (raw === "me" || raw === "self" || raw === "saved") {
@@ -228,12 +293,13 @@ export class GramJsClientManager {
         raw,
         peer: "me",
         chatId: "me",
+        messageThreadId: parsedTarget.messageThreadId,
         chatType: "direct"
       };
     }
 
     let entity: unknown;
-    for (const candidate of buildPeerCandidates(raw, kind)) {
+    for (const candidate of buildPeerCandidates(chatLookupTarget, kind)) {
       entity = await this.client.getInputEntity(candidate as any).catch(() => undefined);
       if (entity) {
         break;
@@ -241,68 +307,107 @@ export class GramJsClientManager {
     }
 
     if (!entity) {
-      const dialogResolved = await this.resolveDialogPeer(raw, kind);
+      const dialogResolved = await this.resolveDialogPeer(chatLookupTarget, kind);
       if (dialogResolved) {
+        dialogResolved.messageThreadId = parsedTarget.messageThreadId;
         return dialogResolved;
       }
     }
 
     if (!entity) {
-      entity = await this.client.getInputEntity(raw);
+      entity = await this.client.getInputEntity(chatLookupTarget);
     }
 
-    const chatId = getChatIdFromPeer(entity, raw);
+    const chatId = getChatIdFromPeer(entity, chatLookupTarget);
 
     return {
       raw,
       peer: entity as any,
       chatId,
+      messageThreadId: parsedTarget.messageThreadId,
       chatType: inferChatTypeFromRaw(chatId ?? raw)
     };
   }
 
   async sendText(args: SendTextArgs) {
     const resolved = await this.resolvePeer(args.target, { kind: args.targetKind });
+    const messageThreadId = args.messageThreadId ?? resolved.messageThreadId;
+    const replyParams = buildForumReplyParams(messageThreadId, args.replyToMessageId);
 
     return this.client.sendMessage(resolved.peer as any, {
       message: args.text,
-      replyTo: args.replyToMessageId
+      ...replyParams,
     });
   }
 
-  async markRead(target: unknown, messageId?: number): Promise<void> {
+  async markRead(target: unknown, messageId?: number, options?: {
+    messageThreadId?: number;
+  }): Promise<void> {
     if (!messageId || !Number.isFinite(messageId)) {
       return;
     }
 
     const resolved = await this.resolvePeer(target);
+    const messageThreadId = options?.messageThreadId ?? resolved.messageThreadId;
+
+    if (messageThreadId && messageThreadId > 1) {
+      await this.client.invoke(new Api.messages.ReadDiscussion({
+        peer: resolved.peer as any,
+        msgId: messageThreadId,
+        readMaxId: messageId,
+      })).catch(() => undefined);
+      return;
+    }
+
     await this.client.markAsRead(resolved.peer as any, messageId).catch(() => undefined);
   }
 
   async withTyping<T>(target: unknown, fn: () => Promise<T>, options?: {
     readMessageId?: number;
+    messageThreadId?: number;
   }): Promise<T> {
     let peer: unknown;
     let readMarked = false;
+    let stopped = false;
+    let activeTick: Promise<void> | undefined;
 
     const sendTyping = async () => {
       if (!peer) {
         peer = (await this.resolvePeer(target)).peer;
       }
 
+      if (stopped) {
+        return;
+      }
+
       if (!readMarked) {
         readMarked = true;
-        await this.markRead(peer, options?.readMessageId).catch(() => undefined);
+        await this.markRead(peer, options?.readMessageId, {
+          messageThreadId: options?.messageThreadId,
+        }).catch(() => undefined);
+      }
+
+      if (stopped) {
+        return;
       }
 
       await this.client.invoke(new Api.messages.SetTyping({
         peer: peer as any,
+        topMsgId: options?.messageThreadId,
         action: new Api.SendMessageTypingAction(),
       }));
     };
 
     const tick = () => {
-      void sendTyping().catch(() => undefined);
+      if (stopped || activeTick) {
+        return;
+      }
+
+      activeTick = sendTyping()
+        .catch(() => undefined)
+        .finally(() => {
+          activeTick = undefined;
+        });
     };
     tick();
     const interval = setInterval(tick, 4000);
@@ -310,7 +415,9 @@ export class GramJsClientManager {
     try {
       return await fn();
     } finally {
+      stopped = true;
       clearInterval(interval);
+      await activeTick?.catch(() => undefined);
 
       if (peer) {
         await this.client.invoke(new Api.messages.SetTyping({
@@ -323,11 +430,13 @@ export class GramJsClientManager {
 
   async sendMedia(args: SendMediaArgs) {
     const resolved = await this.resolvePeer(args.target);
+    const messageThreadId = args.messageThreadId ?? resolved.messageThreadId;
+    const replyParams = buildForumReplyParams(messageThreadId, args.replyToMessageId);
 
     return this.client.sendFile(resolved.peer as any, {
       file: args.file,
       caption: args.caption,
-      replyTo: args.replyToMessageId
+      ...replyParams,
     });
   }
 }
