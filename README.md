@@ -402,6 +402,28 @@ Bindings
 ```
 
 
+> **NOTES**: Due to a known bug in the OpenClaw core, you may encounter an error in the logs: `EmbeddedAttemptSessionTakeoverError: session file changed while embedded prompt lock was released`. This error may primarily occur when communicating in group chats and not on all LLM models — only those that support tool calls. This error does not affect functionality, but it may cause a repeated request to the fallback model and excess token usage if you have one specified. To prevent this behavior, you can remove the fallback model in the openclaw.json configuration. To avoid affecting your main settings, override the model specifically for the telegram-userbot channel in the agent list when configuring multi-agent routing — do not specify a fallback model for it.
+
+```json
+ "list": [
+      {
+        "id": "userbot-main",
+        "workspace": "/root/.openclaw/workspace-userbot-main",
+        "model": {
+          "primary": "<some model>"
+        }
+      },
+      {
+        "id": "userbot-second",
+        "workspace": "/root/.openclaw/workspace-userbot-second",
+        "model": {
+          "primary": "<some model>"
+        }
+      }
+    ]
+```
+
+
 ## Development
 
 ```bash

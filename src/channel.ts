@@ -22,6 +22,7 @@ import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
+import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
 import {
   normalizeOutboundTarget,
   resolveConfiguredAccountId,
@@ -504,6 +505,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               const groupTypingTarget = normalized.chatId;
 
               await gram.withTyping(groupTypingTarget, async () => {
+                log?.info?.("telegram-userbot dispatching group reply", {
+                  accountId,
+                  chatId: normalized.chatId,
+                  messageId: normalized.messageId,
+                  routeSessionKey: route.sessionKey,
+                  storePath,
+                });
+
                 await channelRuntime.session.recordInboundSession({
                   storePath,
                   sessionKey: ctxPayload.SessionKey ?? route.sessionKey,
@@ -522,14 +531,6 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                       error: String(err),
                     });
                   },
-                });
-
-                log?.info?.("telegram-userbot dispatching group reply", {
-                  accountId,
-                  chatId: normalized.chatId,
-                  messageId: normalized.messageId,
-                  routeSessionKey: route.sessionKey,
-                  storePath,
                 });
 
                 const dispatchBase = buildInboundReplyDispatchBase({
@@ -987,6 +988,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         dryRun?: boolean;
         toolContext?: {
           currentChannelId?: string;
+          currentMessageId?: string | number;
         };
       }) => {
         if (action !== "send") {
@@ -1014,6 +1016,41 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         if (!resolvedAccountId) {
           throw new Error("telegram-userbot: no configured account found");
         }
+        const currentChannelId = toolContext?.currentChannelId?.trim() ?? "";
+        const currentMessageId = toolContext?.currentMessageId;
+        const currentChannelTarget = currentChannelId ? normalizeOutboundTarget(currentChannelId) : "";
+        const sendingToCurrentGroup = Boolean(
+          currentChannelTarget &&
+          currentChannelTarget === to &&
+          targetKind === "group",
+        );
+
+        if (
+          sendingToCurrentGroup &&
+          !replyToId &&
+          currentMessageId !== null &&
+          currentMessageId !== undefined &&
+          hasRecentVisibleGroupReply({
+            accountId: resolvedAccountId,
+            chatId: to,
+            currentMessageId,
+          })
+        ) {
+          actionLog.warn("telegram-userbot suppressing duplicate visible group reply", {
+            accountId: resolvedAccountId,
+            to,
+            currentMessageId: String(currentMessageId),
+            toolContextCurrentChannelId: currentChannelId || null,
+          });
+
+          return jsonResult({
+            ok: true,
+            suppressedDuplicate: true,
+            to,
+            accountId: resolvedAccountId,
+          });
+        }
+
         const groupReplyAddress = consumeGroupReplyAddress({
           accountId: resolvedAccountId,
           chatId: to,
@@ -1048,6 +1085,19 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           replyToMessageId: resolveReplyToMessageIdForTarget(rawTo, replyToId),
           messageThreadId,
         });
+
+        if (
+          sendingToCurrentGroup &&
+          !replyToId &&
+          currentMessageId !== null &&
+          currentMessageId !== undefined
+        ) {
+          rememberVisibleGroupReply({
+            accountId: resolvedAccountId,
+            chatId: to,
+            currentMessageId,
+          });
+        }
 
         actionLog.info("telegram-userbot handleAction send completed", {
           accountId: resolvedAccountId,
