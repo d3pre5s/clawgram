@@ -1,6 +1,7 @@
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import type { PluginConfig, ResolvedTelegramTarget, SendMediaArgs, SendTextArgs, ChatType } from "./types.ts";
+import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
 
 function toStringId(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
@@ -190,17 +191,23 @@ function buildTargetKeys(raw: string, kind?: "user" | "group" | "channel"): Set<
 
 export class GramJsClientManager {
   private client: TelegramClient;
+  private proxy: TelegramProxyConfig | undefined;
   private started = false;
 
   constructor(private readonly config: PluginConfig) {
+    const clientOptions = buildTelegramClientOptions(config.proxy);
+    this.proxy = clientOptions.proxy;
     this.client = new TelegramClient(
       new StringSession(config.sessionString),
       config.apiId,
       config.apiHash,
-      {
-        connectionRetries: 5
-      }
+      clientOptions
     );
+  }
+
+  /** Credential-free proxy summary (`socks4`/`socks5`) for diagnostics. */
+  getProxySummary(): string | undefined {
+    return describeProxy(this.proxy);
   }
 
   async start(): Promise<void> {

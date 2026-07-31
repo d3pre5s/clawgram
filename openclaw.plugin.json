@@ -102,6 +102,44 @@
                 "sessionString": {
                   "type": "string"
                 },
+                "proxy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "ip": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "port": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 65535
+                    },
+                    "socksType": {
+                      "type": "integer",
+                      "enum": [
+                        4,
+                        5
+                      ]
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "string"
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "ip",
+                    "port",
+                    "socksType"
+                  ]
+                },
                 "allowFrom": {
                   "type": "array",
                   "items": {
@@ -159,6 +197,42 @@
               ]
             }
           }
+        }
+      },
+      "uiHints": {
+        "accounts.*.proxy": {
+          "label": "SOCKS Proxy",
+          "help": "Optional native SOCKS4/SOCKS5 proxy for this account's MTProto connection. GramJS uses raw TCP sockets, so OpenClaw's proxy.proxyUrl does not cover it. This is a SOCKS proxy, not a Telegram MTProxy.",
+          "advanced": true
+        },
+        "accounts.*.proxy.ip": {
+          "label": "Proxy Host",
+          "help": "Proxy hostname or IP address.",
+          "placeholder": "proxy.example.com"
+        },
+        "accounts.*.proxy.port": {
+          "label": "Proxy Port",
+          "help": "Proxy TCP port (1-65535).",
+          "placeholder": "1080"
+        },
+        "accounts.*.proxy.socksType": {
+          "label": "SOCKS Version",
+          "help": "5 for SOCKS5, 4 for SOCKS4.",
+          "placeholder": "5"
+        },
+        "accounts.*.proxy.username": {
+          "label": "Proxy Username",
+          "help": "Optional username for proxies that require authentication."
+        },
+        "accounts.*.proxy.password": {
+          "label": "Proxy Password",
+          "help": "Optional password for proxies that require authentication.",
+          "sensitive": true
+        },
+        "accounts.*.proxy.timeout": {
+          "label": "Proxy Timeout",
+          "help": "Optional proxy connection timeout in seconds (GramJS default: 5).",
+          "placeholder": "10"
         }
       }
     }

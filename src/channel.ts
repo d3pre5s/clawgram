@@ -48,6 +48,7 @@ import {
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
 } from './helpers';
+import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
 
 const actionLog = createSubsystemLogger("channels/telegram-userbot");
@@ -141,6 +142,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           groups: resolveGroups(account?.groups),
           enabled: account?.enabled,
           accountId,
+          proxy: resolveProxyConfig(account?.proxy),
         };
       },
     },
@@ -182,6 +184,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           accountId,
           selfId,
           username: selfUsername,
+          proxy: gram.getProxySummary(),
         });
 
         const client = gram.getClient();

@@ -1,4 +1,5 @@
 import { GramJsClientManager } from './gramjs-client';
+import type { TelegramProxyConfig } from './proxy-config';
 
 export type RuntimeMap = Map<string, GramJsClientManager>;
 
@@ -18,6 +19,7 @@ export type PluginConfig = {
   groups: Record<string, GroupConfig>;
   accountId?: string;
   enabled?: boolean;
+  proxy?: TelegramProxyConfig;
 };
 
 export type ChatType = "direct" | "group" | "channel";

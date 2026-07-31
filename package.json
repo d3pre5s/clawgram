@@ -5,6 +5,8 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "npm run build:test && node --test \"dist-test/test/*.test.js\"",
     "telegram-userbot-cli": "node dist/telegram-userbot-cli.js",
     "telegram-userbot-cli:hello": "node dist/telegram-userbot-cli.js --hello",
     "telegram-userbot-cli:auth": "node dist/telegram-userbot-cli.js --auth"
