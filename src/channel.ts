@@ -15,6 +15,8 @@ import {
 } from "openclaw/plugin-sdk/channel-inbound";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-sdk/inbound-envelope";
+import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
+import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
 import { NewMessage } from "telegram/events";
@@ -165,7 +167,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         await gram.start();
         runtimes.set(accountId, gram);
         const pairing = createChannelPairingController({
-          core: { channel: channelRuntime },
+          // The controller only reads core.channel.pairing, but its parameter is typed
+          // as the full PluginRuntime, and ctx (hence channelRuntime) is untyped.
+          core: { channel: channelRuntime } as PluginRuntime,
           channel: "telegram-userbot",
           accountId,
         });
@@ -399,7 +403,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               }
 
               const scopedGroupPeerId = buildScopedGroupPeerId(accountId, normalized.chatId);
-              const { route, buildEnvelope } = resolveInboundRouteEnvelopeBuilderWithRuntime({
+              const { route: inboundRoute, buildEnvelope } = resolveInboundRouteEnvelopeBuilderWithRuntime({
                 cfg,
                 channel: "telegram-userbot",
                 accountId,
@@ -410,6 +414,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 runtime: channelRuntime,
                 sessionStore: cfg?.session?.store,
               });
+              // channelRuntime comes from the untyped ctx, so the generic route type falls
+              // back to the minimal RouteLike. The runtime value is a ResolvedAgentRoute.
+              const route = inboundRoute as ResolvedAgentRoute;
               const wasMentioned = hasTelegramMention({
                 cfg,
                 agentId: route.agentId,
