@@ -44,6 +44,7 @@ import {
   hasTelegramMention,
   toDisplayName,
   prefixReplyTextToAddress,
+  stripSilentReplyToken,
   resolveReplyTarget,
   resolveChatTarget,
   isReplyToSelfMessage,
@@ -576,6 +577,19 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                         return;
                       }
 
+                      // The agent may decline to answer by returning the shared
+                      // silent token. Drop it before addressing: otherwise the
+                      // reply-address prefix turns it into a visible message.
+                      const visibleText = stripSilentReplyToken(outboundText);
+                      if (!visibleText) {
+                        log?.info?.("telegram-userbot suppressing silent group reply", {
+                          accountId,
+                          chatId: normalized.chatId,
+                          messageId: normalized.messageId,
+                        });
+                        return;
+                      }
+
                       const replyToMessageId = payload.replyToId ? Number(payload.replyToId) : Number(normalized.messageId);
                       const rememberedAddress = consumeGroupReplyAddress({
                         accountId: route.accountId ?? accountId,
@@ -584,7 +598,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                       });
 
                       await sendTextToConversation({
-                        text: prefixReplyTextToAddress(outboundText, rememberedAddress ?? groupReplyAddress),
+                        text: prefixReplyTextToAddress(visibleText, rememberedAddress ?? groupReplyAddress),
                         replyToMessageId,
                         messageThreadId,
                       });
@@ -620,17 +634,28 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
                 if (nothingDelivered) {
                   const fallbackText = readLatestAssistantFallbackFromTranscript(route.sessionKey, storePath);
-                  if (fallbackText) {
+                  // A suppressed silent reply legitimately delivers nothing, so
+                  // this fallback fires right after it. Without the same check
+                  // the token would be read back from the transcript and sent.
+                  const visibleFallbackText = fallbackText ? stripSilentReplyToken(fallbackText) : "";
+                  if (fallbackText && !visibleFallbackText) {
+                    log?.info?.("telegram-userbot skipping silent transcript fallback", {
+                      accountId,
+                      chatId: normalized.chatId,
+                      messageId: normalized.messageId,
+                      routeSessionKey: route.sessionKey,
+                    });
+                  } else if (visibleFallbackText) {
                     log?.warn?.("telegram-userbot using transcript fallback reply", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
                       routeSessionKey: route.sessionKey,
-                      fallbackText,
+                      fallbackText: visibleFallbackText,
                     });
 
                     await sendTextToConversation({
-                      text: prefixReplyTextToAddress(fallbackText, groupReplyAddress),
+                      text: prefixReplyTextToAddress(visibleFallbackText, groupReplyAddress),
                       replyToMessageId: Number(normalized.messageId),
                       messageThreadId,
                     });
@@ -770,8 +795,18 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                     return;
                   }
 
+                  const visibleText = stripSilentReplyToken(outboundText);
+                  if (!visibleText) {
+                    log?.info?.("telegram-userbot suppressing silent direct reply", {
+                      accountId,
+                      chatId: normalized.chatId,
+                      messageId: normalized.messageId,
+                    });
+                    return;
+                  }
+
                   await sendTextToConversation({
-                    text: outboundText,
+                    text: visibleText,
                     replyToMessageId: payload.replyToId ? Number(payload.replyToId) : undefined,
                   });
                 },
