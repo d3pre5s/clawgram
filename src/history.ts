@@ -46,11 +46,26 @@ export type HistoryMessage = {
   isOutgoing: boolean;
 };
 
+/**
+ * Matches `normalize.ts` and `gramjs-client.ts` deliberately.
+ *
+ * GramJS carries ids as `big-integer` instances — plain objects whose `typeof`
+ * is "object", not native `bigint`. A `typeof value === "bigint"` check misses
+ * every one of them, and the failure is silent: `senderId` simply comes back
+ * undefined and a standup summary loses the one field that says who wrote.
+ *
+ * The `[object Object]` guard catches the opposite mistake — passing a whole
+ * Peer instead of the id inside it, which would otherwise produce a plausible
+ * looking string.
+ */
 function toStringId(value: unknown): string | undefined {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  if (typeof value === "bigint") return value.toString();
-  return undefined;
+  if (value === null || value === undefined) return undefined;
+  try {
+    const text = String(value);
+    return text && text !== "[object Object]" ? text : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

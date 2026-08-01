@@ -256,6 +256,20 @@ describe("normalizeHistoryMessage", () => {
     assert.equal(normalizeHistoryMessage(message(1, { date: new Date(BASE * 1000) }))?.timestamp, BASE);
   });
 
+  test("reads ids that GramJS carries as big-integer objects", () => {
+    // GramJS ids are `big-integer` instances: typeof "object", not "bigint".
+    // A typeof check for "bigint" misses all of them and senderId silently
+    // comes back undefined -- a standup summary without authors.
+    const bigIntegerLike = { toString: () => "777000" };
+    const normalized = normalizeHistoryMessage({ id: 1, fromId: { userId: bigIntegerLike } });
+    assert.equal(normalized?.senderId, "777000");
+  });
+
+  test("refuses a whole Peer object where an id belongs", () => {
+    const normalized = normalizeHistoryMessage({ id: 1, fromId: { userId: { className: "PeerUser" } } });
+    assert.equal(normalized?.senderId, undefined);
+  });
+
   test("falls back to the resolved chat id", () => {
     assert.equal(normalizeHistoryMessage({ id: 1 }, "-100999")?.chatId, "-100999");
   });
