@@ -22,6 +22,7 @@ import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pair
 import { NewMessage } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
+import { isChatReadable, parseListMessagesParams } from "./history";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
@@ -55,6 +56,22 @@ import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
 
 const actionLog = createSubsystemLogger("channels/telegram-userbot");
+
+/**
+ * Read scope as configured for the account. Left `undefined` when the key is
+ * absent so `isChatReadable` can tell "not configured" from "configured empty" —
+ * the first means no restriction, the second denies everything.
+ */
+function readAccountReadChats(account: any): string[] | undefined {
+  const raw = account?.readChats;
+  if (raw === undefined || raw === null) return undefined;
+  const entries = Array.isArray(raw) ? raw : [ raw ];
+  return entries.map((entry) => String(entry).trim()).filter(Boolean);
+}
+
+function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefined {
+  return readAccountReadChats(cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ accountId ]);
+}
 
 function parseOptionalThreadId(value: unknown): number | undefined {
   if (typeof value === "number") {
@@ -143,6 +160,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           sessionString: String(account?.sessionString ?? ""),
           allowFrom: resolveAllowFrom(account?.allowFrom),
           groups: resolveGroups(account?.groups),
+          readChats: readAccountReadChats(account),
           enabled: account?.enabled,
           accountId,
           proxy: resolveProxyConfig(account?.proxy),
@@ -1018,7 +1036,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         }
 
         return {
-          actions: [ "send" ],
+          actions: [ "send", "list" ],
           capabilities: [],
         };
       },
@@ -1036,6 +1054,52 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           currentMessageId?: string | number;
         };
       }) => {
+        if (action === "list") {
+          const listParams = parseListMessagesParams(params);
+          const listAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!listAccountId) {
+            throw new Error("telegram-userbot: no configured account found");
+          }
+
+          // Reading is not a side effect, so a dry run still answers — reporting
+          // an empty window would look like a quiet chat rather than a no-op.
+          if (!isChatReadable(listParams.target, resolveAccountReadChats(cfg, listAccountId))) {
+            actionLog.warn("telegram-userbot list refused: chat outside read scope", {
+              accountId: listAccountId,
+              target: listParams.target,
+            });
+            throw new Error(`telegram-userbot: not-allowed-chat ${listParams.target}`);
+          }
+
+          const listGram = runtimes.get(listAccountId);
+          if (!listGram) {
+            throw new Error(`telegram-userbot: runtime not found for account ${listAccountId}`);
+          }
+
+          const history = await listGram.listMessages(listParams);
+
+          // Metadata only. Message text is the user's correspondence and has no
+          // business in a log that is read while debugging something else.
+          actionLog.info("telegram-userbot handleAction list completed", {
+            accountId: listAccountId,
+            target: listParams.target,
+            limit: listParams.limit,
+            since: listParams.since ?? null,
+            until: listParams.until ?? null,
+            returned: history.messages.length,
+            truncated: history.truncated,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: listAccountId,
+            chatId: history.chatId ?? listParams.target,
+            count: history.messages.length,
+            truncated: history.truncated,
+            messages: history.messages,
+          });
+        }
+
         if (action !== "send") {
           throw new Error(`telegram-userbot: unsupported message action ${action}`);
         }
