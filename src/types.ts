@@ -1,4 +1,5 @@
 import { GramJsClientManager } from './gramjs-client';
+import type { TelegramProxyConfig } from './proxy-config';
 
 export type RuntimeMap = Map<string, GramJsClientManager>;
 
@@ -16,8 +17,15 @@ export type PluginConfig = {
   sessionString: string;
   allowFrom: string[];
   groups: Record<string, GroupConfig>;
+  /**
+   * Chats the account may READ with the `list` action. Absent means no
+   * restriction; an empty array denies every read. Independent of `allowFrom`
+   * and `groups`, which gate inbound handling, not history access.
+   */
+  readChats?: string[];
   accountId?: string;
   enabled?: boolean;
+  proxy?: TelegramProxyConfig;
 };
 
 export type ChatType = "direct" | "group" | "channel";

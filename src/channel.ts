@@ -15,11 +15,14 @@ import {
 } from "openclaw/plugin-sdk/channel-inbound";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-sdk/inbound-envelope";
+import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
+import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
 import { NewMessage } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
+import { isChatReadable, parseListMessagesParams } from "./history";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
@@ -42,15 +45,33 @@ import {
   hasTelegramMention,
   toDisplayName,
   prefixReplyTextToAddress,
+  stripSilentReplyToken,
   resolveReplyTarget,
   resolveChatTarget,
   isReplyToSelfMessage,
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
 } from './helpers';
+import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
 
 const actionLog = createSubsystemLogger("channels/telegram-userbot");
+
+/**
+ * Read scope as configured for the account. Left `undefined` when the key is
+ * absent so `isChatReadable` can tell "not configured" from "configured empty" —
+ * the first means no restriction, the second denies everything.
+ */
+function readAccountReadChats(account: any): string[] | undefined {
+  const raw = account?.readChats;
+  if (raw === undefined || raw === null) return undefined;
+  const entries = Array.isArray(raw) ? raw : [ raw ];
+  return entries.map((entry) => String(entry).trim()).filter(Boolean);
+}
+
+function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefined {
+  return readAccountReadChats(cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ accountId ]);
+}
 
 function parseOptionalThreadId(value: unknown): number | undefined {
   if (typeof value === "number") {
@@ -139,8 +160,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           sessionString: String(account?.sessionString ?? ""),
           allowFrom: resolveAllowFrom(account?.allowFrom),
           groups: resolveGroups(account?.groups),
+          readChats: readAccountReadChats(account),
           enabled: account?.enabled,
           accountId,
+          proxy: resolveProxyConfig(account?.proxy),
         };
       },
     },
@@ -163,7 +186,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         await gram.start();
         runtimes.set(accountId, gram);
         const pairing = createChannelPairingController({
-          core: { channel: channelRuntime },
+          // The controller only reads core.channel.pairing, but its parameter is typed
+          // as the full PluginRuntime, and ctx (hence channelRuntime) is untyped.
+          core: { channel: channelRuntime } as PluginRuntime,
           channel: "telegram-userbot",
           accountId,
         });
@@ -182,6 +207,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           accountId,
           selfId,
           username: selfUsername,
+          proxy: gram.getProxySummary(),
         });
 
         const client = gram.getClient();
@@ -396,7 +422,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               }
 
               const scopedGroupPeerId = buildScopedGroupPeerId(accountId, normalized.chatId);
-              const { route, buildEnvelope } = resolveInboundRouteEnvelopeBuilderWithRuntime({
+              const { route: inboundRoute, buildEnvelope } = resolveInboundRouteEnvelopeBuilderWithRuntime({
                 cfg,
                 channel: "telegram-userbot",
                 accountId,
@@ -407,6 +433,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 runtime: channelRuntime,
                 sessionStore: cfg?.session?.store,
               });
+              // channelRuntime comes from the untyped ctx, so the generic route type falls
+              // back to the minimal RouteLike. The runtime value is a ResolvedAgentRoute.
+              const route = inboundRoute as ResolvedAgentRoute;
               const wasMentioned = hasTelegramMention({
                 cfg,
                 agentId: route.agentId,
@@ -566,6 +595,19 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                         return;
                       }
 
+                      // The agent may decline to answer by returning the shared
+                      // silent token. Drop it before addressing: otherwise the
+                      // reply-address prefix turns it into a visible message.
+                      const visibleText = stripSilentReplyToken(outboundText);
+                      if (!visibleText) {
+                        log?.info?.("telegram-userbot suppressing silent group reply", {
+                          accountId,
+                          chatId: normalized.chatId,
+                          messageId: normalized.messageId,
+                        });
+                        return;
+                      }
+
                       const replyToMessageId = payload.replyToId ? Number(payload.replyToId) : Number(normalized.messageId);
                       const rememberedAddress = consumeGroupReplyAddress({
                         accountId: route.accountId ?? accountId,
@@ -574,7 +616,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                       });
 
                       await sendTextToConversation({
-                        text: prefixReplyTextToAddress(outboundText, rememberedAddress ?? groupReplyAddress),
+                        text: prefixReplyTextToAddress(visibleText, rememberedAddress ?? groupReplyAddress),
                         replyToMessageId,
                         messageThreadId,
                       });
@@ -610,17 +652,28 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
                 if (nothingDelivered) {
                   const fallbackText = readLatestAssistantFallbackFromTranscript(route.sessionKey, storePath);
-                  if (fallbackText) {
+                  // A suppressed silent reply legitimately delivers nothing, so
+                  // this fallback fires right after it. Without the same check
+                  // the token would be read back from the transcript and sent.
+                  const visibleFallbackText = fallbackText ? stripSilentReplyToken(fallbackText) : "";
+                  if (fallbackText && !visibleFallbackText) {
+                    log?.info?.("telegram-userbot skipping silent transcript fallback", {
+                      accountId,
+                      chatId: normalized.chatId,
+                      messageId: normalized.messageId,
+                      routeSessionKey: route.sessionKey,
+                    });
+                  } else if (visibleFallbackText) {
                     log?.warn?.("telegram-userbot using transcript fallback reply", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
                       routeSessionKey: route.sessionKey,
-                      fallbackText,
+                      fallbackText: visibleFallbackText,
                     });
 
                     await sendTextToConversation({
-                      text: prefixReplyTextToAddress(fallbackText, groupReplyAddress),
+                      text: prefixReplyTextToAddress(visibleFallbackText, groupReplyAddress),
                       replyToMessageId: Number(normalized.messageId),
                       messageThreadId,
                     });
@@ -760,8 +813,18 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                     return;
                   }
 
+                  const visibleText = stripSilentReplyToken(outboundText);
+                  if (!visibleText) {
+                    log?.info?.("telegram-userbot suppressing silent direct reply", {
+                      accountId,
+                      chatId: normalized.chatId,
+                      messageId: normalized.messageId,
+                    });
+                    return;
+                  }
+
                   await sendTextToConversation({
-                    text: outboundText,
+                    text: visibleText,
                     replyToMessageId: payload.replyToId ? Number(payload.replyToId) : undefined,
                   });
                 },
@@ -973,7 +1036,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         }
 
         return {
-          actions: [ "send" ],
+          actions: [ "send", "list" ],
           capabilities: [],
         };
       },
@@ -991,6 +1054,52 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           currentMessageId?: string | number;
         };
       }) => {
+        if (action === "list") {
+          const listParams = parseListMessagesParams(params);
+          const listAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!listAccountId) {
+            throw new Error("telegram-userbot: no configured account found");
+          }
+
+          // Reading is not a side effect, so a dry run still answers — reporting
+          // an empty window would look like a quiet chat rather than a no-op.
+          if (!isChatReadable(listParams.target, resolveAccountReadChats(cfg, listAccountId))) {
+            actionLog.warn("telegram-userbot list refused: chat outside read scope", {
+              accountId: listAccountId,
+              target: listParams.target,
+            });
+            throw new Error(`telegram-userbot: not-allowed-chat ${listParams.target}`);
+          }
+
+          const listGram = runtimes.get(listAccountId);
+          if (!listGram) {
+            throw new Error(`telegram-userbot: runtime not found for account ${listAccountId}`);
+          }
+
+          const history = await listGram.listMessages(listParams);
+
+          // Metadata only. Message text is the user's correspondence and has no
+          // business in a log that is read while debugging something else.
+          actionLog.info("telegram-userbot handleAction list completed", {
+            accountId: listAccountId,
+            target: listParams.target,
+            limit: listParams.limit,
+            since: listParams.since ?? null,
+            until: listParams.until ?? null,
+            returned: history.messages.length,
+            truncated: history.truncated,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: listAccountId,
+            chatId: history.chatId ?? listParams.target,
+            count: history.messages.length,
+            truncated: history.truncated,
+            messages: history.messages,
+          });
+        }
+
         if (action !== "send") {
           throw new Error(`telegram-userbot: unsupported message action ${action}`);
         }

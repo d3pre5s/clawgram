@@ -16,6 +16,7 @@ Telegram Userbot plugin for [OpenClaw](https://github.com/openclaw/openclaw) —
 - **Chat allowlist** — control which chats the assistant can access
 - **Multi-account** — run multiple Telegram accounts simultaneously
 - **Per-group settings** — different behavior for different groups
+- **SOCKS4/SOCKS5 proxy** — optional native MTProto proxy per account
 - **Slash commands** — [slash commands](https://docs.openclaw.ai/tools/slash-commands) are available in DM to the connected account (`/status`, `/reset`, `/new`, etc.)
 
 
@@ -195,6 +196,7 @@ openclaw gateway restart
 | `sessionString` | string | `""` | Authenticated StringSession |
 | `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames for direct messages only |
 | `groups` | object | `{}` | Allowed groups map keyed by explicit group id or `*` |
+| `proxy` | object | unset | Optional SOCKS4/SOCKS5 proxy for this account — see [Proxy (SOCKS4/SOCKS5)](#proxy-socks4socks5) |
 
 Group config fields:
 
@@ -250,6 +252,130 @@ Group config fields:
   }
 }
 ```
+
+
+## Proxy (SOCKS4/SOCKS5)
+
+### Why you may need it
+
+GramJS speaks MTProto over **raw TCP sockets**. OpenClaw's managed proxy (`proxy.proxyUrl`) and the
+standard `HTTP_PROXY` / `HTTPS_PROXY` environment variables only cover HTTP and WebSocket traffic, so
+they do **not** route the userbot's Telegram connection. On hosts where Telegram is blocked or
+filtered, authorization and runtime work when the whole Gateway is launched through something like
+`proxychains`, but a normal systemd restart of the Gateway then fails to connect.
+
+Configure `proxy` on the account to make GramJS dial Telegram through a SOCKS proxy natively, with no
+external wrapper and no changes to how the Gateway is started.
+
+> **This is a SOCKS proxy, not a Telegram MTProxy.** MTProxy (the `secret`-based Telegram proxy
+> protocol) is a different transport and is intentionally out of scope here.
+
+### SOCKS5 example
+
+```json
+{
+  "channels": {
+    "telegram-userbot": {
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "apiId": 12345678,
+          "apiHash": "apiHash",
+          "sessionString": "sessionString",
+          "proxy": {
+            "ip": "proxy.example.com",
+            "port": 1080,
+            "socksType": 5,
+            "username": "proxy-user",
+            "password": "proxy-password",
+            "timeout": 10
+          },
+          "allowFrom": [
+            "*"
+          ],
+          "groups": {
+            "*": {
+              "enabled": true,
+              "groupPolicy": "mention",
+              "allowFrom": [
+                "*"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### SOCKS4 example
+
+SOCKS4 uses the same block with `socksType: 4`. SOCKS4 has no password authentication, so pass at most
+`username`:
+
+```json
+"proxy": {
+  "ip": "203.0.113.10",
+  "port": 1081,
+  "socksType": 4
+}
+```
+
+### Proxy fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `ip` | string | required | Proxy hostname or IP address |
+| `port` | number | required | Proxy TCP port, `1`–`65535` |
+| `socksType` | `4` \| `5` | required | `5` for SOCKS5, `4` for SOCKS4 |
+| `username` | string | unset | Optional — only for proxies that require authentication |
+| `password` | string | unset | Optional — only for proxies that require authentication |
+| `timeout` | number | `5` | Optional connection timeout **in seconds** (GramJS default is `5`) |
+
+Notes:
+
+- `timeout` is expressed in **seconds**, not milliseconds — GramJS multiplies it by 1000 internally.
+- `username` and `password` are optional. Omit both for an open proxy; blank strings are ignored.
+- The proxy is configured **per account**, so one account can use SOCKS5, another SOCKS4, and another
+  can connect directly:
+
+```json
+"accounts": {
+  "default": {
+    "apiId": 12345678,
+    "apiHash": "apiHash",
+    "sessionString": "sessionString",
+    "proxy": { "ip": "proxy.example.com", "port": 1080, "socksType": 5 }
+  },
+  "second": {
+    "apiId": 12345678,
+    "apiHash": "apiHash",
+    "sessionString": "sessionString",
+    "proxy": { "ip": "203.0.113.10", "port": 1081, "socksType": 4 }
+  },
+  "third": {
+    "apiId": 12345678,
+    "apiHash": "apiHash",
+    "sessionString": "sessionString"
+  }
+}
+```
+
+- Omitting `proxy` keeps the previous behavior exactly — a direct connection.
+- If `proxy` is present but invalid (bad port, bad `socksType`, empty host), the account fails to start
+  with an explicit error instead of silently falling back to a direct connection that would expose the
+  host's real IP address to Telegram.
+- On a successful connection the log line reports only `proxy: "socks5"` / `"socks4"` — never the host,
+  port, or credentials.
+- `openclaw telegram-userbot --auth` only updates `apiId`, `apiHash` and `sessionString`, so an existing
+  `proxy` block survives re-authorization. If you decline the automatic config update, the printed JSON
+  fragment is a fresh-account template — merge it into your account instead of replacing the block, or
+  you will drop the `proxy` section.
+
+> **WARNING**: `password`, `apiHash` and `sessionString` are credentials. Never commit them to a
+> repository, paste them into issues, or share config files containing them. Anyone with your
+> `sessionString` has full access to your Telegram account.
 
 
 ## Slash commands
@@ -429,6 +555,7 @@ Bindings
 ```bash
 npm install          # install dependencies
 npm run build        # run build script
+npm test             # run the node:test suite (no Telegram connection required)
 ```
 
 For local authorization testing during development, you can also run the standalone cli directly:

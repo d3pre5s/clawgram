@@ -376,6 +376,66 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
+/**
+ * OpenClaw's shared silent-reply sentinel. When the agent decides not to answer
+ * it returns this token instead of text, and surfaces are expected to drop the
+ * message rather than deliver the token.
+ *
+ * Core owns the canonical helpers (`SILENT_REPLY_TOKEN`, `isSilentReplyText`,
+ * `stripSilentToken` in `src/auto-reply/tokens`), but they are not re-exported
+ * through any of the public `openclaw/plugin-sdk/*` entry points, so the
+ * behaviour is mirrored here. If the SDK ever exposes them, drop this block and
+ * import instead.
+ */
+const SILENT_REPLY_TOKEN = "NO_REPLY";
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Remove leading and trailing occurrences of the silent token.
+ *
+ * Leading tokens may be glued to the following text ("NO_REPLYstill thinking"),
+ * so the match is not anchored on a word boundary, and punctuation directly
+ * after a leading token belongs to the marker rather than to the text.
+ *
+ * Only whitespace is consumed before a trailing token: punctuation there ends
+ * the preceding sentence and must survive ("Done. NO_REPLY" -> "Done.").
+ *
+ * Occurrences in the middle of a sentence are left alone: there the token is
+ * content, not a control marker.
+ *
+ * Returns the remaining visible text. An empty result means the whole payload
+ * was the token and nothing should be sent.
+ */
+function stripSilentReplyToken(text: string, token: string = SILENT_REPLY_TOKEN): string {
+  const escaped = escapeRegExp(token);
+  const leading = new RegExp(`^(?:${escaped})[\\s,.:;!—-]*`, "i");
+  const trailing = new RegExp(`\\s*(?:${escaped})$`, "i");
+
+  let result = text.trim();
+  while (leading.test(result)) {
+    const next = result.replace(leading, "").trim();
+    if (next === result) {
+      break;
+    }
+    result = next;
+  }
+
+  return result.replace(trailing, "").trim();
+}
+
+/** True when the payload carries no visible text beyond the silent token. */
+function isSilentReplyText(text: string | undefined, token: string = SILENT_REPLY_TOKEN): boolean {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (!trimmed) {
+    return false;
+  }
+
+  return stripSilentReplyToken(trimmed, token).length === 0;
+}
+
 function prefixReplyTextToAddress(text: string, address?: string): string {
   const outboundText = text.trim();
   if (!address) {
@@ -586,6 +646,9 @@ export {
   hasTelegramMention,
   toDisplayName,
   withTimeout,
+  SILENT_REPLY_TOKEN,
+  stripSilentReplyToken,
+  isSilentReplyText,
   prefixReplyTextToAddress,
   resolveReplyTarget,
   resolveChatTarget,

@@ -1,6 +1,8 @@
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import type { PluginConfig, ResolvedTelegramTarget, SendMediaArgs, SendTextArgs, ChatType } from "./types.ts";
+import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
+import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams } from "./history";
 
 function toStringId(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
@@ -190,17 +192,23 @@ function buildTargetKeys(raw: string, kind?: "user" | "group" | "channel"): Set<
 
 export class GramJsClientManager {
   private client: TelegramClient;
+  private proxy: TelegramProxyConfig | undefined;
   private started = false;
 
   constructor(private readonly config: PluginConfig) {
+    const clientOptions = buildTelegramClientOptions(config.proxy);
+    this.proxy = clientOptions.proxy;
     this.client = new TelegramClient(
       new StringSession(config.sessionString),
       config.apiId,
       config.apiHash,
-      {
-        connectionRetries: 5
-      }
+      clientOptions
     );
+  }
+
+  /** Credential-free proxy summary (`socks4`/`socks5`) for diagnostics. */
+  getProxySummary(): string | undefined {
+    return describeProxy(this.proxy);
   }
 
   async start(): Promise<void> {
@@ -338,6 +346,39 @@ export class GramJsClientManager {
       message: args.text,
       ...replyParams,
     });
+  }
+
+  /**
+   * Reads a window of chat history.
+   *
+   * Telegram returns newest first and `offsetDate` means "older than this", so
+   * an upper bound is expressed by starting there. The lower bound has no
+   * server-side equivalent in this call, so it is applied after the fact — which
+   * is also why `limit` is the real guard: a window spanning a quiet week and a
+   * window spanning a busy hour cost the same request but not the same context.
+   */
+  async listMessages(args: ListMessagesParams): Promise<{
+    chatId?: string;
+    messages: HistoryMessage[];
+    /** True when `limit` was reached, so the window may be incomplete. */
+    truncated: boolean;
+  }> {
+    const resolved = await this.resolvePeer(args.target);
+
+    const query = buildHistoryQuery(args);
+
+    const fetched = await this.client.getMessages(resolved.peer as any, query as any);
+    const raw = Array.isArray(fetched) ? fetched : [];
+
+    return {
+      chatId: resolved.chatId,
+      messages: collectHistoryWindow(raw, {
+        since: args.since,
+        until: args.until,
+        fallbackChatId: resolved.chatId,
+      }),
+      truncated: raw.length >= args.limit,
+    };
   }
 
   async markRead(target: unknown, messageId?: number, options?: {
