@@ -1036,7 +1036,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         }
 
         return {
-          actions: [ "send", "list" ],
+          actions: [ "send", "read" ],
           capabilities: [],
         };
       },
@@ -1054,7 +1054,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           currentMessageId?: string | number;
         };
       }) => {
-        if (action === "list") {
+        // `read` is what OpenClaw core dispatches (`openclaw message read`,
+        // MCP `messages_read`). `list` is accepted as a synonym so a caller that
+        // guessed the other obvious name is not silently refused.
+        if (action === "read" || action === "list") {
           const listParams = parseListMessagesParams(params);
           const listAccountId = resolveRuntimeAccountId(cfg, accountId);
           if (!listAccountId) {

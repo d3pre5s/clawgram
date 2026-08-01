@@ -20,6 +20,10 @@ export type ListMessagesParams = {
   since?: number;
   /** Unix seconds, inclusive. Messages newer than this are dropped. */
   until?: number;
+  /** Exclusive lower bound by message id — OpenClaw's `--after`. */
+  minId?: number;
+  /** Exclusive upper bound by message id — OpenClaw's `--before`. */
+  maxId?: number;
 };
 
 export type HistoryMessage = {
@@ -97,6 +101,17 @@ export function parseLimit(value: unknown): number {
   return Math.min(Math.floor(numeric), HISTORY_MAX_LIMIT);
 }
 
+/** Message ids are integers, and confusing one with a date is the bug this exists to prevent. */
+export function parseMessageId(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric < 1) {
+    throw new Error(`telegram-userbot: ${field} must be a positive message id`);
+  }
+  return numeric;
+}
+
 export function parseListMessagesParams(params: Record<string, unknown>): ListMessagesParams {
   const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
@@ -104,14 +119,25 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
     throw new Error("telegram-userbot: list requires a chatId");
   }
 
-  const since = parseTimeBoundary(params.since ?? params.after ?? params.from, "since");
-  const until = parseTimeBoundary(params.until ?? params.before ?? params.to_, "until");
+  // Only `since`/`until` carry dates. `before`/`after` are NOT accepted here:
+  // in OpenClaw's vocabulary they are message ids, and `openclaw message read
+  // --before 12345` would otherwise parse an id as a Unix timestamp and quietly
+  // place the window in 1970.
+  const since = parseTimeBoundary(params.since, "since");
+  const until = parseTimeBoundary(params.until, "until");
 
   if (since !== undefined && until !== undefined && since > until) {
     throw new Error("telegram-userbot: since must not be later than until");
   }
 
-  return { target, limit: parseLimit(params.limit), since, until };
+  return {
+    target,
+    limit: parseLimit(params.limit),
+    since,
+    until,
+    minId: parseMessageId(params.after, "after"),
+    maxId: parseMessageId(params.before, "before"),
+  };
 }
 
 /**
@@ -124,10 +150,18 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
  * call, which is why `limit` is the real guard: `since` can only be enforced
  * after the fact.
  */
-export function buildHistoryQuery(args: { limit: number; until?: number }): Record<string, unknown> {
+export function buildHistoryQuery(
+  args: { limit: number; until?: number; minId?: number; maxId?: number },
+): Record<string, unknown> {
   const query: Record<string, unknown> = { limit: args.limit };
   if (args.until !== undefined) {
     query.offsetDate = args.until + 1;
+  }
+  if (args.minId !== undefined) {
+    query.minId = args.minId;
+  }
+  if (args.maxId !== undefined) {
+    query.maxId = args.maxId;
   }
   return query;
 }

@@ -10,6 +10,7 @@ import {
   normalizeHistoryMessage,
   parseLimit,
   parseListMessagesParams,
+  parseMessageId,
   parseTimeBoundary,
 } from "../src/history";
 
@@ -88,6 +89,17 @@ describe("parseListMessagesParams", () => {
     }
   });
 
+  test("refuses to read before/after as dates", () => {
+    // OpenClaw's own CLI uses --before/--after for MESSAGE IDS. Treating them
+    // as dates would parse id 12345 as a Unix timestamp and put the window in
+    // 1970, returning nothing while looking like a quiet chat.
+    const parsed = parseListMessagesParams({ chatId: "-1", before: 12345, after: 12000 });
+    assert.equal(parsed.since, undefined);
+    assert.equal(parsed.until, undefined);
+    assert.equal(parsed.maxId, 12345);
+    assert.equal(parsed.minId, 12000);
+  });
+
   test("carries the window through", () => {
     const parsed = parseListMessagesParams({
       chatId: "-100123",
@@ -95,7 +107,9 @@ describe("parseListMessagesParams", () => {
       until: BASE + HOUR,
       limit: 50,
     });
-    assert.deepEqual(parsed, { target: "-100123", limit: 50, since: BASE, until: BASE + HOUR });
+    assert.deepEqual(parsed, {
+      target: "-100123", limit: 50, since: BASE, until: BASE + HOUR, minId: undefined, maxId: undefined,
+    });
   });
 
   test("rejects an inverted window", () => {
@@ -106,6 +120,24 @@ describe("parseListMessagesParams", () => {
   });
 });
 
+describe("parseMessageId", () => {
+  test("accepts a positive integer, as a number or a string", () => {
+    assert.equal(parseMessageId(42, "before"), 42);
+    assert.equal(parseMessageId("42", "before"), 42);
+  });
+
+  test("returns undefined when absent", () => {
+    for (const value of [ undefined, null, "" ]) assert.equal(parseMessageId(value, "before"), undefined);
+  });
+
+  test("rejects anything that is not a message id", () => {
+    assert.throws(() => parseMessageId(0, "before"), /positive message id/);
+    assert.throws(() => parseMessageId(-1, "before"), /positive message id/);
+    assert.throws(() => parseMessageId(1.5, "before"), /positive message id/);
+    assert.throws(() => parseMessageId("2026-08-01", "before"), /positive message id/);
+  });
+});
+
 describe("buildHistoryQuery", () => {
   test("passes the limit through", () => {
     assert.deepEqual(buildHistoryQuery({ limit: 25 }), { limit: 25 });
@@ -113,6 +145,10 @@ describe("buildHistoryQuery", () => {
 
   test("omits offsetDate when the window has no upper bound", () => {
     assert.equal(Object.hasOwn(buildHistoryQuery({ limit: 25 }), "offsetDate"), false);
+  });
+
+  test("passes message id bounds straight through", () => {
+    assert.deepEqual(buildHistoryQuery({ limit: 5, minId: 10, maxId: 20 }), { limit: 5, minId: 10, maxId: 20 });
   });
 
   test("shifts offsetDate by a second because Telegram treats it as exclusive", () => {
