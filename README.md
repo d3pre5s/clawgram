@@ -1,6 +1,11 @@
-# Telegram Userbot
+# Clawgram
 
-Telegram Userbot plugin for [OpenClaw](https://github.com/openclaw/openclaw) — connects as a regular Telegram user account (not a bot) via MTProto using [GramJS](https://github.com/gram-js/gramjs)
+Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com/openclaw/openclaw) — it connects as a regular Telegram user account (not a bot) via MTProto using [GramJS](https://github.com/gram-js/gramjs). Your AI assistant reads and responds as you.
+
+> Clawgram is the actively maintained continuation of
+> [eldaruma/telegram-userbot](https://github.com/eldaruma/telegram-userbot) (MIT).
+> For configuration compatibility the OpenClaw plugin id and channel name remain
+> `telegram-userbot` — existing configs keep working unchanged.
 
 > **WARNING**: Using a user account for automated messaging may violate Telegram's Terms of Service. Use a dedicated secondary account. Your account could be banned or restricted.
 
@@ -29,7 +34,11 @@ Telegram Userbot plugin for [OpenClaw](https://github.com/openclaw/openclaw) —
 ## Installation
 
 ```bash
-openclaw plugins install clawhub:telegram-userbot
+# from npm (default resolution)
+openclaw plugins install clawgram
+
+# or explicitly from ClawHub
+openclaw plugins install clawhub:clawgram
 ```
 
 ## Setup

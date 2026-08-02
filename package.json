@@ -1,7 +1,7 @@
 {
-  "name": "telegram-userbot",
-  "version": "1.4.0",
-  "description": "Connect your personal Telegram account to OpenClaw via MTProto. Your AI assistant responds as you.",
+  "name": "clawgram",
+  "version": "1.5.0",
+  "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -12,12 +12,14 @@
     "telegram-userbot-cli:auth": "node dist/telegram-userbot-cli.js --auth"
   },
   "keywords": [
+    "clawgram",
     "openclaw",
     "telegram",
     "userbot",
     "mtproto",
     "gramjs",
-    "plugin"
+    "plugin",
+    "channel"
   ],
   "license": "MIT",
   "files": [
@@ -26,10 +28,17 @@
     "openclaw.plugin.json",
     "README.md"
   ],
-  "author": "eldaruma",
+  "author": "Konstantin Dipezh (d3pre5s)",
+  "contributors": [
+    "eldaruma (original author of telegram-userbot)"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/eldaruma/telegram-userbot"
+    "url": "https://github.com/d3pre5s/clawgram"
+  },
+  "homepage": "https://github.com/d3pre5s/clawgram#readme",
+  "bugs": {
+    "url": "https://github.com/d3pre5s/clawgram/issues"
   },
   "openclaw": {
     "extensions": [
