@@ -161,6 +161,8 @@ export const PARTICIPANTS_MAX_LIMIT = 1000;
 export type ListParticipantsParams = {
   target: string;
   limit: number;
+  /** Opt-in: display names are personal data and are only needed while linking identities. */
+  includeNames: boolean;
 };
 
 /**
@@ -175,9 +177,11 @@ export function parseListParticipantsParams(params: Record<string, unknown>): Li
     throw new Error("telegram-userbot: participants requires a chatId");
   }
 
+  const includeNames = params.includeNames === true || params.includeNames === "true";
+
   const rawLimit = params.limit;
   if (rawLimit === undefined || rawLimit === null || rawLimit === "") {
-    return { target, limit: PARTICIPANTS_DEFAULT_LIMIT };
+    return { target, limit: PARTICIPANTS_DEFAULT_LIMIT, includeNames };
   }
 
   const parsed = Number(rawLimit);
@@ -185,7 +189,7 @@ export function parseListParticipantsParams(params: Record<string, unknown>): Li
     throw new Error("telegram-userbot: participants limit must be a positive number");
   }
 
-  return { target, limit: Math.min(Math.floor(parsed), PARTICIPANTS_MAX_LIMIT) };
+  return { target, limit: Math.min(Math.floor(parsed), PARTICIPANTS_MAX_LIMIT), includeNames };
 }
 
 /**

@@ -388,7 +388,7 @@ export class GramJsClientManager {
    */
   async listParticipants(args: ListParticipantsParams): Promise<{
     chatId?: string;
-    participants: Array<{ userId: string; username?: string; isBot: boolean }>;
+    participants: Array<{ userId: string; username?: string; isBot: boolean; firstName?: string; lastName?: string }>;
     /** True when `limit` was reached, so the membership may be incomplete. */
     truncated: boolean;
   }> {
@@ -399,7 +399,7 @@ export class GramJsClientManager {
     } as any);
     const raw = Array.isArray(fetched) ? fetched : [];
 
-    const participants: Array<{ userId: string; username?: string; isBot: boolean }> = [];
+    const participants: Array<{ userId: string; username?: string; isBot: boolean; firstName?: string; lastName?: string }> = [];
     for (const entry of raw as any[]) {
       const rawId = entry?.id;
       if (rawId === undefined || rawId === null) {
@@ -408,7 +408,18 @@ export class GramJsClientManager {
       const username = typeof entry?.username === "string" && entry.username.length > 0
         ? entry.username
         : undefined;
-      participants.push({ userId: String(rawId), username, isBot: entry?.bot === true });
+      const member: { userId: string; username?: string; isBot: boolean; firstName?: string; lastName?: string } = {
+        userId: String(rawId),
+        username,
+        isBot: entry?.bot === true,
+      };
+      // Display names are personal data, so they are opt-in: only the identity
+      // linking flow asks for them, and it discards them once a link is made.
+      if (args.includeNames) {
+        if (typeof entry?.firstName === "string" && entry.firstName.length > 0) member.firstName = entry.firstName;
+        if (typeof entry?.lastName === "string" && entry.lastName.length > 0) member.lastName = entry.lastName;
+      }
+      participants.push(member);
     }
 
     return {

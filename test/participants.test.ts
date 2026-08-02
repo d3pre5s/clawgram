@@ -21,6 +21,15 @@ describe("parseListParticipantsParams", () => {
     }
   });
 
+  test("names are opt-in and off by default", () => {
+    assert.equal(parseListParticipantsParams({ chatId: "-1001" }).includeNames, false);
+    assert.equal(parseListParticipantsParams({ chatId: "-1001", includeNames: true }).includeNames, true);
+    assert.equal(parseListParticipantsParams({ chatId: "-1001", includeNames: "true" }).includeNames, true);
+    // Anything else stays off: personal data is not enabled by a typo.
+    assert.equal(parseListParticipantsParams({ chatId: "-1001", includeNames: "yes" }).includeNames, false);
+    assert.equal(parseListParticipantsParams({ chatId: "-1001", includeNames: 1 }).includeNames, false);
+  });
+
   test("defaults the limit when it is absent or blank", () => {
     assert.equal(parseListParticipantsParams({ chatId: "-1001" }).limit, PARTICIPANTS_DEFAULT_LIMIT);
     assert.equal(parseListParticipantsParams({ chatId: "-1001", limit: "" }).limit, PARTICIPANTS_DEFAULT_LIMIT);
