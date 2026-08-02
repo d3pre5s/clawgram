@@ -8,7 +8,9 @@
     "additionalProperties": false,
     "properties": {}
   },
-  "channels": ["telegram-userbot"],
+  "channels": [
+    "telegram-userbot"
+  ],
   "channelConfigs": {
     "telegram-userbot": {
       "schema": {
@@ -188,6 +190,17 @@
                       }
                     }
                   }
+                },
+                "readChats": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Chat ids the account may read history and membership for. Absent means no restriction; an empty array denies everything."
+                },
+                "joinsJournalPath": {
+                  "type": "string",
+                  "description": "Where joins observed for this account are journalled. Defaults to a per-account file under the OpenClaw state directory."
                 }
               },
               "required": [

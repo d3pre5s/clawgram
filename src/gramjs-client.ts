@@ -2,7 +2,7 @@ import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import type { PluginConfig, ResolvedTelegramTarget, SendMediaArgs, SendTextArgs, ChatType } from "./types.ts";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
-import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams } from "./history";
+import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams } from "./history";
 
 function toStringId(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
@@ -377,6 +377,43 @@ export class GramJsClientManager {
         until: args.until,
         fallbackChatId: resolved.chatId,
       }),
+      truncated: raw.length >= args.limit,
+    };
+  }
+
+  /**
+   * Chat membership, ids only. The caller needs to answer "do we share a group
+   * with this person" — an id answers that and a full profile does not, so
+   * names and phone numbers are deliberately left out.
+   */
+  async listParticipants(args: ListParticipantsParams): Promise<{
+    chatId?: string;
+    participants: Array<{ userId: string; username?: string; isBot: boolean }>;
+    /** True when `limit` was reached, so the membership may be incomplete. */
+    truncated: boolean;
+  }> {
+    const resolved = await this.resolvePeer(args.target);
+
+    const fetched = await this.client.getParticipants(resolved.peer as any, {
+      limit: args.limit,
+    } as any);
+    const raw = Array.isArray(fetched) ? fetched : [];
+
+    const participants: Array<{ userId: string; username?: string; isBot: boolean }> = [];
+    for (const entry of raw as any[]) {
+      const rawId = entry?.id;
+      if (rawId === undefined || rawId === null) {
+        continue;
+      }
+      const username = typeof entry?.username === "string" && entry.username.length > 0
+        ? entry.username
+        : undefined;
+      participants.push({ userId: String(rawId), username, isBot: entry?.bot === true });
+    }
+
+    return {
+      chatId: resolved.chatId,
+      participants,
       truncated: raw.length >= args.limit,
     };
   }

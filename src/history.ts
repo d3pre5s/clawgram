@@ -155,6 +155,39 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
   };
 }
 
+export const PARTICIPANTS_DEFAULT_LIMIT = 200;
+export const PARTICIPANTS_MAX_LIMIT = 1000;
+
+export type ListParticipantsParams = {
+  target: string;
+  limit: number;
+};
+
+/**
+ * Membership is asked for by chat, so a target is required. `limit` is clamped
+ * for the same reason it is clamped when reading history: a large group must
+ * not silently turn into an unbounded response.
+ */
+export function parseListParticipantsParams(params: Record<string, unknown>): ListParticipantsParams {
+  const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
+  const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
+  if (!target) {
+    throw new Error("telegram-userbot: participants requires a chatId");
+  }
+
+  const rawLimit = params.limit;
+  if (rawLimit === undefined || rawLimit === null || rawLimit === "") {
+    return { target, limit: PARTICIPANTS_DEFAULT_LIMIT };
+  }
+
+  const parsed = Number(rawLimit);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("telegram-userbot: participants limit must be a positive number");
+  }
+
+  return { target, limit: Math.min(Math.floor(parsed), PARTICIPANTS_MAX_LIMIT) };
+}
+
 /**
  * Builds the GramJS query for a window.
  *

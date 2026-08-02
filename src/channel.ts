@@ -19,10 +19,18 @@ import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
-import { NewMessage } from "telegram/events";
+import { NewMessage, Raw } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
-import { isChatReadable, parseListMessagesParams } from "./history";
+import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
+import {
+  appendJoinRecord,
+  parseJoinEvent,
+  parseJoinsParams,
+  readJoinRecords,
+  resolveJoinsJournalPath,
+  selectJoinRecords,
+} from "./joins";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
@@ -876,8 +884,39 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         };
         client.addEventHandler(eventHandler, eventBuilder);
 
+        // Being added to a chat arrives as a service message, which `NewMessage`
+        // drops — so joins are observed on the raw update stream instead. Only
+        // additions of this account are journalled; who else joins is not ours
+        // to record.
+        const joinsJournalPath = resolveJoinsJournalPath(account, accountId);
+        const joinEventHandler = async (update: unknown) => {
+          try {
+            const join = parseJoinEvent((update as any)?.message, selfId);
+            if (!join) {
+              return;
+            }
+            appendJoinRecord(joinsJournalPath, join);
+            // Ids of people stay out of the log; the chat and the fact are enough
+            // to debug, and the journal itself holds the detail.
+            log?.info?.("telegram-userbot join observed", {
+              accountId,
+              chatId: join.chatId,
+              via: join.via,
+              hasInviter: join.inviterId !== undefined,
+            });
+          } catch (error) {
+            log?.warn?.("telegram-userbot join observation failed", {
+              accountId,
+              error: String(error),
+            });
+          }
+        };
+        const joinEventBuilder = new Raw({});
+        client.addEventHandler(joinEventHandler, joinEventBuilder);
+
         await waitUntilAbort(ctx.abortSignal, async () => {
           client.removeEventHandler(eventHandler, eventBuilder);
+          client.removeEventHandler(joinEventHandler, joinEventBuilder);
 
           const runtime = runtimes.get(accountId);
           if (!runtime) {
@@ -1036,7 +1075,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         }
 
         return {
-          actions: [ "send", "read" ],
+          actions: [ "send", "read", "participants", "joins" ],
           capabilities: [],
         };
       },
@@ -1100,6 +1139,82 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             count: history.messages.length,
             truncated: history.truncated,
             messages: history.messages,
+          });
+        }
+
+        // Membership is a read, so the same `readChats` scope that gates history
+        // gates it too: this cannot become a way to enumerate chats the account
+        // was never allowed to read.
+        if (action === "participants" || action === "members") {
+          const participantsParams = parseListParticipantsParams(params);
+          const participantsAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!participantsAccountId) {
+            throw new Error("telegram-userbot: no configured account found");
+          }
+
+          if (!isChatReadable(participantsParams.target, resolveAccountReadChats(cfg, participantsAccountId))) {
+            actionLog.warn("telegram-userbot participants refused: chat outside read scope", {
+              accountId: participantsAccountId,
+              target: participantsParams.target,
+            });
+            throw new Error(`telegram-userbot: not-allowed-chat ${participantsParams.target}`);
+          }
+
+          const participantsGram = runtimes.get(participantsAccountId);
+          if (!participantsGram) {
+            throw new Error(`telegram-userbot: runtime not found for account ${participantsAccountId}`);
+          }
+
+          const membership = await participantsGram.listParticipants(participantsParams);
+
+          // Counts only. Member ids are personal data and have no business in a
+          // log that is read while debugging something else.
+          actionLog.info("telegram-userbot handleAction participants completed", {
+            accountId: participantsAccountId,
+            target: participantsParams.target,
+            limit: participantsParams.limit,
+            returned: membership.participants.length,
+            truncated: membership.truncated,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: participantsAccountId,
+            chatId: membership.chatId ?? participantsParams.target,
+            count: membership.participants.length,
+            truncated: membership.truncated,
+            participants: membership.participants,
+          });
+        }
+
+        // Where this account was recently added, and by whom. Reading the journal
+        // has no scope check of its own: it only ever contains chats this account
+        // was put into, which is exactly what the caller is allowed to learn.
+        if (action === "joins") {
+          const joinsParams = parseJoinsParams(params);
+          const joinsAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!joinsAccountId) {
+            throw new Error("telegram-userbot: no configured account found");
+          }
+
+          const journalPath = resolveJoinsJournalPath(
+            cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ joinsAccountId ],
+            joinsAccountId,
+          );
+          const selected = selectJoinRecords(readJoinRecords(journalPath), joinsParams);
+
+          actionLog.info("telegram-userbot handleAction joins completed", {
+            accountId: joinsAccountId,
+            since: joinsParams.since ?? null,
+            limit: joinsParams.limit,
+            returned: selected.length,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: joinsAccountId,
+            count: selected.length,
+            joins: selected,
           });
         }
 

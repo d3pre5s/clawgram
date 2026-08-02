@@ -1,6 +1,6 @@
 {
   "name": "telegram-userbot",
-  "version": "1.1.2",
+  "version": "1.3.1",
   "description": "Connect your personal Telegram account to OpenClaw via MTProto. Your AI assistant responds as you.",
   "main": "./dist/index.js",
   "scripts": {

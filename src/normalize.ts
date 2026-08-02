@@ -1,6 +1,6 @@
 import type { ChatType, NormalizedInbound } from "./types.js";
 
-function toStringId(value: unknown): string | undefined {
+export function toStringId(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
   try {
     return String(value);
@@ -22,13 +22,13 @@ function inferTelegramChatType(msg: any, chatId: string): ChatType {
   return inferChatType(chatId);
 }
 
-function toPeerChatId(value: unknown): string | undefined {
+export function toPeerChatId(value: unknown): string | undefined {
   const id = toStringId(value);
   if (!id) return undefined;
   return `-${id.replace(/^-/, "")}`;
 }
 
-function toPeerChannelId(value: unknown): string | undefined {
+export function toPeerChannelId(value: unknown): string | undefined {
   const id = toStringId(value);
   if (!id) return undefined;
   return `-100${id.replace(/^-100|-/, "")}`;
