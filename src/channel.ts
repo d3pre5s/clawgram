@@ -1369,12 +1369,15 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         replyToId?: string | null;
         threadId?: string | number | null;
       }) {
+        // Never log `text`: outbound bodies are private correspondence and the
+        // channel log is a plain journald sink. Length is enough to tell an
+        // empty or truncated send apart from a real one.
         actionLog.info("clawgram outbound sendText", {
           accountId: ctx.accountId,
           rawTo: ctx.to,
           replyToId: ctx.replyToId ?? null,
           threadId: ctx.threadId ?? null,
-          text: ctx.text,
+          textLength: ctx.text.length,
         });
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {

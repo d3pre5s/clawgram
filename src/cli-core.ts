@@ -30,6 +30,16 @@ function printRestartNotice(): void {
   console.log("openclaw gateway restart");
 }
 
+// Printed only right before a fragment that carries apiHash and sessionString,
+// i.e. when the operator declined the automatic config write and has to paste
+// the values by hand.
+function printSecretWarning(): void {
+  console.log("WARNING: the fragment below contains apiHash and sessionString.");
+  console.log("They grant full access to this Telegram account. Do not paste them");
+  console.log("into chats, issues or CI logs, and clear your terminal scrollback.");
+  console.log("");
+}
+
 function createPrompt(): PromptApi {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -169,8 +179,11 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
     const auth = await runTelegramAuthorization(prompt);
     console.log("Telegram authorization completed successfully.");
     console.log("");
-    console.log("Session string:");
-    console.log(auth.sessionString);
+    // The session string is a bearer secret for the whole Telegram account.
+    // It is not printed here: stdout ends up in scrollback, CI logs and
+    // screen-sharing. It is only shown below when the operator declines the
+    // automatic config write and therefore has to paste it by hand.
+    console.log(`Session string received (${auth.sessionString.length} chars) — kept out of this output.`);
     console.log("");
 
     const defaultAccountId = resolveDefaultAccountId(config);
@@ -181,6 +194,7 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
 
     if (!shouldUpdateConfig) {
       console.log("");
+      printSecretWarning();
       console.log("JSON fragment for manual insertion:");
       console.log(JSON.stringify(buildConfigFragment(accountId, auth), null, 2));
       printRestartNotice();
@@ -191,6 +205,7 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
       console.log("");
       console.log("Automatic config update is unavailable because openclaw.json was not found.");
       console.log("");
+      printSecretWarning();
       console.log("JSON fragment for manual insertion:");
       console.log(JSON.stringify(buildConfigFragment(accountId, auth), null, 2));
       printRestartNotice();
@@ -221,6 +236,7 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
         }
       }
       console.log("");
+      printSecretWarning();
       console.log("JSON fragment for manual insertion:");
       console.log(JSON.stringify(buildConfigFragment(accountId, auth), null, 2));
       printRestartNotice();

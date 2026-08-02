@@ -14,6 +14,14 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 
 > **WARNING**: Using a user account for automated messaging may violate Telegram's Terms of Service. Use a dedicated secondary account. Your account could be banned or restricted.
 
+> **What this plugin can do with your account.** It logs in as a *full Telegram user*, not a bot:
+> it can read private and group conversations within its configured scope and send messages that are
+> indistinguishable from ones you typed yourself. Recipients cannot tell an assistant reply from a
+> human one. Treat the account as compromised-if-leaked: `apiHash` and `sessionString` are bearer
+> credentials for everything that account can reach. Scope reads with `readChats`, gate senders with
+> `allowFrom`, and prefer a dedicated account over your primary one — see
+> [Security and privacy](#security-and-privacy).
+
 
 ## Features
 
@@ -32,7 +40,11 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 
 ## Requirements
 
-- OpenClaw >= 2026.5.7
+- OpenClaw >= 2026.5.26 — earlier releases carry published high-severity advisories
+  (among them a pairing-scoped session that could restore revoked node-token authority, fixed in
+  `2026.5.26`). Since this plugin reads messages and acts on an account, running it on a vulnerable
+  Gateway widens the blast radius, so 2.1.0 refuses to install below that version. Built and tested
+  against `2026.7.1-2`.
 - Telegram API credentials from [my.telegram.org](https://my.telegram.org)
 - Node.js >= 22
 
@@ -90,12 +102,13 @@ Please enter the code you received: 12345
 [2026-05-10T16:01:56.390] [INFO] - [Disconnecting from x.x.x.x:80/TCPFull...]
 Telegram authorization completed successfully.
 
-Session string:
-1BAAOMTQ5LjE1NC4xNjcuOTEAUQZ1aeNwM6O5lSD+kX/irkoUFMj+nUy5hRhpVqbkuOhEP+JOT4FEobUVnUKPnpKPxXdwQ9e
-js+tWQTto86Heab4XSfyOoWK5WDA/dMhFYBuFxms/FF946HerCM+i5nh0gu//YGmIEntw7gY8JQQNYuvLB5SGdsDpa50LcJ5fK
-686qqUsnlqmRTONdVG3EOdnV8RbTFTHg5BWLztfD5uLt1lIr/bG+BWCPCLAaA85yPL8SgGRLtX4QYXrnaEVmKui8SWq5J/
-Ol86oZGlrMcnj5DRQ/VeYY7yGcESwnoTSx44irCyk9GelCavzs/dfN6sAYfoZb6cN/L9jxEYXkkCQdig=
+Session string received (352 chars) — kept out of this output.
 ```
+
+> Since 2.1.0 the session string is **not** printed after a successful login: it is a bearer
+> credential for the whole account, and stdout ends up in scrollback, CI logs and screen shares.
+> It is written straight into `openclaw.json`, and only shown — behind an explicit warning — if you
+> decline the automatic config update and have to paste it by hand.
 
 Since the plugin supports connecting multiple accounts, at this step the cli will ask you for the account ID, if you do not enter anything, the [default] key will be applied. You can also enter your own value.
 
@@ -563,6 +576,26 @@ Bindings
     ]
 ```
 
+
+## Security and privacy
+
+This plugin holds credentials for a real Telegram account and handles private correspondence. What
+that means in practice, and what the code does about it:
+
+| Concern | Where it lives | What the plugin does |
+| --- | --- | --- |
+| `apiHash`, `sessionString` | `openclaw.json` | Written there by `--auth`. Never logged. Since 2.1.0 the session string is not printed after login either — only shown, behind an explicit warning, if you decline the automatic config write |
+| Proxy password | `accounts.*.proxy.password` | Marked `sensitive` in `uiHints`; diagnostics say `socks4`/`socks5` and nothing more. An invalid proxy fails the account rather than falling back to a direct connection, which would leak the host IP to Telegram |
+| Message bodies | channel logs | **Not logged.** Outbound sends record recipient, ids and `textLength`. Until 2.1.0 the full outbound text was written to the channel log — if you ran 2.0.x, treat those journal entries as containing private correspondence |
+| Read scope | `accounts.*.readChats` | History and membership reads are confined to the listed chats. Absent means no restriction; an empty array denies everything |
+| Who may talk to it | `allowFrom`, `groups.*.groupPolicy` | Direct-message senders and group behaviour are allowlisted; `mention` limits group replies to explicit mentions |
+
+Two static tests (`test/no-secret-logging.test.ts`) fail the build if a message body or a credential
+is ever added back to a log call, or if the auth flow prints the session string unprompted.
+
+Found a security issue? Open an issue at
+[github.com/d3pre5s/clawgram/issues](https://github.com/d3pre5s/clawgram/issues) — or, if it is
+sensitive, contact the maintainer directly instead of filing publicly.
 
 ## Development
 
