@@ -164,6 +164,6 @@ describe("resolveJoinsJournalPath", () => {
     // Separators are replaced, so a hostile account id stays a file name.
     assert.equal(path.endsWith("joins-weird_.._id.jsonl"), true, path);
     assert.equal(path.includes("/../"), false);
-    assert.match(path, /telegram-userbot\/joins-[^/]+\.jsonl$/);
+    assert.match(path, /clawgram\/joins-[^/]+\.jsonl$/);
   });
 });

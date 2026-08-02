@@ -1,4 +1,4 @@
-const CHANNEL_ID = "telegram-userbot";
-const CLI_COMMAND = "telegram-userbot";
+const CHANNEL_ID = "clawgram";
+const CLI_COMMAND = "clawgram";
 
 export { CHANNEL_ID, CLI_COMMAND };

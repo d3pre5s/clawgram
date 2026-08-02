@@ -164,7 +164,7 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
   const prompt = createPrompt();
 
   try {
-    console.log("Starting Telegram Userbot authorization...");
+    console.log("Starting Clawgram authorization...");
 
     const auth = await runTelegramAuthorization(prompt);
     console.log("Telegram authorization completed successfully.");
@@ -244,7 +244,7 @@ export async function runTelegramUserbotCliFlags(config: OpenClawConfig, options
   }
 
   if (options.hello) {
-    console.log("Hello from telegram-userbot");
+    console.log("Hello from clawgram");
     return;
   }
 
@@ -258,14 +258,14 @@ export async function runTelegramUserbotStandaloneCli(argv: string[], config: Op
   const hasHelp = flags.has("-h") || flags.has("--help") || flags.has("help");
 
   if (argv.length === 0 || hasHelp) {
-    console.log("Usage: telegram-userbot-cli <--hello|--auth>");
+    console.log("Usage: clawgram-cli <--hello|--auth>");
     return 0;
   }
 
   const unsupportedArgs = argv.filter((arg) => ![ "--hello", "--auth" ].includes(arg));
   if (unsupportedArgs.length > 0) {
     console.log(`Unknown argument(s): ${unsupportedArgs.join(", ")}`);
-    console.log("Usage: telegram-userbot-cli <--hello|--auth>");
+    console.log("Usage: clawgram-cli <--hello|--auth>");
     return 1;
   }
 

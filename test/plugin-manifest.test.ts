@@ -6,8 +6,8 @@ import { validateJsonSchemaValue } from "openclaw/plugin-sdk/config-schema";
 
 const MANIFEST_PATH = path.resolve(__dirname, "..", "..", "openclaw.plugin.json");
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
-const channelSchema = manifest.channelConfigs[ "telegram-userbot" ].schema;
-const channelUiHints = manifest.channelConfigs[ "telegram-userbot" ].uiHints;
+const channelSchema = manifest.channelConfigs[ "clawgram" ].schema;
+const channelUiHints = manifest.channelConfigs[ "clawgram" ].uiHints;
 
 const BASE_ACCOUNT = {
   enabled: true,
@@ -20,7 +20,7 @@ const BASE_ACCOUNT = {
 function validateAccount(account: Record<string, unknown>) {
   return validateJsonSchemaValue({
     schema: channelSchema,
-    cacheKey: "telegram-userbot:test:channel-config",
+    cacheKey: "clawgram:test:channel-config",
     value: { accounts: { default: account } },
   });
 }

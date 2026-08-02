@@ -98,7 +98,7 @@ export function resolveJoinsJournalPath(accountCfg: any, accountId: string): str
     return configured.trim();
   }
   const safeAccount = accountId.replace(/[^A-Za-z0-9._-]/g, "_");
-  return join(homedir(), ".openclaw", "state", "telegram-userbot", `joins-${safeAccount}.jsonl`);
+  return join(homedir(), ".openclaw", "state", "clawgram", `joins-${safeAccount}.jsonl`);
 }
 
 export function readJoinRecords(path: string): JoinEvent[] {
@@ -143,7 +143,7 @@ export function parseJoinsParams(params: Record<string, unknown>): { since?: str
   let since: string | undefined;
   if (rawSince !== undefined && rawSince !== null && rawSince !== "") {
     if (typeof rawSince !== "string" || Number.isNaN(Date.parse(rawSince))) {
-      throw new Error("telegram-userbot: joins since must be an ISO-8601 timestamp");
+      throw new Error("clawgram: joins since must be an ISO-8601 timestamp");
     }
     since = new Date(rawSince).toISOString();
   }
@@ -155,7 +155,7 @@ export function parseJoinsParams(params: Record<string, unknown>): { since?: str
 
   const parsed = Number(rawLimit);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error("telegram-userbot: joins limit must be a positive number");
+    throw new Error("clawgram: joins limit must be a positive number");
   }
 
   return { since, limit: Math.min(Math.floor(parsed), JOINS_MAX_LIMIT) };

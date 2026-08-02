@@ -3,8 +3,8 @@ import { createChannelPlugin } from './channel';
 import { getTelegramUserbotCliDescriptors, registerTelegramUserbotCli } from './cli';
 
 const plugin = {
-  id: 'telegram-userbot',
-  name: 'Telegram Userbot',
+  id: 'clawgram',
+  name: 'Clawgram',
   description: "Connect your personal Telegram account to OpenClaw via MTProto. Your AI assistant responds as you.",
 
   register(api: any): void {

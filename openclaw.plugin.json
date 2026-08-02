@@ -1,18 +1,18 @@
 {
-  "id": "telegram-userbot",
+  "id": "clawgram",
   "name": "Clawgram",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {}
   },
   "channels": [
-    "telegram-userbot"
+    "clawgram"
   ],
   "channelConfigs": {
-    "telegram-userbot": {
+    "clawgram": {
       "schema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",

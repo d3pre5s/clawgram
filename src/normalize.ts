@@ -120,7 +120,7 @@ export function normalizeTelegramEvent(event: any, accountId: string): Normalize
     msg.peerId;
 
   return {
-    channel: "telegram-userbot",
+    channel: "clawgram",
     accountId,
     chatId,
     messageThreadId,

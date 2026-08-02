@@ -4,8 +4,13 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 
 > Clawgram is the actively maintained continuation of
 > [eldaruma/telegram-userbot](https://github.com/eldaruma/telegram-userbot) (MIT).
-> For configuration compatibility the OpenClaw plugin id and channel name remain
-> `telegram-userbot` — existing configs keep working unchanged.
+>
+> **Breaking change in 2.0.0:** the plugin id and channel name changed from
+> `telegram-userbot` to `clawgram`. When upgrading from 1.x (or from the
+> original telegram-userbot), rename the `channels.telegram-userbot` section of
+> `openclaw.json` to `channels.clawgram` (contents stay as-is), update any
+> `plugins.allow` entry, and replace `telegram-userbot:<target>` address
+> prefixes with `clawgram:<target>`. Then restart the Gateway.
 
 > **WARNING**: Using a user account for automated messaging may violate Telegram's Terms of Service. Use a dedicated secondary account. Your account could be banned or restricted.
 
@@ -57,13 +62,13 @@ openclaw plugins install clawhub:clawgram
 Log in to your telegram account via cli using API credentials and phone number
 
 ```bash
-openclaw telegram-userbot --auth
+openclaw clawgram --auth
 ```
 
 If the custom OpenClaw cli command hangs, run the standalone authorization script directly:
 
 ```bash
-node ~/.openclaw/extensions/telegram-userbot/dist/telegram-userbot-cli.js --auth
+node ~/.openclaw/extensions/clawgram/dist/clawgram-cli.js --auth
 ```
 
 > **NOTES**: Starting with OpenClaw `2026.5.12`, hangs have been observed in some environments when running custom plugin cli commands through `openclaw <plugin command> ...`. If that happens, use the standalone command above. It runs the same authorization flow, but bypasses the custom cli entrypoint inside OpenClaw.
@@ -71,7 +76,7 @@ node ~/.openclaw/extensions/telegram-userbot/dist/telegram-userbot-cli.js --auth
 Follow the steps in the console
 
 ```bash
-Starting Telegram Userbot authorization...
+Starting Clawgram authorization...
 Please enter your apiId: 12345678
 Please enter your apiHash: c4b9c0fde16342afe52907847df27596
 [2026-05-10T16:01:24.570] [INFO] - [Running gramJS version 2.26.21]
@@ -102,7 +107,7 @@ Enter account id for config [default]: [2026-05-10T16:01:56.402] [INFO] - [conne
 
 In the next step, you must confirm or reject the automatic update of the openclaw.json configuration file. If you reject it or receive an error updating the file, the cli will display an openclaw.json configuration fragment that you must add manually.
 
-The automatic config update keeps the rest of `openclaw.json` intact and only updates the `channels.telegram-userbot` section for the selected account. A timestamped backup of the config file is created before any write attempt.
+The automatic config update keeps the rest of `openclaw.json` intact and only updates the `channels.clawgram` section for the selected account. A timestamped backup of the config file is created before any write attempt.
 
 Update **yes**
 ```bash
@@ -112,7 +117,7 @@ Config overwrite: /root/.openclaw/openclaw.json (sha256 97c4b55e61901aa71ff40898
 
 OpenClaw config updated: /root/.openclaw/openclaw.json
 Configured account id: default
-Config backup created: /root/.openclaw/openclaw.json.bak-20260512-084914-telegram-userbot-auth
+Config backup created: /root/.openclaw/openclaw.json.bak-20260512-084914-clawgram-auth
 
 After applying config changes, restart OpenClaw:
 
@@ -126,7 +131,7 @@ Update OpenClaw config automatically? [y/N]: n
 JSON fragment for manual insertion:
 {
   "channels": {
-    "telegram-userbot": {
+    "clawgram": {
       "accounts": {
         "default": {
           "enabled": true,
@@ -170,7 +175,7 @@ openclaw gateway restart
 ```json
 {
   "channels": {
-    "telegram-userbot": {
+    "clawgram": {
       "accounts": {
         "default": {
           "enabled": true,
@@ -221,7 +226,7 @@ Group config fields:
 ```json
 {
   "channels": {
-    "telegram-userbot": {
+    "clawgram": {
       "accounts": {
         "default": {
           "enabled": true,
@@ -284,7 +289,7 @@ external wrapper and no changes to how the Gateway is started.
 ```json
 {
   "channels": {
-    "telegram-userbot": {
+    "clawgram": {
       "accounts": {
         "default": {
           "enabled": true,
@@ -377,7 +382,7 @@ Notes:
   host's real IP address to Telegram.
 - On a successful connection the log line reports only `proxy: "socks5"` / `"socks4"` — never the host,
   port, or credentials.
-- `openclaw telegram-userbot --auth` only updates `apiId`, `apiHash` and `sessionString`, so an existing
+- `openclaw clawgram --auth` only updates `apiId`, `apiHash` and `sessionString`, so an existing
   `proxy` block survives re-authorization. If you decline the automatic config update, the printed JSON
   fragment is a fresh-account template — merge it into your account instead of replacing the block, or
   you will drop the `proxy` section.
@@ -402,14 +407,14 @@ You can read more about slash commands in the [OpenClaw official documentation](
 The plugin also supports adding multiple accounts. You can run the cli command many times
 
 ```bash
-openclaw telegram-userbot --auth
+openclaw clawgram --auth
 ```
 
 
 If the custom cli command hangs on your OpenClaw version, use the standalone command instead:
 
 ```bash
-node ~/.openclaw/extensions/telegram-userbot/dist/telegram-userbot-cli.js --auth
+node ~/.openclaw/extensions/clawgram/dist/clawgram-cli.js --auth
 ```
 
 And in the account ID step, enter a value other than the first [default] or your previously entered one.
@@ -426,7 +431,7 @@ second
 ```json
 {
   "channels": {
-    "telegram-userbot": {
+    "clawgram": {
       "accounts": {
         "default": {
           "enabled": true,
@@ -473,9 +478,9 @@ second
 
 ## Multi-agent routing
 
-The Telegram Userbot channel can also be used alongside the regular Telegram channel for configuring OpenClaw multi-agent routing. In that case, accounts connected via the Telegram Userbot channel will have independent agents.
+The Clawgram channel can also be used alongside the regular Telegram channel for configuring OpenClaw multi-agent routing. In that case, accounts connected via the Clawgram channel will have independent agents.
 
-Here is an example of how to configure OpenClaw multi-agent routing using telegram-userbot channel in parallel with main telegram channel.
+Here is an example of how to configure OpenClaw multi-agent routing using clawgram channel in parallel with main telegram channel.
 
 You can read more about how to set up multi-agent routing in the official [OpenClaw documentation](https://docs.openclaw.ai/concepts/multi-agent)
 
@@ -522,14 +527,14 @@ Bindings
     {
       "agentId": "userbot-main",
       "match": {
-        "channel": "telegram-userbot",
+        "channel": "clawgram",
         "accountId": "default"
       }
     },
     {
       "agentId": "userbot-second",
       "match": {
-        "channel": "telegram-userbot",
+        "channel": "clawgram",
         "accountId": "second"
       }
     }
@@ -537,7 +542,7 @@ Bindings
 ```
 
 
-> **NOTES**: Due to a known bug in the OpenClaw core, you may encounter an error in the logs: `EmbeddedAttemptSessionTakeoverError: session file changed while embedded prompt lock was released`. This error may primarily occur when communicating in group chats and not on all LLM models — only those that support tool calls. This error does not affect functionality, but it may cause a repeated request to the fallback model and excess token usage if you have one specified. To prevent this behavior, you can remove the fallback model in the openclaw.json configuration. To avoid affecting your main settings, override the model specifically for the telegram-userbot channel in the agent list when configuring multi-agent routing — do not specify a fallback model for it.
+> **NOTES**: Due to a known bug in the OpenClaw core, you may encounter an error in the logs: `EmbeddedAttemptSessionTakeoverError: session file changed while embedded prompt lock was released`. This error may primarily occur when communicating in group chats and not on all LLM models — only those that support tool calls. This error does not affect functionality, but it may cause a repeated request to the fallback model and excess token usage if you have one specified. To prevent this behavior, you can remove the fallback model in the openclaw.json configuration. To avoid affecting your main settings, override the model specifically for the clawgram channel in the agent list when configuring multi-agent routing — do not specify a fallback model for it.
 
 ```json
  "list": [
@@ -570,13 +575,13 @@ npm test             # run the node:test suite (no Telegram connection required)
 For local authorization testing during development, you can also run the standalone cli directly:
 
 ```bash
-npm run telegram-userbot-cli -- --auth
+npm run clawgram-cli -- --auth
 ```
 
 or
 
 ```bash
-npm run telegram-userbot-cli:auth
+npm run clawgram-cli:auth
 ```
 
 ## License

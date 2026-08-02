@@ -38,7 +38,7 @@ function formatBackupTimestamp(date: Date): string {
 function buildConfigBackupPath(configPath: string): string {
   const dir = path.dirname(configPath);
   const fileName = path.basename(configPath);
-  const suffix = `${formatBackupTimestamp(new Date())}-telegram-userbot-auth`;
+  const suffix = `${formatBackupTimestamp(new Date())}-clawgram-auth`;
   return path.join(dir, `${fileName}.bak-${suffix}`);
 }
 

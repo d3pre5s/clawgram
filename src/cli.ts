@@ -5,9 +5,9 @@ import { runTelegramUserbotCliFlags } from "./cli-core";
 export function registerTelegramUserbotCli(program: any, config: OpenClawConfig): void {
   program
     .command(CLI_COMMAND)
-    .description("Telegram Userbot CLI utilities")
-    .option("--hello", "Print a greeting from the telegram-userbot plugin")
-    .option("--auth", "Authorize a Telegram account for telegram-userbot")
+    .description("Clawgram CLI utilities")
+    .option("--hello", "Print a greeting from the clawgram plugin")
+    .option("--auth", "Authorize a Telegram account for clawgram")
     .action(async (options: { hello?: boolean; auth?: boolean }) => {
       await runTelegramUserbotCliFlags(config, options);
     });
@@ -21,7 +21,7 @@ export function getTelegramUserbotCliDescriptors(): Array<{
   return [
     {
       name: CLI_COMMAND,
-      description: "Telegram Userbot CLI utilities",
+      description: "Clawgram CLI utilities",
       hasSubcommands: false,
     },
   ];

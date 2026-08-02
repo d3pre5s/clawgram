@@ -171,7 +171,7 @@ function resolveActionTarget(params: Record<string, unknown>, toolContext?: {
     return contextTarget;
   }
 
-  throw new Error("telegram-userbot: message target is required");
+  throw new Error("clawgram: message target is required");
 }
 
 function resolveReplyToMessageIdForTarget(rawTarget: string, replyToId?: string | number | null): number | undefined {

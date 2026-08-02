@@ -63,7 +63,7 @@ import {
 import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
 
-const actionLog = createSubsystemLogger("channels/telegram-userbot");
+const actionLog = createSubsystemLogger("channels/clawgram");
 
 /**
  * Read scope as configured for the account. Left `undefined` when the key is
@@ -78,7 +78,7 @@ function readAccountReadChats(account: any): string[] | undefined {
 }
 
 function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefined {
-  return readAccountReadChats(cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ accountId ]);
+  return readAccountReadChats(cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]);
 }
 
 function parseOptionalThreadId(value: unknown): number | undefined {
@@ -114,13 +114,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
   };
 
   return {
-    id: "telegram-userbot",
+    id: "clawgram",
 
     meta: {
-      id: "telegram-userbot",
-      label: "Telegram Userbot",
-      selectionLabel: "Telegram Userbot (GramJS)",
-      docsPath: "/channels/telegram-userbot",
+      id: "clawgram",
+      label: "Clawgram",
+      selectionLabel: "Clawgram (GramJS)",
+      docsPath: "/channels/clawgram",
       blurb:
         "Connect your personal Telegram account to OpenClaw via MTProto. Your AI assistant responds as you.",
       aliases: [ "tguserbot" ],
@@ -137,21 +137,21 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
     agentPrompt: {
       messageToolHints: () => [
-        "Use telegram-userbot to send Telegram replies from the connected personal account.",
-        "When replying in the current Telegram chat, omit `to`/`target` and telegram-userbot will send to the current conversation automatically.",
-        "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or telegram-userbot:<target>.",
+        "Use clawgram to send Telegram replies from the connected personal account.",
+        "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
+        "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
       ],
       messageToolCapabilities: () => [
-        "telegram-userbot can reply in the current Telegram conversation when no explicit target is provided.",
-        "telegram-userbot can send text messages to direct chats and groups from the connected personal account.",
-        "telegram-userbot supports Telegram forum topics via the `threadId` parameter on group sends.",
+        "clawgram can reply in the current Telegram conversation when no explicit target is provided.",
+        "clawgram can send text messages to direct chats and groups from the connected personal account.",
+        "clawgram supports Telegram forum topics via the `threadId` parameter on group sends.",
       ],
     },
 
     config: {
       listAccountIds(cfg: any): string[] {
-        const accounts = cfg?.channels?.[ "telegram-userbot" ]?.accounts;
+        const accounts = cfg?.channels?.[ "clawgram" ]?.accounts;
         if (!accounts || typeof accounts !== "object") {
           return [];
         }
@@ -160,7 +160,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
       },
 
       resolveAccount(cfg: any, accountId: string): PluginConfig {
-        const account = cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ accountId ];
+        const account = cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ];
 
         return {
           apiId: Number(account?.apiId),
@@ -181,11 +181,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         const { account, accountId, channelRuntime, cfg, log } = ctx;
 
         if (!channelRuntime) {
-          throw new Error("telegram-userbot: channelRuntime is required");
+          throw new Error("clawgram: channelRuntime is required");
         }
 
         if (runtimes.has(accountId)) {
-          log?.warn?.("telegram-userbot stale runtime detected, reconnecting", { accountId });
+          log?.warn?.("clawgram stale runtime detected, reconnecting", { accountId });
           await runtimes.get(accountId)?.stop().catch(() => undefined);
           runtimes.delete(accountId);
         }
@@ -197,7 +197,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           // The controller only reads core.channel.pairing, but its parameter is typed
           // as the full PluginRuntime, and ctx (hence channelRuntime) is untyped.
           core: { channel: channelRuntime } as PluginRuntime,
-          channel: "telegram-userbot",
+          channel: "clawgram",
           accountId,
         });
 
@@ -211,7 +211,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
     fallback: selfId,
         });
 
-        log?.info?.("telegram-userbot connected ------------------------------------------", {
+        log?.info?.("clawgram connected ------------------------------------------", {
           accountId,
           selfId,
           username: selfUsername,
@@ -229,7 +229,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             const directLike = rawPeerUserId !== undefined ||
               (typeof rawMessage?.chatId === "number" && rawMessage.chatId > 0);
             if (directLike) {
-              log?.info?.("telegram-userbot raw direct-like event", {
+              log?.info?.("clawgram raw direct-like event", {
                 accountId,
                 messageId: String(rawMessage?.id ?? ""),
                 chatId: String(rawMessage?.chatId ?? ""),
@@ -244,7 +244,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             const normalized = normalizeTelegramEvent(event, accountId);
             if (!normalized) {
               if (directLike) {
-                log?.info?.("telegram-userbot normalize returned null", {
+                log?.info?.("clawgram normalize returned null", {
                   accountId,
                   messageId: String(rawMessage?.id ?? ""),
                   chatId: String(rawMessage?.chatId ?? ""),
@@ -286,7 +286,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
             if (normalized.isOutgoing) {
               if (normalized.chatType === "direct") {
-                log?.info?.("telegram-userbot skipping outgoing direct event", {
+                log?.info?.("clawgram skipping outgoing direct event", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -297,7 +297,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             }
 
             if (normalized.chatType === "channel") {
-              log?.info?.("telegram-userbot skipping channel inbound", {
+              log?.info?.("clawgram skipping channel inbound", {
                 accountId,
                 chatId: normalized.chatId,
                 chatType: normalized.chatType,
@@ -308,7 +308,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
             const text = normalized.text?.trim();
             if (!text) {
-              log?.info?.("telegram-userbot skipping empty inbound text", {
+              log?.info?.("clawgram skipping empty inbound text", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -325,7 +325,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               senderId === selfId;
 
             if (isTelegramServiceDirect) {
-              log?.info?.("telegram-userbot skipping Telegram service direct chat", {
+              log?.info?.("clawgram skipping Telegram service direct chat", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -335,7 +335,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             }
 
             if (isSavedMessagesDirect) {
-              log?.info?.("telegram-userbot skipping Saved Messages direct chat", {
+              log?.info?.("clawgram skipping Saved Messages direct chat", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -386,8 +386,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             throw lastError;
           };
           const accountConfig =
-            cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ accountId ] ??
-            cfg?.channels?.[ "telegram-userbot" ] ??
+            cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ] ??
+            cfg?.channels?.[ "clawgram" ] ??
             {};
           const directAllowFrom = resolveAllowFrom(accountConfig?.allowFrom ?? account?.allowFrom);
           const groups = resolveGroups(accountConfig?.groups ?? account?.groups);
@@ -396,7 +396,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             if (normalized.chatType === "group") {
               const groupConfig = resolveGroupConfig(groups, normalized.chatId);
               if (!groupConfig) {
-                log?.info?.("telegram-userbot skipping group not present in groups config", {
+                log?.info?.("clawgram skipping group not present in groups config", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -405,7 +405,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               }
 
               if (groupConfig.enabled === false) {
-                log?.info?.("telegram-userbot skipping disabled group", {
+                log?.info?.("clawgram skipping disabled group", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -418,7 +418,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 senderId,
                 senderUsername: normalized.senderUsername,
               })) {
-                log?.info?.("telegram-userbot blocking inbound group sender by allowFrom", {
+                log?.info?.("clawgram blocking inbound group sender by allowFrom", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -432,7 +432,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               const scopedGroupPeerId = buildScopedGroupPeerId(accountId, normalized.chatId);
               const { route: inboundRoute, buildEnvelope } = resolveInboundRouteEnvelopeBuilderWithRuntime({
                 cfg,
-                channel: "telegram-userbot",
+                channel: "clawgram",
                 accountId,
                 peer: {
                   kind: "group",
@@ -467,7 +467,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 },
               });
 
-              log?.info?.("telegram-userbot group mention gate", {
+              log?.info?.("clawgram group mention gate", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -481,7 +481,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               });
 
               if (groupConfig.groupPolicy === "mention" && mentionDecision.shouldSkip && !wasReplyToSelf) {
-                log?.info?.("telegram-userbot skipping group message without mention", {
+                log?.info?.("clawgram skipping group message without mention", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -516,14 +516,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 WasMentioned: mentionDecision.effectiveWasMentioned || wasReplyToSelf,
                 WasReplyToSelf: wasReplyToSelf,
                 Provider: "telegram",
-                Surface: "telegram-userbot",
+                Surface: "clawgram",
                 MessageSid: normalized.messageId,
                 MessageSidFull: normalized.messageId,
                 Timestamp: normalized.timestamp,
                 ReplyToId: normalized.replyToMessageId,
                 MessageThreadId: normalized.messageThreadId,
                 NativeChannelId: normalized.chatId,
-                OriginatingChannel: "telegram-userbot",
+                OriginatingChannel: "clawgram",
                 OriginatingTo: conversationRouteTarget,
               });
               const groupReplyAddress = buildGroupReplyAddress({
@@ -542,7 +542,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               const groupTypingTarget = normalized.chatId;
 
               await gram.withTyping(groupTypingTarget, async () => {
-                log?.info?.("telegram-userbot dispatching group reply", {
+                log?.info?.("clawgram dispatching group reply", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -561,7 +561,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                     accountId: route.accountId ?? accountId,
                   },
                   onRecordError: (err) => {
-                    log?.info?.("telegram-userbot failed to update group last route", {
+                    log?.info?.("clawgram failed to update group last route", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
@@ -572,7 +572,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
                 const dispatchBase = buildInboundReplyDispatchBase({
                   cfg,
-                  channel: "telegram-userbot",
+                  channel: "clawgram",
                   accountId: route.accountId ?? accountId,
                   route,
                   storePath,
@@ -582,7 +582,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 const { onModelSelected, ...replyPipeline } = createChannelReplyPipeline({
                   cfg,
                   agentId: route.agentId,
-                  channel: "telegram-userbot",
+                  channel: "clawgram",
                   accountId: route.accountId ?? accountId,
                 });
                 const dispatchResult = await dispatchBase.dispatchReplyWithBufferedBlockDispatcher({
@@ -592,7 +592,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                     ...replyPipeline,
                     deliver: async (payload) => {
                       const outboundText = typeof payload.text === "string" ? payload.text.trim() : "";
-                      log?.info?.("telegram-userbot deliver group payload", {
+                      log?.info?.("clawgram deliver group payload", {
                         accountId,
                         chatId: normalized.chatId,
                         messageId: normalized.messageId,
@@ -608,7 +608,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                       // reply-address prefix turns it into a visible message.
                       const visibleText = stripSilentReplyToken(outboundText);
                       if (!visibleText) {
-                        log?.info?.("telegram-userbot suppressing silent group reply", {
+                        log?.info?.("clawgram suppressing silent group reply", {
                           accountId,
                           chatId: normalized.chatId,
                           messageId: normalized.messageId,
@@ -630,7 +630,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                       });
                     },
                     onError: (err, info) => {
-                      log?.error?.("telegram-userbot failed to dispatch group reply", {
+                      log?.error?.("clawgram failed to dispatch group reply", {
                         accountId,
                         chatId: normalized.chatId,
                         messageId: normalized.messageId,
@@ -644,7 +644,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   },
                 });
 
-                log?.info?.("telegram-userbot group dispatch completed", {
+                log?.info?.("clawgram group dispatch completed", {
                   accountId,
                   chatId: normalized.chatId,
                   messageId: normalized.messageId,
@@ -665,14 +665,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   // the token would be read back from the transcript and sent.
                   const visibleFallbackText = fallbackText ? stripSilentReplyToken(fallbackText) : "";
                   if (fallbackText && !visibleFallbackText) {
-                    log?.info?.("telegram-userbot skipping silent transcript fallback", {
+                    log?.info?.("clawgram skipping silent transcript fallback", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
                       routeSessionKey: route.sessionKey,
                     });
                   } else if (visibleFallbackText) {
-                    log?.warn?.("telegram-userbot using transcript fallback reply", {
+                    log?.warn?.("clawgram using transcript fallback reply", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
@@ -686,7 +686,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                       messageThreadId,
                     });
                   } else {
-                    log?.warn?.("telegram-userbot transcript fallback unavailable", {
+                    log?.warn?.("clawgram transcript fallback unavailable", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
@@ -699,7 +699,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 messageThreadId,
               });
 
-              log?.info?.("telegram-userbot group inbound handled", {
+              log?.info?.("clawgram group inbound handled", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -716,7 +716,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               senderId,
               senderUsername: normalized.senderUsername,
             })) {
-              log?.info?.("telegram-userbot direct allowFrom mismatch", {
+              log?.info?.("clawgram direct allowFrom mismatch", {
                 accountId,
                 senderId,
                 senderUsername: normalized.senderUsername,
@@ -727,7 +727,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
             const access = await resolveInboundDirectDmAccessWithRuntime({
               cfg,
-              channel: "telegram-userbot",
+              channel: "clawgram",
               accountId,
               dmPolicy,
               allowFrom: directAllowFrom,
@@ -743,7 +743,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             });
 
             if (access.access.decision === "block") {
-              log?.info?.("telegram-userbot blocking inbound direct message", {
+              log?.info?.("clawgram blocking inbound direct message", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -768,7 +768,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   });
                 },
                 onReplyError: (err) => {
-                  log?.info?.("telegram-userbot pairing reply failed", {
+                  log?.info?.("clawgram pairing reply failed", {
                     accountId,
                     chatId: normalized.chatId,
                     senderId,
@@ -777,7 +777,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 },
               });
 
-              log?.info?.("telegram-userbot pairing required for inbound direct message", {
+              log?.info?.("clawgram pairing required for inbound direct message", {
                 accountId,
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
@@ -790,7 +790,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               await dispatchInboundDirectDmWithRuntime({
                 cfg,
                 runtime: { channel: channelRuntime },
-                channel: "telegram-userbot",
+                channel: "clawgram",
                 channelLabel: "Telegram",
                 accountId,
                 peer: {
@@ -806,8 +806,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 timestamp: normalized.timestamp,
                 commandAuthorized: access.commandAuthorized,
                 provider: "telegram",
-                surface: "telegram-userbot",
-                originatingChannel: "telegram-userbot",
+                surface: "clawgram",
+                originatingChannel: "clawgram",
                 originatingTo: senderId,
                 extraContext: {
                   SenderUsername: normalized.senderUsername,
@@ -823,7 +823,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
                   const visibleText = stripSilentReplyToken(outboundText);
                   if (!visibleText) {
-                    log?.info?.("telegram-userbot suppressing silent direct reply", {
+                    log?.info?.("clawgram suppressing silent direct reply", {
                       accountId,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
@@ -837,7 +837,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   });
                 },
                 onRecordError: (err) => {
-                  log?.info?.("telegram-userbot failed to record inbound session", {
+                  log?.info?.("clawgram failed to record inbound session", {
                     accountId,
                     chatId: normalized.chatId,
                     messageId: normalized.messageId,
@@ -845,7 +845,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   })
                 },
                 onDispatchError: (err, info) => {
-                  log?.info?.("telegram-userbot failed to dispatch reply", {
+                  log?.info?.("clawgram failed to dispatch reply", {
                     accountId,
                     chatId: normalized.chatId,
                     messageId: normalized.messageId,
@@ -858,7 +858,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               readMessageId: Number(normalized.messageId),
             });
 
-            log?.info?.("telegram-userbot inbound handled", {
+            log?.info?.("clawgram inbound handled", {
               accountId,
               chatId: normalized.chatId,
               messageId: normalized.messageId,
@@ -868,13 +868,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
           } catch (error) {
             const rawMessage = (event as any)?.message;
-            log?.error?.("telegram-userbot inbound handling failed", {
+            log?.error?.("clawgram inbound handling failed", {
               accountId,
               chatId: String(rawMessage?.chatId ?? rawMessage?.peerId?.userId ?? rawMessage?.peerId?.chatId ?? rawMessage?.peerId?.channelId ?? ""),
               messageId: String(rawMessage?.id ?? ""),
               error: String(error),
             });
-            log?.info?.("telegram-userbot inbound preflight failed", {
+            log?.info?.("clawgram inbound preflight failed", {
               accountId,
               chatId: String(rawMessage?.chatId ?? rawMessage?.peerId?.userId ?? rawMessage?.peerId?.chatId ?? rawMessage?.peerId?.channelId ?? ""),
               messageId: String(rawMessage?.id ?? ""),
@@ -898,14 +898,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             appendJoinRecord(joinsJournalPath, join);
             // Ids of people stay out of the log; the chat and the fact are enough
             // to debug, and the journal itself holds the detail.
-            log?.info?.("telegram-userbot join observed", {
+            log?.info?.("clawgram join observed", {
               accountId,
               chatId: join.chatId,
               via: join.via,
               hasInviter: join.inviterId !== undefined,
             });
           } catch (error) {
-            log?.warn?.("telegram-userbot join observation failed", {
+            log?.warn?.("clawgram join observation failed", {
               accountId,
               error: String(error),
             });
@@ -926,7 +926,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           await runtime.stop();
           runtimes.delete(accountId);
 
-          console.info("telegram-userbot disconnected", {
+          console.info("clawgram disconnected", {
             accountId,
             selfLabel,
           });
@@ -1100,29 +1100,29 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           const listParams = parseListMessagesParams(params);
           const listAccountId = resolveRuntimeAccountId(cfg, accountId);
           if (!listAccountId) {
-            throw new Error("telegram-userbot: no configured account found");
+            throw new Error("clawgram: no configured account found");
           }
 
           // Reading is not a side effect, so a dry run still answers — reporting
           // an empty window would look like a quiet chat rather than a no-op.
           if (!isChatReadable(listParams.target, resolveAccountReadChats(cfg, listAccountId))) {
-            actionLog.warn("telegram-userbot list refused: chat outside read scope", {
+            actionLog.warn("clawgram list refused: chat outside read scope", {
               accountId: listAccountId,
               target: listParams.target,
             });
-            throw new Error(`telegram-userbot: not-allowed-chat ${listParams.target}`);
+            throw new Error(`clawgram: not-allowed-chat ${listParams.target}`);
           }
 
           const listGram = runtimes.get(listAccountId);
           if (!listGram) {
-            throw new Error(`telegram-userbot: runtime not found for account ${listAccountId}`);
+            throw new Error(`clawgram: runtime not found for account ${listAccountId}`);
           }
 
           const history = await listGram.listMessages(listParams);
 
           // Metadata only. Message text is the user's correspondence and has no
           // business in a log that is read while debugging something else.
-          actionLog.info("telegram-userbot handleAction list completed", {
+          actionLog.info("clawgram handleAction list completed", {
             accountId: listAccountId,
             target: listParams.target,
             limit: listParams.limit,
@@ -1149,27 +1149,27 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           const participantsParams = parseListParticipantsParams(params);
           const participantsAccountId = resolveRuntimeAccountId(cfg, accountId);
           if (!participantsAccountId) {
-            throw new Error("telegram-userbot: no configured account found");
+            throw new Error("clawgram: no configured account found");
           }
 
           if (!isChatReadable(participantsParams.target, resolveAccountReadChats(cfg, participantsAccountId))) {
-            actionLog.warn("telegram-userbot participants refused: chat outside read scope", {
+            actionLog.warn("clawgram participants refused: chat outside read scope", {
               accountId: participantsAccountId,
               target: participantsParams.target,
             });
-            throw new Error(`telegram-userbot: not-allowed-chat ${participantsParams.target}`);
+            throw new Error(`clawgram: not-allowed-chat ${participantsParams.target}`);
           }
 
           const participantsGram = runtimes.get(participantsAccountId);
           if (!participantsGram) {
-            throw new Error(`telegram-userbot: runtime not found for account ${participantsAccountId}`);
+            throw new Error(`clawgram: runtime not found for account ${participantsAccountId}`);
           }
 
           const membership = await participantsGram.listParticipants(participantsParams);
 
           // Counts only. Member ids are personal data and have no business in a
           // log that is read while debugging something else.
-          actionLog.info("telegram-userbot handleAction participants completed", {
+          actionLog.info("clawgram handleAction participants completed", {
             accountId: participantsAccountId,
             target: participantsParams.target,
             limit: participantsParams.limit,
@@ -1194,16 +1194,16 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           const joinsParams = parseJoinsParams(params);
           const joinsAccountId = resolveRuntimeAccountId(cfg, accountId);
           if (!joinsAccountId) {
-            throw new Error("telegram-userbot: no configured account found");
+            throw new Error("clawgram: no configured account found");
           }
 
           const journalPath = resolveJoinsJournalPath(
-            cfg?.channels?.[ "telegram-userbot" ]?.accounts?.[ joinsAccountId ],
+            cfg?.channels?.[ "clawgram" ]?.accounts?.[ joinsAccountId ],
             joinsAccountId,
           );
           const selected = selectJoinRecords(readJoinRecords(journalPath), joinsParams);
 
-          actionLog.info("telegram-userbot handleAction joins completed", {
+          actionLog.info("clawgram handleAction joins completed", {
             accountId: joinsAccountId,
             since: joinsParams.since ?? null,
             limit: joinsParams.limit,
@@ -1219,7 +1219,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         }
 
         if (action !== "send") {
-          throw new Error(`telegram-userbot: unsupported message action ${action}`);
+          throw new Error(`clawgram: unsupported message action ${action}`);
         }
 
         const rawTo = resolveActionTarget(params, toolContext);
@@ -1228,7 +1228,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         const replyToId = readStringOrNumberParam(params, "replyToId") ?? readStringOrNumberParam(params, "replyTo");
         const threadId = readStringOrNumberParam(params, "threadId");
         const messageThreadId = parseOptionalThreadId(threadId);
-        actionLog.info("telegram-userbot handleAction send", {
+        actionLog.info("clawgram handleAction send", {
           requestedAccountId: accountId,
           dryRun: dryRun === true,
           rawTo,
@@ -1241,7 +1241,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
         const resolvedAccountId = resolveRuntimeAccountId(cfg, accountId);
         if (!resolvedAccountId) {
-          throw new Error("telegram-userbot: no configured account found");
+          throw new Error("clawgram: no configured account found");
         }
         const currentChannelId = toolContext?.currentChannelId?.trim() ?? "";
         const currentMessageId = toolContext?.currentMessageId;
@@ -1263,7 +1263,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             currentMessageId,
           })
         ) {
-          actionLog.warn("telegram-userbot suppressing duplicate visible group reply", {
+          actionLog.warn("clawgram suppressing duplicate visible group reply", {
             accountId: resolvedAccountId,
             to,
             currentMessageId: String(currentMessageId),
@@ -1288,7 +1288,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           groupReplyAddress,
         );
         if (!text) {
-          throw new Error("telegram-userbot: message text is required");
+          throw new Error("clawgram: message text is required");
         }
 
         if (dryRun) {
@@ -1302,7 +1302,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
         const gram = runtimes.get(resolvedAccountId);
         if (!gram) {
-          throw new Error(`telegram-userbot: runtime not found for account ${resolvedAccountId}`);
+          throw new Error(`clawgram: runtime not found for account ${resolvedAccountId}`);
         }
 
         const sent = await gram.sendText({
@@ -1326,7 +1326,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           });
         }
 
-        actionLog.info("telegram-userbot handleAction send completed", {
+        actionLog.info("clawgram handleAction send completed", {
           accountId: resolvedAccountId,
           to,
           replyToId: replyToId ?? null,
@@ -1344,13 +1344,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
     outbound: {
       async resolveTarget(ctx: { accountId: string; to: string }) {
-        actionLog.info("telegram-userbot outbound resolveTarget", {
+        actionLog.info("clawgram outbound resolveTarget", {
           accountId: ctx.accountId,
           rawTo: ctx.to,
         });
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
-          throw new Error(`telegram-userbot: runtime not found for account ${ctx.accountId}`);
+          throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
         }
 
         const targetKind = inferOutboundTargetKind(ctx.to);
@@ -1369,7 +1369,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         replyToId?: string | null;
         threadId?: string | number | null;
       }) {
-        actionLog.info("telegram-userbot outbound sendText", {
+        actionLog.info("clawgram outbound sendText", {
           accountId: ctx.accountId,
           rawTo: ctx.to,
           replyToId: ctx.replyToId ?? null,
@@ -1378,7 +1378,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         });
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
-          throw new Error(`telegram-userbot: runtime not found for account ${ctx.accountId}`);
+          throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
         }
 
         const groupReplyAddress = consumeGroupReplyAddress({
@@ -1398,7 +1398,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           messageThreadId,
         });
 
-        actionLog.info("telegram-userbot outbound sendText completed", {
+        actionLog.info("clawgram outbound sendText completed", {
           accountId: ctx.accountId,
           to: target,
           targetKind,
@@ -1424,10 +1424,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
       }) {
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
-          throw new Error(`telegram-userbot: runtime not found for account ${ctx.accountId}`);
+          throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
         }
 
-        actionLog.info("telegram-userbot outbound sendMedia", {
+        actionLog.info("clawgram outbound sendMedia", {
           accountId: ctx.accountId,
           to: ctx.to,
           replyToId: ctx.replyToId ?? null,
@@ -1440,7 +1440,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
         const file = ctx.filePath ?? ctx.mediaUrl;
         if (!file) {
-          throw new Error("telegram-userbot: sendMedia requires filePath or mediaUrl");
+          throw new Error("clawgram: sendMedia requires filePath or mediaUrl");
         }
         const messageThreadId = parseOptionalThreadId(ctx.threadId);
 
@@ -1452,7 +1452,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           messageThreadId,
         });
 
-        actionLog.info("telegram-userbot outbound sendMedia completed", {
+        actionLog.info("clawgram outbound sendMedia completed", {
           accountId: ctx.accountId,
           to: ctx.to,
           replyToId: ctx.replyToId ?? null,

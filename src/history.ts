@@ -79,7 +79,7 @@ export function parseTimeBoundary(value: unknown, field: string): number | undef
   if (value === undefined || value === null || value === "") return undefined;
 
   if (typeof value === "number" && Number.isFinite(value)) {
-    if (value <= 0) throw new Error(`telegram-userbot: ${field} must be a positive timestamp`);
+    if (value <= 0) throw new Error(`clawgram: ${field} must be a positive timestamp`);
     return value >= 10_000_000_000 ? Math.floor(value / 1000) : Math.floor(value);
   }
 
@@ -90,12 +90,12 @@ export function parseTimeBoundary(value: unknown, field: string): number | undef
     }
     const parsed = Date.parse(value);
     if (Number.isNaN(parsed)) {
-      throw new Error(`telegram-userbot: ${field} is not a valid date: ${value}`);
+      throw new Error(`clawgram: ${field} is not a valid date: ${value}`);
     }
     return Math.floor(parsed / 1000);
   }
 
-  throw new Error(`telegram-userbot: ${field} must be a timestamp or an ISO 8601 date`);
+  throw new Error(`clawgram: ${field} must be a timestamp or an ISO 8601 date`);
 }
 
 /**
@@ -108,10 +108,10 @@ export function parseLimit(value: unknown): number {
 
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) {
-    throw new Error("telegram-userbot: limit must be a number");
+    throw new Error("clawgram: limit must be a number");
   }
   if (numeric < 1) {
-    throw new Error("telegram-userbot: limit must be at least 1");
+    throw new Error("clawgram: limit must be at least 1");
   }
   return Math.min(Math.floor(numeric), HISTORY_MAX_LIMIT);
 }
@@ -122,7 +122,7 @@ export function parseMessageId(value: unknown, field: string): number | undefine
 
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric < 1) {
-    throw new Error(`telegram-userbot: ${field} must be a positive message id`);
+    throw new Error(`clawgram: ${field} must be a positive message id`);
   }
   return numeric;
 }
@@ -131,7 +131,7 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
   const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
-    throw new Error("telegram-userbot: list requires a chatId");
+    throw new Error("clawgram: list requires a chatId");
   }
 
   // Only `since`/`until` carry dates. `before`/`after` are NOT accepted here:
@@ -142,7 +142,7 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
   const until = parseTimeBoundary(params.until, "until");
 
   if (since !== undefined && until !== undefined && since > until) {
-    throw new Error("telegram-userbot: since must not be later than until");
+    throw new Error("clawgram: since must not be later than until");
   }
 
   return {
@@ -174,7 +174,7 @@ export function parseListParticipantsParams(params: Record<string, unknown>): Li
   const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
-    throw new Error("telegram-userbot: participants requires a chatId");
+    throw new Error("clawgram: participants requires a chatId");
   }
 
   const includeNames = params.includeNames === true || params.includeNames === "true";
@@ -186,7 +186,7 @@ export function parseListParticipantsParams(params: Record<string, unknown>): Li
 
   const parsed = Number(rawLimit);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error("telegram-userbot: participants limit must be a positive number");
+    throw new Error("clawgram: participants limit must be a positive number");
   }
 
   return { target, limit: Math.min(Math.floor(parsed), PARTICIPANTS_MAX_LIMIT), includeNames };

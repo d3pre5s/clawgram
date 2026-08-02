@@ -31,7 +31,7 @@ export type PluginConfig = {
 export type ChatType = "direct" | "group" | "channel";
 
 export type NormalizedInbound = {
-  channel: "telegram-userbot";
+  channel: "clawgram";
   accountId: string;
   chatId: string;
   messageThreadId?: string;

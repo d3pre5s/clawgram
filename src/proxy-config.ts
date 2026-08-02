@@ -39,7 +39,7 @@ function toFiniteNumber(value: unknown): number {
 function resolveProxyHost(value: unknown): string {
   const host = typeof value === "string" ? value.trim() : "";
   if (!host) {
-    throw new Error("telegram-userbot: proxy.ip must be a non-empty hostname or IP address.");
+    throw new Error("clawgram: proxy.ip must be a non-empty hostname or IP address.");
   }
 
   return host;
@@ -48,7 +48,7 @@ function resolveProxyHost(value: unknown): string {
 function resolveProxyPort(value: unknown): number {
   const port = toFiniteNumber(value);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error("telegram-userbot: proxy.port must be an integer between 1 and 65535.");
+    throw new Error("clawgram: proxy.port must be an integer between 1 and 65535.");
   }
 
   return port;
@@ -57,7 +57,7 @@ function resolveProxyPort(value: unknown): number {
 function resolveSocksType(value: unknown): 4 | 5 {
   const socksType = toFiniteNumber(value);
   if (socksType !== 4 && socksType !== 5) {
-    throw new Error("telegram-userbot: proxy.socksType must be 4 (SOCKS4) or 5 (SOCKS5).");
+    throw new Error("clawgram: proxy.socksType must be 4 (SOCKS4) or 5 (SOCKS5).");
   }
 
   return socksType;
@@ -69,7 +69,7 @@ function resolveProxyCredential(value: unknown, field: "username" | "password"):
   }
 
   if (typeof value !== "string") {
-    throw new Error(`telegram-userbot: proxy.${field} must be a string.`);
+    throw new Error(`clawgram: proxy.${field} must be a string.`);
   }
 
   return value.trim() ? value : undefined;
@@ -82,7 +82,7 @@ function resolveProxyTimeout(value: unknown): number | undefined {
 
   const timeout = toFiniteNumber(value);
   if (!Number.isFinite(timeout) || timeout <= 0) {
-    throw new Error("telegram-userbot: proxy.timeout must be a positive number of seconds.");
+    throw new Error("clawgram: proxy.timeout must be a positive number of seconds.");
   }
 
   return timeout;
@@ -100,7 +100,7 @@ function resolveProxyConfig(value: unknown): TelegramProxyConfig | undefined {
   }
 
   if (!isPlainObject(value)) {
-    throw new Error("telegram-userbot: proxy must be an object.");
+    throw new Error("clawgram: proxy must be an object.");
   }
 
   const ip = resolveProxyHost(value.ip);
