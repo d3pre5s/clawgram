@@ -9,6 +9,10 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-08-03
+
+Four capabilities the channel was missing, and two defects where it promised more than it did.
+
 ### Added
 
 - **SecretRefs for credentials.** `apiHash`, `sessionString`, `proxy.username` and `proxy.password`
@@ -49,8 +53,9 @@ recorded in `git log` only.
 
 ## [2.1.1] — 2026-08-03
 
-No runtime changes — the plugin code is identical to 2.1.0. This release exists to exercise
-the new automated release path end to end.
+**Never published.** The version existed to rehearse the new release pipeline, which it did; 2.2.0
+superseded it before a tag was cut, so npm goes straight from 2.1.0 to 2.2.0. The plugin code was
+identical to 2.1.0.
 
 ### Added
 
@@ -137,7 +142,8 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.1.1...HEAD
-[2.1.1]: https://github.com/d3pre5s/clawgram/compare/v2.1.0...v2.1.1
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/d3pre5s/clawgram/compare/v2.1.0...v2.2.0
+[2.1.1]: https://github.com/d3pre5s/clawgram/commit/c954256
 [2.1.0]: https://github.com/d3pre5s/clawgram/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/d3pre5s/clawgram/releases/tag/v2.0.0
