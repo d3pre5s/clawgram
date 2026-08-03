@@ -160,3 +160,63 @@ describe("openclaw.plugin.json proxy uiHints", () => {
     }
   });
 });
+
+/**
+ * SecretRefs must pass the *schema*, not only the runtime.
+ *
+ * 2.2.0 shipped the resolver and the docs and left this out, so a config that
+ * used a reference was rejected by `openclaw config validate` before the
+ * resolver ever ran — the feature could not be turned on at all. Caught while
+ * applying it to production, which is exactly the wrong place to find it.
+ */
+describe("openclaw.plugin.json accepts SecretRefs for credentials", () => {
+  const FILE_REF = { source: "file", provider: "corp", id: "/channels/clawgram/api_hash" };
+
+  test("apiHash accepts a file reference", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, apiHash: FILE_REF });
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("sessionString accepts a file reference", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, sessionString: FILE_REF });
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("both accept an env reference", () => {
+    const envRef = { source: "env", provider: "default", id: "CLAWGRAM_API_HASH" };
+    const result = validateAccount({ ...BASE_ACCOUNT, apiHash: envRef, sessionString: envRef });
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("plain strings still validate", () => {
+    const result = validateAccount(BASE_ACCOUNT);
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("proxy credentials accept references too", () => {
+    const result = validateAccount({
+      ...BASE_ACCOUNT,
+      proxy: { ip: "10.0.0.1", port: 1080, socksType: 5, username: FILE_REF, password: FILE_REF },
+    });
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  // A typo must not be mistaken for a reference and silently blank a credential.
+  test("an incomplete reference is rejected", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, apiHash: { source: "file", provider: "corp" } });
+    assert.equal(result.ok, false, "an object without id should not validate");
+  });
+
+  test("an unknown source is rejected", () => {
+    const result = validateAccount({
+      ...BASE_ACCOUNT,
+      apiHash: { source: "vault", provider: "corp", id: "/x" },
+    });
+    assert.equal(result.ok, false, "only env, file and exec are real sources");
+  });
+
+  test("a number is still rejected", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, apiHash: 42 });
+    assert.equal(result.ok, false, "a credential is a string or a reference, nothing else");
+  });
+});

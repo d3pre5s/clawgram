@@ -99,10 +99,72 @@
                   ]
                 },
                 "apiHash": {
-                  "type": "string"
+                  "description": "Literal value, or a SecretRef resolved at account start-up.",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "provider",
+                        "id"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "env",
+                            "file",
+                            "exec"
+                          ]
+                        },
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  ]
                 },
                 "sessionString": {
-                  "type": "string"
+                  "description": "Literal value, or a SecretRef resolved at account start-up.",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "provider",
+                        "id"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "env",
+                            "file",
+                            "exec"
+                          ]
+                        },
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  ]
                 },
                 "proxy": {
                   "type": "object",
@@ -126,10 +188,72 @@
                       ]
                     },
                     "username": {
-                      "type": "string"
+                      "description": "Literal value, or a SecretRef resolved at account start-up.",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "source",
+                            "provider",
+                            "id"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "env",
+                                "file",
+                                "exec"
+                              ]
+                            },
+                            "provider": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        }
+                      ]
                     },
                     "password": {
-                      "type": "string"
+                      "description": "Literal value, or a SecretRef resolved at account start-up.",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "source",
+                            "provider",
+                            "id"
+                          ],
+                          "additionalProperties": false,
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "env",
+                                "file",
+                                "exec"
+                              ]
+                            },
+                            "provider": {
+                              "type": "string",
+                              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                            },
+                            "id": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        }
+                      ]
                     },
                     "timeout": {
                       "type": "number",

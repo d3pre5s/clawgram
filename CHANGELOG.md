@@ -9,6 +9,20 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-08-03
+
+### Fixed
+
+- **SecretRefs were rejected by the plugin's own config schema.** 2.2.0 shipped the resolver, the
+  runtime guards and the documentation, but left `apiHash` and `sessionString` declared as
+  `{"type": "string"}` in `openclaw.plugin.json` — so `openclaw config validate` refused a config
+  that used a reference, and the feature could not be switched on at all. Found while applying it
+  to a live Gateway, which is the wrong place to find it. All four credential fields
+  (`apiHash`, `sessionString`, `proxy.username`, `proxy.password`) now accept a literal string or a
+  `{ source, provider, id }` reference, matching how core models `SecretInput`. An incomplete
+  reference, an unknown source and a non-string are still rejected — a typo must not be mistaken
+  for a reference and silently blank a credential.
+
 ## [2.2.0] — 2026-08-03
 
 Four capabilities the channel was missing, and two defects where it promised more than it did.
@@ -142,7 +156,8 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/d3pre5s/clawgram/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/d3pre5s/clawgram/compare/v2.1.0...v2.2.0
 [2.1.1]: https://github.com/d3pre5s/clawgram/commit/c954256
 [2.1.0]: https://github.com/d3pre5s/clawgram/compare/v2.0.0...v2.1.0
