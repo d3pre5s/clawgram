@@ -237,7 +237,7 @@ describe("normalizeHistoryMessage", () => {
     const normalized = normalizeHistoryMessage(message(1, { className: "Message", _client: {} }));
     assert.equal(Object.hasOwn(normalized as object, "raw"), false);
     assert.deepEqual(Object.keys(normalized as object).sort(), [
-      "chatId", "isOutgoing", "messageId", "messageThreadId", "replyToMessageId",
+      "chatId", "isOutgoing", "media", "messageId", "messageThreadId", "replyToMessageId",
       "senderDisplay", "senderId", "senderUsername", "sentAt", "text", "timestamp",
     ]);
   });
@@ -308,5 +308,51 @@ describe("collectHistoryWindow", () => {
   test("survives an empty or missing list", () => {
     assert.deepEqual(collectHistoryWindow([]), []);
     assert.deepEqual(collectHistoryWindow(undefined as unknown as unknown[]), []);
+  });
+});
+
+describe("history reads report attachments", () => {
+  // The failure this prevents: a message whose entire content is a screenshot
+  // arrived as empty text, so a summary of the chat silently lost it.
+  test("a photo-only message is not indistinguishable from an empty one", () => {
+    const normalized = normalizeHistoryMessage(message(1, {
+      message: "",
+      media: { className: "MessageMediaPhoto" },
+    }));
+
+    assert.equal(normalized?.media?.kind, "photo");
+  });
+
+  test("a caption stays the text, with the attachment alongside it", () => {
+    const normalized = normalizeHistoryMessage(message(1, {
+      message: "вот ошибка",
+      media: { className: "MessageMediaPhoto" },
+    }));
+
+    assert.equal(normalized?.text, "вот ошибка");
+    assert.equal(normalized?.media?.kind, "photo");
+  });
+
+  test("a document reports the filename a reader would quote", () => {
+    const normalized = normalizeHistoryMessage(message(1, {
+      media: {
+        className: "MessageMediaDocument",
+        document: {
+          mimeType: "application/pdf",
+          size: 240_512,
+          attributes: [ { className: "DocumentAttributeFilename", fileName: "ТЗ.pdf" } ],
+        },
+      },
+    }));
+
+    assert.equal(normalized?.media?.kind, "document");
+    assert.equal(normalized?.media?.fileName, "ТЗ.pdf");
+    assert.equal(normalized?.media?.size, 240_512);
+  });
+
+  test("plain text carries no media field at all", () => {
+    const normalized = normalizeHistoryMessage(message(1, { message: "просто текст" }));
+
+    assert.equal(normalized?.media, undefined);
   });
 });

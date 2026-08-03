@@ -11,6 +11,11 @@ recorded in `git log` only.
 
 ### Added
 
+- **Attachments are visible when reading history.** `read` now reports a `media` field with the
+  attachment kind (photo, video, voice, audio, document, sticker, poll, geo, contact, webpage),
+  plus filename, MIME type, size and duration where Telegram provides them. Previously a message
+  whose whole content was a screenshot arrived as empty text, indistinguishable from a message
+  that said nothing. Metadata only — nothing is downloaded.
 - **Emoji reactions.** The `react` action of the message tool adds or clears this account's
   reaction on a message, following the tool contract: an empty `emoji` clears, and `remove: true`
   clears but still requires a non-empty `emoji`. The chat and message are taken from tool context

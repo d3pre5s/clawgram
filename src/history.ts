@@ -13,6 +13,8 @@
 export const HISTORY_DEFAULT_LIMIT = 100;
 export const HISTORY_MAX_LIMIT = 500;
 
+import { describeMedia, type HistoryMedia } from "./media";
+
 export type ListMessagesParams = {
   target: string;
   limit: number;
@@ -43,6 +45,12 @@ export type HistoryMessage = {
   sentAt?: string;
   replyToMessageId?: string;
   messageThreadId?: string;
+  /**
+   * Attachment metadata, when the message carries one. Absent for plain text.
+   * A photo-only message would otherwise be indistinguishable from an empty
+   * one: its `text` is the caption, and a caption is often not written.
+   */
+  media?: HistoryMedia;
   isOutgoing: boolean;
 };
 
@@ -306,6 +314,7 @@ export function normalizeHistoryMessage(msg: any, fallbackChatId?: string): Hist
     sentAt: timestamp === undefined ? undefined : new Date(timestamp * 1000).toISOString(),
     replyToMessageId: toStringId(msg?.replyTo?.replyToMsgId) ?? toStringId(msg?.replyToMsgId),
     messageThreadId: toStringId(msg?.replyTo?.replyToTopId) ?? toStringId(msg?.replyToTopId),
+    media: describeMedia(msg?.media),
     isOutgoing: msg?.out === true,
   };
 }
