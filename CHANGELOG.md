@@ -9,12 +9,19 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.1.1] — 2026-08-03
+
+No runtime changes — the plugin code is identical to 2.1.0. This release exists to exercise
+the new automated release path end to end.
+
 ### Added
 
 - GitHub Actions: `ci.yml` builds and tests every push and pull request on Node 22 and 24;
   `release.yml` publishes to npm from a `v*` tag, with provenance and a tag/`package.json`
-  version check. Releases no longer depend on one laptop.
-- `CHANGELOG.md` (this file).
+  version check. Releases no longer depend on one laptop, and `workflow_dispatch` runs the
+  same job as a rehearsal that stops at `npm publish --dry-run`.
+- `prepublishOnly` runs build and tests, so a hand-run `npm publish` cannot ship a stale `dist/`.
+- `CHANGELOG.md` (this file) and a Releases section in the README.
 
 ## [2.1.0] — 2026-08-03
 
@@ -92,6 +99,7 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/d3pre5s/clawgram/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/d3pre5s/clawgram/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/d3pre5s/clawgram/releases/tag/v2.0.0
