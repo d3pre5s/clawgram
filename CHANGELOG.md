@@ -9,6 +9,13 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Added
+
+- **ClawHub publishing runs in the release pipeline**, in the step after npm. It was manual, and
+  ClawHub fell two versions behind because of it. The step skips itself when `CLAWHUB_TOKEN` is
+  unset — npm still publishes — and skips again when ClawHub already carries the version, so
+  re-running a release is harmless.
+
 ## [2.2.2] — 2026-08-03
 
 ### Fixed

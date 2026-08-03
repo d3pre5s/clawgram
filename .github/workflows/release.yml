@@ -91,3 +91,46 @@ jobs:
           else
             npm publish --provenance --access public
           fi
+
+      # ClawHub is a second registry, not a mirror: it carries its own scan
+      # verdict and its own install path. It fell two versions behind npm once
+      # already because publishing here was a separate manual step.
+      #
+      # npm is the primary path, so a ClawHub failure must not undo a release
+      # that already reached npm — but it does fail the job, because "npm has
+      # it, ClawHub does not" is exactly the state worth being told about.
+      - name: Publish to ClawHub
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "${CLAWHUB_TOKEN}" ]; then
+            echo "::warning::CLAWHUB_TOKEN is not set — skipped ClawHub. npm is unaffected."
+            exit 0
+          fi
+
+          npm install --global --no-fund --no-audit clawhub@0.23.1
+
+          # The CLI takes the token as an argument; the runner is ephemeral and
+          # single-use, so argv exposure is bounded to this job.
+          clawhub login --token "${CLAWHUB_TOKEN}" >/dev/null
+
+          pkg_version="$(node -p "require('./package.json').version")"
+          published="$(clawhub package explore clawgram --family code-plugin 2>/dev/null \
+            | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | tr -d 'v')"
+
+          if [ "${published}" = "${pkg_version}" ]; then
+            echo "ClawHub already carries ${pkg_version} — nothing to do"
+            exit 0
+          fi
+
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "rehearsal: ClawHub publish without uploading"
+            clawhub package publish . --family code-plugin --version "${pkg_version}" \
+              --source-repo d3pre5s/clawgram --source-ref "${GITHUB_REF_NAME}" \
+              --source-commit "${GITHUB_SHA}" --dry-run
+            exit 0
+          fi
+
+          clawhub package publish . --family code-plugin --version "${pkg_version}" \
+            --source-repo d3pre5s/clawgram --source-ref "${GITHUB_REF_NAME}" \
+            --source-commit "${GITHUB_SHA}"
