@@ -9,6 +9,16 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.2.2] — 2026-08-03
+
+### Fixed
+
+- **The plugin declared two different versions.** `openclaw.plugin.json` still said `2.1.0` while
+  `package.json` said `2.2.1`; both 2.2.0 and 2.2.1 shipped that way. npm reads `package.json`, so
+  the published package and the Gateway reported the right version and nothing looked wrong — only
+  ClawHub's inspector flagged the drift, on publish. A test now ties the two declarations together,
+  verified red-green.
+
 ## [2.2.1] — 2026-08-03
 
 ### Fixed
@@ -156,7 +166,8 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.2.2...HEAD
+[2.2.2]: https://github.com/d3pre5s/clawgram/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/d3pre5s/clawgram/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/d3pre5s/clawgram/compare/v2.1.0...v2.2.0
 [2.1.1]: https://github.com/d3pre5s/clawgram/commit/c954256

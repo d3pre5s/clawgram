@@ -220,3 +220,22 @@ describe("openclaw.plugin.json accepts SecretRefs for credentials", () => {
     assert.equal(result.ok, false, "a credential is a string or a reference, nothing else");
   });
 });
+
+/**
+ * The plugin declares its version twice — in package.json and in
+ * openclaw.plugin.json — and nothing kept them together. Both 2.2.0 and 2.2.1
+ * shipped with the manifest still saying 2.1.0; npm reads package.json so it
+ * looked fine, and only ClawHub's inspector noticed. Same shape of mistake as
+ * the SecretRef schema: one half updated, the other silently left behind.
+ */
+describe("plugin version is declared consistently", () => {
+  test("openclaw.plugin.json matches package.json", () => {
+    const pkg = JSON.parse(readFileSync(path.resolve(__dirname, "..", "..", "package.json"), "utf8"));
+
+    assert.equal(
+      manifest.version,
+      pkg.version,
+      `openclaw.plugin.json says ${manifest.version}, package.json says ${pkg.version} — bump both`,
+    );
+  });
+});
