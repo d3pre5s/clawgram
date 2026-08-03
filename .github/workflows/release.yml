@@ -4,9 +4,14 @@ name: Release
 # publishes clawgram@2.2.0 from a clean checkout. Nothing is published from
 # a laptop any more, and provenance ties the tarball on npm back to the exact
 # commit this workflow ran on.
+#
+# The same job can be run by hand as a rehearsal (workflow_dispatch): it does
+# everything up to and including `npm publish --dry-run`, so the release path
+# can be verified without putting a version into the registry forever.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,6 +21,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     environment: npm-publish
+
+    env:
+      # A manual run is always a rehearsal; only a tag publishes for real.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +38,7 @@ jobs:
       # A tag that disagrees with package.json would publish a version nobody
       # asked for, under a tag that points somewhere else. Refuse instead.
       - name: Tag must match package.json version
+        if: github.event_name == 'push'
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
           pkg_version="$(node -p "require('./package.json').version")"
@@ -47,8 +57,10 @@ jobs:
         run: npm test
 
       # Publishing the same version twice fails the job anyway; checking first
-      # gives a readable reason instead of a registry error.
+      # gives a readable reason instead of a registry error. A rehearsal skips
+      # this on purpose — the current version is normally already published.
       - name: Version must not already exist on npm
+        if: github.event_name == 'push'
         run: |
           pkg_version="$(node -p "require('./package.json').version")"
           if npm view "clawgram@${pkg_version}" version >/dev/null 2>&1; then
@@ -56,7 +68,26 @@ jobs:
             exit 1
           fi
 
-      - name: Publish to npm
-        run: npm publish --provenance --access public
+      # Catches the most common release failure — a missing or wrong-scoped
+      # NPM_TOKEN — before the publish step, and with a clear message.
+      - name: Check npm credentials
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN secret is not set — publishing will fail." >&2
+            echo "Add an npm automation token as the NPM_TOKEN secret." >&2
+            exit 1
+          fi
+          echo "authenticated to npm as: $(npm whoami)"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "rehearsal: packing without publishing"
+            npm publish --dry-run --access public
+          else
+            npm publish --provenance --access public
+          fi
