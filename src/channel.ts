@@ -63,6 +63,7 @@ import {
   toDisplayName,
   prefixReplyTextToAddress,
   stripSilentReplyToken,
+  isSilentReplyText,
   resolveReplyTarget,
   resolveChatTarget,
   isReplyToSelfMessage,
@@ -1415,10 +1416,33 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           chatId: to,
           replyToId,
         });
-        const text = prefixReplyTextToAddress(
-          readMessageText(params).replaceAll("\\n", "\n"),
-          groupReplyAddress,
-        );
+        const requestedText = readMessageText(params).replaceAll("\\n", "\n");
+
+        // `NO_REPLY` is OpenClaw's "say nothing" sentinel. The inbound pipeline
+        // and core both strip it, but an explicit `message.action` call is
+        // neither path — and the SDK itself prompts agents to send a message
+        // and *then* answer NO_REPLY, so the two are one slip apart. Posting
+        // the token into a work chat looks like the assistant malfunctioning.
+        //
+        // Checked before the reply-address prefix on purpose: prefixing first
+        // leaves "Name: " behind, which is not empty, and the token goes out.
+        // That is precisely how it once reached the inbound path.
+        if (requestedText.trim() && isSilentReplyText(requestedText)) {
+          actionLog.info("clawgram suppressing silent send", {
+            accountId: resolvedAccountId,
+            to,
+          });
+
+          return jsonResult({
+            ok: true,
+            skipped: "silent",
+            sent: false,
+            to,
+            accountId: resolvedAccountId,
+          });
+        }
+
+        const text = prefixReplyTextToAddress(requestedText, groupReplyAddress);
         if (!text) {
           throw new Error("clawgram: message text is required");
         }
@@ -1511,6 +1535,20 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           threadId: ctx.threadId ?? null,
           textLength: ctx.text.length,
         });
+
+        // Core normalizes reply payloads and drops the silent token before a
+        // channel is called, so this should never see one. "Should never" is
+        // what the inbound path was assumed to be too, right until it posted a
+        // token — and the check costs a string comparison.
+        if (ctx.text.trim() && isSilentReplyText(ctx.text)) {
+          actionLog.info("clawgram suppressing silent outbound send", {
+            accountId: ctx.accountId,
+            rawTo: ctx.to,
+          });
+
+          return { skipped: "silent" as const };
+        }
+
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
           throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);

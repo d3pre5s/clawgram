@@ -35,6 +35,14 @@ recorded in `git log` only.
 
 ### Fixed
 
+- **`NO_REPLY` could be posted as a message.** `message.action` is neither the inbound pipeline
+  (which strips the silent token) nor a core-normalized reply payload (which core strips), so an
+  explicit send carried whatever text it was given straight to Telegram. The SDK itself prompts
+  agents to send a message and *then* answer `NO_REPLY`, leaving the two one slip apart. Both
+  `message.action` and `outbound.sendText` now suppress a payload that is only the token, and the
+  check runs before the reply-address prefix is applied — prefixing first leaves `"Name: "` in
+  front of the token, which is not empty, and that is precisely how the token reached the inbound
+  path once before. A token in the middle of a sentence is still content and still delivered.
 - `capabilities.reactions` was `true` while nothing implemented reactions — the channel promised
   the Gateway a capability that failed when the agent used it. The flag and the action are now
   tied together by a test in both directions.
