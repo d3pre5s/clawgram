@@ -32,6 +32,7 @@ import {
   selectJoinRecords,
 } from "./joins";
 import { parseReactionParams } from "./reactions";
+import { describeChat, parseChatInfoParams } from "./chat-info";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
@@ -143,12 +144,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
         "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
+        "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
       ],
       messageToolCapabilities: () => [
         "clawgram can reply in the current Telegram conversation when no explicit target is provided.",
         "clawgram can send text messages to direct chats and groups from the connected personal account.",
         "clawgram supports Telegram forum topics via the `threadId` parameter on group sends.",
         "clawgram can add and clear emoji reactions on messages. A plain Telegram account holds one reaction per message, so a new emoji replaces the previous one.",
+        "clawgram can describe a chat via `chatInfo`: title, type (direct/group/supergroup/channel), member count, description, whether it is a forum, and the pinned message id.",
       ],
     },
 
@@ -1078,7 +1081,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         }
 
         return {
-          actions: [ "send", "read", "participants", "joins", "react" ],
+          actions: [ "send", "read", "participants", "joins", "react", "chatInfo" ],
           capabilities: [],
         };
       },
@@ -1218,6 +1221,51 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             accountId: joinsAccountId,
             count: selected.length,
             joins: selected,
+          });
+        }
+
+        // Describing a chat is a read, so the same `readChats` scope that gates
+        // history gates it too — this must not become a way to learn the title
+        // and size of a chat the account was never allowed to read.
+        if (
+          action === "chatInfo" || action === "getChatInfo"
+          || action === "chatMetadata" || action === "getChatMetadata"
+        ) {
+          const chatInfoParams = parseChatInfoParams(params, toolContext);
+          const chatInfoAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!chatInfoAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          if (!isChatReadable(chatInfoParams.target, resolveAccountReadChats(cfg, chatInfoAccountId))) {
+            actionLog.warn("clawgram chatInfo refused: chat outside read scope", {
+              accountId: chatInfoAccountId,
+              target: chatInfoParams.target,
+            });
+            throw new Error(`clawgram: not-allowed-chat ${chatInfoParams.target}`);
+          }
+
+          const chatInfoGram = runtimes.get(chatInfoAccountId);
+          if (!chatInfoGram) {
+            throw new Error(`clawgram: runtime not found for account ${chatInfoAccountId}`);
+          }
+
+          const { entity, full } = await chatInfoGram.getChatInfo(chatInfoParams.target);
+          const info = describeChat(entity, full);
+
+          // Type and size only. The title of a private chat is as personal as
+          // its contents and has no business in a debugging log.
+          actionLog.info("clawgram handleAction chatInfo completed", {
+            accountId: chatInfoAccountId,
+            type: info.type,
+            memberCount: info.memberCount ?? null,
+            isForum: info.isForum ?? null,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: chatInfoAccountId,
+            chat: { ...info, chatId: info.chatId ?? chatInfoParams.target },
           });
         }
 

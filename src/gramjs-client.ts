@@ -349,6 +349,43 @@ export class GramJsClientManager {
   }
 
   /**
+   * Reads what a chat is: title, type, member count, description, pinned
+   * message.
+   *
+   * Telegram has no single "describe this chat" call — the full object comes
+   * from a different method per chat type, and none of them accepts the other's
+   * peer. The entity is resolved first precisely to find out which one to ask.
+   * A failing full request is not fatal: the entity alone already carries the
+   * title and the type, and a partial answer beats an error when the caller
+   * only wanted to know where it is.
+   */
+  async getChatInfo(target: string): Promise<{ entity: unknown; full: unknown }> {
+    const resolved = await this.resolvePeer(target);
+    const entity = await this.client.getEntity(resolved.peer as any);
+
+    const full = await (async () => {
+      switch ((entity as any)?.className) {
+        case "Channel":
+          return (await this.client.invoke(new Api.channels.GetFullChannel({
+            channel: entity as any,
+          }))).fullChat;
+        case "Chat":
+          return (await this.client.invoke(new Api.messages.GetFullChat({
+            chatId: (entity as any).id,
+          }))).fullChat;
+        case "User":
+          return (await this.client.invoke(new Api.users.GetFullUser({
+            id: entity as any,
+          }))).fullUser;
+        default:
+          return undefined;
+      }
+    })().catch(() => undefined);
+
+    return { entity, full };
+  }
+
+  /**
    * Adds or clears this account's reaction on a message.
    *
    * Telegram models "no reaction" as an empty reaction list rather than a

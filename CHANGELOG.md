@@ -11,6 +11,12 @@ recorded in `git log` only.
 
 ### Added
 
+- **Chat metadata.** The `chatInfo` action (also `getChatInfo`, `chatMetadata`, `getChatMetadata`)
+  reports what a chat is: title, type (direct/group/supergroup/channel), member count, description,
+  whether it is a forum, the pinned message id, and — for direct chats — whether the other side is
+  a bot. Gated by `readChats`, the same scope that gates reading history. Previously the assistant
+  could read a chat but not name it, so a chat's identity had to come from a hand-maintained
+  allowlist that goes stale as soon as someone renames it.
 - **Attachments are visible when reading history.** `read` now reports a `media` field with the
   attachment kind (photo, video, voice, audio, document, sticker, poll, geo, contact, webpage),
   plus filename, MIME type, size and duration where Telegram provides them. Previously a message

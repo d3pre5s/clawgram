@@ -31,6 +31,7 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 - **@Mention detection** — respond only when mentioned in groups (text, caption, and ID-based mentions)
 - **Read receipts** — mark messages as read
 - **Emoji reactions** — acknowledge a message with a reaction instead of a reply (`react` action)
+- **Chat metadata** — title, type, member count, description, forum flag and pinned message (`chatInfo` action)
 - **User allowlist** — control which user has access to send messages for direct
 - **Chat allowlist** — control which chats the assistant can access
 - **Multi-account** — run multiple Telegram accounts simultaneously
