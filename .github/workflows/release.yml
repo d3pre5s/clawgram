@@ -1,0 +1,62 @@
+name: Release
+
+# Publishing is driven by tags: push v2.2.0 and this builds, tests and
+# publishes clawgram@2.2.0 from a clean checkout. Nothing is published from
+# a laptop any more, and provenance ties the tarball on npm back to the exact
+# commit this workflow ran on.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # A tag that disagrees with package.json would publish a version nobody
+      # asked for, under a tag that points somewhere else. Refuse instead.
+      - name: Tag must match package.json version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "tag ${GITHUB_REF_NAME} implies ${tag_version}, package.json says ${pkg_version}" >&2
+            exit 1
+          fi
+          echo "publishing clawgram@${pkg_version}"
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # Publishing the same version twice fails the job anyway; checking first
+      # gives a readable reason instead of a registry error.
+      - name: Version must not already exist on npm
+        run: |
+          pkg_version="$(node -p "require('./package.json').version")"
+          if npm view "clawgram@${pkg_version}" version >/dev/null 2>&1; then
+            echo "clawgram@${pkg_version} is already published — bump the version first" >&2
+            exit 1
+          fi
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

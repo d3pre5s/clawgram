@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "build:test": "tsc -p tsconfig.test.json",
     "test": "npm run build:test && node test/ensure-compiled.mjs && node --test \"dist-test/test/*.test.js\"",
+    "prepublishOnly": "npm run build && npm test",
     "clawgram-cli": "node dist/clawgram-cli.js",
     "clawgram-cli:hello": "node dist/clawgram-cli.js --hello",
     "clawgram-cli:auth": "node dist/clawgram-cli.js --auth"

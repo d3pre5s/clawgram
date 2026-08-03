@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is what the plugin is developed on, 24 is the next LTS line.
+        # The server runs a newer Node than either; keep both green so an
+        # upgrade there never lands as a surprise.
+        node-version: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # `files` in package.json decides what ships. A build that succeeds but
+      # produces an empty or partial tarball is a broken release, so pack here
+      # rather than finding out at publish time.
+      - name: Pack and show what would ship
+        run: |
+          npm pack --dry-run
+          test -f dist/index.js || { echo "dist/index.js missing after build"; exit 1; }

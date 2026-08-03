@@ -617,6 +617,16 @@ or
 npm run clawgram-cli:auth
 ```
 
+## Releases
+
+Every push and pull request is built and tested on Node 22 and 24. Releases are cut by pushing a
+`v<version>` tag: CI then builds from a clean checkout and publishes to npm with
+[provenance](https://docs.npmjs.com/generating-provenance-statements), so each published tarball is
+verifiably tied to the commit it was built from. The tag and `package.json` must agree or the job
+refuses to publish.
+
+Changes per version: [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
 MIT
