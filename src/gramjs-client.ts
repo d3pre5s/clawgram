@@ -349,6 +349,29 @@ export class GramJsClientManager {
   }
 
   /**
+   * Adds or clears this account's reaction on a message.
+   *
+   * Telegram models "no reaction" as an empty reaction list rather than a
+   * separate call, so removal is the same request with nothing in it. A plain
+   * account may hold only one reaction per message, which is why removing a
+   * specific emoji and clearing collapse to the same thing here.
+   */
+  async sendReaction(args: {
+    target: unknown;
+    messageId: number;
+    emoji: string;
+    remove: boolean;
+  }): Promise<void> {
+    const resolved = await this.resolvePeer(args.target);
+
+    await this.client.invoke(new Api.messages.SendReaction({
+      peer: resolved.peer as any,
+      msgId: args.messageId,
+      reaction: args.remove ? [] : [ new Api.ReactionEmoji({ emoticon: args.emoji }) ],
+    }));
+  }
+
+  /**
    * Reads a window of chat history.
    *
    * Telegram returns newest first and `offsetDate` means "older than this", so

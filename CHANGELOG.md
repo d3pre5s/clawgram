@@ -9,6 +9,19 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Added
+
+- **Emoji reactions.** The `react` action of the message tool adds or clears this account's
+  reaction on a message, following the tool contract: an empty `emoji` clears, and `remove: true`
+  clears but still requires a non-empty `emoji`. The chat and message are taken from tool context
+  when not passed explicitly, so reacting in place needs no arguments beyond the emoji.
+
+### Fixed
+
+- `capabilities.reactions` was `true` while nothing implemented reactions — the channel promised
+  the Gateway a capability that failed when the agent used it. The flag and the action are now
+  tied together by a test in both directions.
+
 ## [2.1.1] — 2026-08-03
 
 No runtime changes — the plugin code is identical to 2.1.0. This release exists to exercise

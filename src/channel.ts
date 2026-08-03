@@ -31,6 +31,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
+import { parseReactionParams } from "./reactions";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
@@ -141,11 +142,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
         "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
+        "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
       ],
       messageToolCapabilities: () => [
         "clawgram can reply in the current Telegram conversation when no explicit target is provided.",
         "clawgram can send text messages to direct chats and groups from the connected personal account.",
         "clawgram supports Telegram forum topics via the `threadId` parameter on group sends.",
+        "clawgram can add and clear emoji reactions on messages. A plain Telegram account holds one reaction per message, so a new emoji replaces the previous one.",
       ],
     },
 
@@ -1075,7 +1078,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         }
 
         return {
-          actions: [ "send", "read", "participants", "joins" ],
+          actions: [ "send", "read", "participants", "joins", "react" ],
           capabilities: [],
         };
       },
@@ -1215,6 +1218,51 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             accountId: joinsAccountId,
             count: selected.length,
             joins: selected,
+          });
+        }
+
+        // A reaction is an outbound act on someone else's message, so it is
+        // gated like sending rather than like reading — and it respects
+        // `dryRun`, which reading does not need to.
+        if (action === "react") {
+          const reactionParams = parseReactionParams(params, toolContext);
+          const reactionAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!reactionAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          actionLog.info("clawgram handleAction react", {
+            accountId: reactionAccountId,
+            dryRun: dryRun === true,
+            target: reactionParams.target,
+            messageId: reactionParams.messageId,
+            remove: reactionParams.remove,
+          });
+
+          if (dryRun === true) {
+            return jsonResult({
+              ok: true,
+              dryRun: true,
+              accountId: reactionAccountId,
+              chatId: reactionParams.target,
+              messageId: reactionParams.messageId,
+              removed: reactionParams.remove,
+            });
+          }
+
+          const reactionGram = runtimes.get(reactionAccountId);
+          if (!reactionGram) {
+            throw new Error(`clawgram: runtime not found for account ${reactionAccountId}`);
+          }
+
+          await reactionGram.sendReaction(reactionParams);
+
+          return jsonResult({
+            ok: true,
+            accountId: reactionAccountId,
+            chatId: reactionParams.target,
+            messageId: reactionParams.messageId,
+            removed: reactionParams.remove,
           });
         }
 
