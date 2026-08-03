@@ -15,6 +15,9 @@ recorded in `git log` only.
   ClawHub fell two versions behind because of it. The step skips itself when `CLAWHUB_TOKEN` is
   unset — npm still publishes — and skips again when ClawHub already carries the version, so
   re-running a release is harmless.
+- **`npm run release:clawhub`** publishes to ClawHub from a local machine, for when the token is
+  deliberately kept out of GitHub. Same guards as the CI step: refuses without a login or a tag,
+  points at the commit npm was built from, no-ops when the version is already there.
 
 ## [2.2.2] — 2026-08-03
 
