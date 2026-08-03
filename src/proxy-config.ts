@@ -1,4 +1,5 @@
 import type { TelegramClient } from "telegram";
+import type { SecretRefLike } from "./secret-refs";
 
 type TelegramClientParams = ConstructorParameters<typeof TelegramClient>[3];
 
@@ -12,6 +13,19 @@ type TelegramClientParams = ConstructorParameters<typeof TelegramClient>[3];
 export type TelegramProxyConfig = Extract<NonNullable<TelegramClientParams["proxy"]>, {
   socksType: 4 | 5;
 }>;
+
+/**
+ * The proxy as it is written in the config: credentials may still be secret
+ * references. `TelegramProxyConfig` is the resolved form GramJS accepts, and
+ * the two are deliberately different types so an unresolved reference cannot
+ * reach the client by accident.
+ */
+export type RawTelegramProxyConfig =
+  Omit<TelegramProxyConfig, "username" | "password">
+  & {
+    username?: string | SecretRefLike;
+    password?: string | SecretRefLike;
+  };
 
 export type TelegramClientOptions = {
   connectionRetries: number;
@@ -63,13 +77,34 @@ function resolveSocksType(value: unknown): 4 | 5 {
   return socksType;
 }
 
-function resolveProxyCredential(value: unknown, field: "username" | "password"): string | undefined {
+/** Shape check only; the real resolution happens in `secret-refs`. */
+function asProxySecretRef(value: unknown): SecretRefLike | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.source === "string"
+    && typeof candidate.provider === "string"
+    && typeof candidate.id === "string"
+    ? { source: candidate.source, provider: candidate.provider, id: candidate.id }
+    : undefined;
+}
+
+function resolveProxyCredential(
+  value: unknown,
+  field: "username" | "password",
+): string | SecretRefLike | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
 
+  // A SecretRef is resolved later, at account start-up. Rejecting it here
+  // would make the config unloadable before the resolver ever runs.
+  const ref = asProxySecretRef(value);
+  if (ref) {
+    return ref;
+  }
+
   if (typeof value !== "string") {
-    throw new Error(`clawgram: proxy.${field} must be a string.`);
+    throw new Error(`clawgram: proxy.${field} must be a string or a secret reference.`);
   }
 
   return value.trim() ? value : undefined;
@@ -94,7 +129,7 @@ function resolveProxyTimeout(value: unknown): number | undefined {
  * configured but unusable, so a broken proxy never silently falls back to a
  * direct connection.
  */
-function resolveProxyConfig(value: unknown): TelegramProxyConfig | undefined {
+function resolveProxyConfig(value: unknown): RawTelegramProxyConfig | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -132,14 +167,36 @@ function buildTelegramClientOptions(proxy: unknown): TelegramClientOptions {
     };
   }
 
+  // Secret references are substituted before the client is built, and the
+  // account start-up refuses to continue while any remain — so by here the
+  // credentials are strings. The cast states that, and `assertProxyResolved`
+  // enforces it rather than trusting it.
+  assertProxyResolved(resolved);
+
   return {
     connectionRetries: CONNECTION_RETRIES,
-    proxy: resolved,
+    proxy: resolved as TelegramProxyConfig,
   };
 }
 
+/**
+ * Defence in depth. If an unresolved reference ever reached GramJS it would be
+ * sent as the literal string "[object Object]" — a credential-shaped value
+ * travelling to a proxy server.
+ */
+function assertProxyResolved(proxy: RawTelegramProxyConfig): void {
+  for (const field of [ "username", "password" ] as const) {
+    const value = proxy[ field ];
+    if (value !== undefined && typeof value !== "string") {
+      throw new Error(`clawgram: proxy.${field} is still an unresolved secret reference.`);
+    }
+  }
+}
+
 /** Credential-free proxy summary safe to log. */
-function describeProxy(proxy: TelegramProxyConfig | undefined): string | undefined {
+function describeProxy(
+  proxy: Pick<RawTelegramProxyConfig, "socksType"> | undefined,
+): string | undefined {
   return proxy ? `socks${proxy.socksType}` : undefined;
 }
 

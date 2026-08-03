@@ -586,14 +586,39 @@ that means in practice, and what the code does about it:
 
 | Concern | Where it lives | What the plugin does |
 | --- | --- | --- |
-| `apiHash`, `sessionString` | `openclaw.json` | Written there by `--auth`. Never logged. Since 2.1.0 the session string is not printed after login either — only shown, behind an explicit warning, if you decline the automatic config write |
-| Proxy password | `accounts.*.proxy.password` | Marked `sensitive` in `uiHints`; diagnostics say `socks4`/`socks5` and nothing more. An invalid proxy fails the account rather than falling back to a direct connection, which would leak the host IP to Telegram |
+| `apiHash`, `sessionString` | `openclaw.json`, or a secret store | Written there by `--auth`. Never logged. Since 2.1.0 the session string is not printed after login either — only shown, behind an explicit warning, if you decline the automatic config write. Since 2.2.0 both accept a **SecretRef** instead of a literal, so the credential need not sit in the config file at all |
+| Proxy password | `accounts.*.proxy.password`, or a secret store | Also accepts a SecretRef since 2.2.0. Marked `sensitive` in `uiHints`; diagnostics say `socks4`/`socks5` and nothing more. An invalid proxy fails the account rather than falling back to a direct connection, which would leak the host IP to Telegram |
 | Message bodies | channel logs | **Not logged.** Outbound sends record recipient, ids and `textLength`. Until 2.1.0 the full outbound text was written to the channel log — if you ran 2.0.x, treat those journal entries as containing private correspondence |
 | Read scope | `accounts.*.readChats` | History and membership reads are confined to the listed chats. Absent means no restriction; an empty array denies everything |
 | Who may talk to it | `allowFrom`, `groups.*.groupPolicy` | Direct-message senders and group behaviour are allowlisted; `mention` limits group replies to explicit mentions |
 
 Two static tests (`test/no-secret-logging.test.ts`) fail the build if a message body or a credential
 is ever added back to a log call, or if the auth flow prints the session string unprompted.
+
+### Keeping credentials out of the config file
+
+`apiHash`, `sessionString`, `proxy.username` and `proxy.password` accept a
+[SecretRef](https://docs.openclaw.ai/gateway/secrets) in place of a literal value:
+
+```json
+{
+  "channels": {
+    "clawgram": {
+      "accounts": {
+        "default": {
+          "apiId": 12345678,
+          "apiHash": { "source": "file", "provider": "corp", "id": "/telegram/api-hash" },
+          "sessionString": { "source": "file", "provider": "corp", "id": "/telegram/session" }
+        }
+      }
+    }
+  }
+}
+```
+
+References are resolved once per account at start-up. If one cannot be resolved the account fails to
+start, naming the field but never the value — and the client refuses to be constructed while any
+reference remains, so an unresolved secret can never travel to Telegram as a credential.
 
 Found a security issue? Open an issue at
 [github.com/d3pre5s/clawgram/issues](https://github.com/d3pre5s/clawgram/issues) — or, if it is

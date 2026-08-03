@@ -1,5 +1,6 @@
 import { GramJsClientManager } from './gramjs-client';
-import type { TelegramProxyConfig } from './proxy-config';
+import type { RawTelegramProxyConfig } from './proxy-config';
+import type { SecretRefLike } from './secret-refs';
 
 export type RuntimeMap = Map<string, GramJsClientManager>;
 
@@ -13,8 +14,13 @@ export type GroupConfig = {
 
 export type PluginConfig = {
   apiId: number;
-  apiHash: string;
-  sessionString: string;
+  /**
+   * Credentials as configured: either the literal value or a SecretRef that
+   * account start-up resolves. The client is only ever handed the resolved
+   * form — see `secret-refs.ts`.
+   */
+  apiHash: string | SecretRefLike;
+  sessionString: string | SecretRefLike;
   allowFrom: string[];
   groups: Record<string, GroupConfig>;
   /**
@@ -25,7 +31,7 @@ export type PluginConfig = {
   readChats?: string[];
   accountId?: string;
   enabled?: boolean;
-  proxy?: TelegramProxyConfig;
+  proxy?: RawTelegramProxyConfig;
 };
 
 export type ChatType = "direct" | "group" | "channel";

@@ -11,6 +11,12 @@ recorded in `git log` only.
 
 ### Added
 
+- **SecretRefs for credentials.** `apiHash`, `sessionString`, `proxy.username` and `proxy.password`
+  accept `{ source, provider, id }` in place of a literal, resolved once per account at start-up.
+  Previously these could only be plaintext in `openclaw.json` — including `sessionString`, a bearer
+  credential for the entire Telegram account. An unresolvable reference fails the account and names
+  the field, never the value, and the client refuses construction while any reference remains, so an
+  unresolved secret cannot reach Telegram as `"[object Object]"`.
 - **Chat metadata.** The `chatInfo` action (also `getChatInfo`, `chatMetadata`, `getChatMetadata`)
   reports what a chat is: title, type (direct/group/supergroup/channel), member count, description,
   whether it is a forum, the pinned message id, and — for direct chats — whether the other side is

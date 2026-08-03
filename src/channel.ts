@@ -33,6 +33,13 @@ import {
 } from "./joins";
 import { parseReactionParams } from "./reactions";
 import { describeChat, parseChatInfoParams } from "./chat-info";
+import {
+  applyAccountSecrets,
+  collectAccountSecretRefs,
+  readSecretInput,
+} from "./secret-refs";
+import { resolveSecretRefValues } from "openclaw/plugin-sdk/secret-ref-runtime";
+import type { SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
@@ -170,8 +177,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
         return {
           apiId: Number(account?.apiId),
-          apiHash: String(account?.apiHash ?? ""),
-          sessionString: String(account?.sessionString ?? ""),
+          apiHash: readSecretInput(account?.apiHash),
+          sessionString: readSecretInput(account?.sessionString),
           allowFrom: resolveAllowFrom(account?.allowFrom),
           groups: resolveGroups(account?.groups),
           readChats: readAccountReadChats(account),
@@ -196,7 +203,36 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           runtimes.delete(accountId);
         }
 
-        const gram = new GramJsClientManager(account);
+        // Credentials may be SecretRefs rather than literals. Resolve them here,
+        // once per account start, and hand the client only resolved values.
+        // Failing loudly beats starting with a blank credential and getting an
+        // authentication error that says nothing about the real cause.
+        const secretRefs = collectAccountSecretRefs(account);
+        let resolvedAccount = account;
+        if (secretRefs.length > 0) {
+          // `source` is whatever the config says; OpenClaw validates it and
+          // reports an unknown source better than a local check would.
+          const values = await resolveSecretRefValues(secretRefs as SecretRef[], {
+            config: cfg,
+            env: process.env,
+          });
+          const applied = applyAccountSecrets(account, values);
+          if (applied.missing.length > 0) {
+            // Field names only. The value is what we are protecting, and the
+            // reference itself names a location in the secret store.
+            throw new Error(
+              `clawgram: could not resolve secret references for ${applied.missing.join(", ")}`,
+            );
+          }
+
+          log?.info?.("clawgram resolved secret references", {
+            accountId,
+            fields: secretRefs.length,
+          });
+          resolvedAccount = applied.account;
+        }
+
+        const gram = new GramJsClientManager(resolvedAccount);
         await gram.start();
         runtimes.set(accountId, gram);
         const pairing = createChannelPairingController({

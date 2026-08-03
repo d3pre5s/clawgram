@@ -2,6 +2,7 @@ import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import type { PluginConfig, ResolvedTelegramTarget, SendMediaArgs, SendTextArgs, ChatType } from "./types.ts";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
+import { hasUnresolvedSecretRef } from "./secret-refs";
 import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams } from "./history";
 
 function toStringId(value: unknown): string | undefined {
@@ -196,12 +197,24 @@ export class GramJsClientManager {
   private started = false;
 
   constructor(private readonly config: PluginConfig) {
+    // Credentials may be written as SecretRefs; account start-up resolves them
+    // before constructing this. Refusing here rather than trusting the caller
+    // keeps an unresolved reference from being sent to Telegram as the literal
+    // string "[object Object]" — which comes back as a complaint about the
+    // credential, not about the secret that failed to resolve.
+    if (hasUnresolvedSecretRef(config)) {
+      throw new Error(
+        "clawgram: account credentials still contain unresolved secret references; "
+        + "they must be resolved before the client is created",
+      );
+    }
+
     const clientOptions = buildTelegramClientOptions(config.proxy);
     this.proxy = clientOptions.proxy;
     this.client = new TelegramClient(
-      new StringSession(config.sessionString),
+      new StringSession(config.sessionString as string),
       config.apiId,
-      config.apiHash,
+      config.apiHash as string,
       clientOptions
     );
   }
