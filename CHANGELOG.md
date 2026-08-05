@@ -9,6 +9,17 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-08-06
+
+### Fixed
+
+- **`replyParseMode` is accepted by the manifest schema.** 2.3.1 taught the
+  code to read the key, but the account schema kept
+  `additionalProperties: false` without declaring it, so writing the
+  documented setting made `openclaw config validate` fail on production and
+  the change had to be rolled back. Same shape as the `readChats` gap before
+  1.3.1 — now covered by tests that validate every value the code accepts.
+
 ## [2.3.1] — 2026-08-06
 
 ### Added
@@ -197,7 +208,8 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/d3pre5s/clawgram/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/d3pre5s/clawgram/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/d3pre5s/clawgram/compare/v2.2.2...v2.3.0
 [2.2.2]: https://github.com/d3pre5s/clawgram/compare/v2.2.1...v2.2.2

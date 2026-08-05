@@ -239,3 +239,29 @@ describe("plugin version is declared consistently", () => {
     );
   });
 });
+
+/**
+ * A config key the code reads but the manifest schema rejects is worse than
+ * a missing feature: `config validate` fails on production and the operator
+ * has to roll back a config they were told to write. It happened to
+ * `readChats` before 1.3.1 and again to `replyParseMode` on the day 2.3.1
+ * shipped — the code honoured it, the schema refused it.
+ */
+describe("account schema accepts what the code reads", () => {
+  test("replyParseMode is allowed with every value the code normalizes", () => {
+    for (const mode of [ "markdown", "md", "html" ]) {
+      const result = validateAccount({ ...BASE_ACCOUNT, replyParseMode: mode }) as ValidationResult;
+      assert.equal(result.ok, true, `expected ${mode} to validate: ${JSON.stringify((result as any).errors ?? [])}`);
+    }
+  });
+
+  test("replyParseMode is optional — absence stays valid", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT }) as ValidationResult;
+    assert.equal(result.ok, true);
+  });
+
+  test("an unknown parse mode is refused by the schema, not at send time", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, replyParseMode: "bbcode" }) as ValidationResult;
+    assert.equal(result.ok, false);
+  });
+});

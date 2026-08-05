@@ -2,7 +2,7 @@
   "id": "clawgram",
   "name": "Clawgram",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -325,6 +325,15 @@
                 "joinsJournalPath": {
                   "type": "string",
                   "description": "Where joins observed for this account are journalled. Defaults to a per-account file under the OpenClaw state directory."
+                },
+                "replyParseMode": {
+                  "type": "string",
+                  "enum": [
+                    "markdown",
+                    "md",
+                    "html"
+                  ],
+                  "description": "Parse mode for replies (2.3.1). The send action takes parseMode per call; the reply pipeline has no per-call slot, so the reply format is configured here. Absent means plain text."
                 }
               },
               "required": [
