@@ -88,3 +88,48 @@ describe("resolveAccount carries the reply format through", () => {
     assert.equal(resolved.replyParseMode, undefined);
   });
 });
+
+import { GramJsClientManager } from "../src/gramjs-client";
+
+/**
+ * The last unproven link in the chain: does sendText actually hand parseMode
+ * to GramJS? Three releases were spent on layers above this one, each correct
+ * in isolation, so this asserts on the call itself.
+ */
+describe("sendText hands parseMode to GramJS", () => {
+  // The constructor builds a real StringSession, which a unit test has no
+  // business creating: the object is built from the prototype so the method
+  // and the getter can be exercised on their own.
+  const build = (replyParseMode?: string) => {
+    const mgr = Object.create(GramJsClientManager.prototype) as any;
+    mgr.config = { apiId: 1, apiHash: "h", sessionString: "s", allowFrom: ["*"], groups: {},
+      ...(replyParseMode ? { replyParseMode } : {}) };
+    const calls: any[] = [];
+    (mgr as any).client = { sendMessage: async (_peer: unknown, args: unknown) => { calls.push(args); return { id: 1 }; } };
+    (mgr as any).resolvePeer = async () => ({ peer: {}, messageThreadId: undefined });
+    return { mgr, calls };
+  };
+
+  it("passes md for markdown", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendText({ target: "x", text: "[a](u)", parseMode: "markdown" } as any);
+    assert.equal(calls[0].parseMode, "md");
+  });
+
+  it("passes html for html", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendText({ target: "x", text: "<a href=u>a</a>", parseMode: "html" } as any);
+    assert.equal(calls[0].parseMode, "html");
+  });
+
+  it("omits the key entirely when no mode is given", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendText({ target: "x", text: "plain" } as any);
+    assert.equal("parseMode" in calls[0], false);
+  });
+
+  it("exposes the account setting for the reply path", () => {
+    const { mgr } = build("markdown");
+    assert.equal(mgr.replyParseMode, "markdown");
+  });
+});
