@@ -32,3 +32,28 @@ describe("normalizeParseMode", () => {
     assert.throws(() => normalizeParseMode("markdownv2"), /invalid parseMode/);
   });
 });
+
+import { resolveReplyParseMode } from "../src/helpers";
+
+describe("resolveReplyParseMode (reply pipeline, 2.3.1)", () => {
+  const withMode = (m: unknown) => ({ channels: { clawgram: { accounts: { default: { replyParseMode: m } } } } });
+
+  it("absent means plain text — pre-2.3.1 behaviour", () => {
+    assert.equal(resolveReplyParseMode({ channels: { clawgram: { accounts: { default: {} } } } }, "default"), undefined);
+    assert.equal(resolveReplyParseMode({}, "default"), undefined);
+  });
+
+  it("reads markdown and html from the account config", () => {
+    assert.equal(resolveReplyParseMode(withMode("markdown"), "default"), "markdown");
+    assert.equal(resolveReplyParseMode(withMode("md"), "default"), "markdown");
+    assert.equal(resolveReplyParseMode(withMode("html"), "default"), "html");
+  });
+
+  it("falls back to the channel level when no account entry exists", () => {
+    assert.equal(resolveReplyParseMode({ channels: { clawgram: { replyParseMode: "html" } } }, "default"), "html");
+  });
+
+  it("throws on an invalid value at config-read time", () => {
+    assert.throws(() => resolveReplyParseMode(withMode("bbcode"), "default"), /invalid parseMode/);
+  });
+});

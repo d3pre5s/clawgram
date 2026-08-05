@@ -412,6 +412,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             messageThreadId?: number;
           }) => {
             const targets = [ conversationTarget, ...conversationFallbackTargets ];
+            // Replies have no per-call parseMode slot — the format is an
+            // account setting (2.3.1); absent keeps plain text.
+            const replyParseMode = gram.replyParseMode;
             let lastError: unknown;
 
             for (const target of targets) {
@@ -421,6 +424,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   text: args.text,
                   replyToMessageId: args.replyToMessageId,
                   messageThreadId: args.messageThreadId,
+                  parseMode: replyParseMode,
                 });
               } catch (error) {
                 lastError = error;
@@ -1574,6 +1578,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           targetKind,
           replyToMessageId: resolveReplyToMessageIdForTarget(ctx.to, ctx.replyToId),
           messageThreadId,
+          parseMode: gram.replyParseMode,
         });
 
         actionLog.info("clawgram outbound sendText completed", {

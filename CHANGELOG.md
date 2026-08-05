@@ -9,6 +9,18 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-08-06
+
+### Added
+
+- **`replyParseMode` on the account** (`markdown` / `md` / `html`) — the
+  format for replies. 2.3.0 added `parseMode` to the `send` action, but a
+  reply to a mention goes through the reply pipeline, which has no
+  per-call slot: markup in a reply reached the recipient as raw brackets.
+  The value is validated when read, so a typo fails at start-up rather
+  than shipping `<a href=…>` to a live human. Absent means plain text,
+  exactly as before 2.3.1.
+
 ## [2.3.0] — 2026-08-06
 
 ### Added
@@ -185,7 +197,8 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/d3pre5s/clawgram/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/d3pre5s/clawgram/compare/v2.2.2...v2.3.0
 [2.2.2]: https://github.com/d3pre5s/clawgram/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/d3pre5s/clawgram/compare/v2.2.0...v2.2.1

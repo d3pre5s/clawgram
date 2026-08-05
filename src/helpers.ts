@@ -638,6 +638,23 @@ function normalizeParseMode(raw: unknown): "markdown" | "html" | undefined {
   throw new Error(`clawgram: invalid parseMode "${String(raw)}" — use "markdown" or "html"`);
 }
 
+/**
+ * Reply parse mode for the inbound reply path (2.3.1). The action `send`
+ * takes parseMode per-call, but replies to a mention run through the reply
+ * pipeline, which has no per-call slot — so the format is a channel setting:
+ * `channels.clawgram.accounts.<id>.replyParseMode: "markdown" | "html"`.
+ * Absent means plain text, exactly as before 2.3.1. An invalid value throws
+ * at config-read time, loud and early, rather than shipping raw markup.
+ */
+function resolveReplyParseMode(
+  cfg: unknown,
+  accountId: string,
+): "markdown" | "html" | undefined {
+  const channel = (cfg as any)?.channels?.["clawgram"];
+  const account = channel?.accounts?.[accountId] ?? channel;
+  return normalizeParseMode(account?.replyParseMode);
+}
+
 export {
   normalizeOutboundTarget,
   resolveConfiguredAccountId,
@@ -670,4 +687,5 @@ export {
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
   normalizeParseMode,
+  resolveReplyParseMode,
 };

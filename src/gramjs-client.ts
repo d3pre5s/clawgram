@@ -1,6 +1,7 @@
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import type { PluginConfig, ResolvedTelegramTarget, SendMediaArgs, SendTextArgs, ChatType } from "./types.ts";
+import { normalizeParseMode } from "./helpers";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
 import { hasUnresolvedSecretRef } from "./secret-refs";
 import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams } from "./history";
@@ -348,6 +349,14 @@ export class GramJsClientManager {
       messageThreadId: parsedTarget.messageThreadId,
       chatType: inferChatTypeFromRaw(chatId ?? raw)
     };
+  }
+
+  /**
+   * Reply format for this account, validated once at read time.
+   * The reply pipeline has no per-call parseMode slot (2.3.1).
+   */
+  get replyParseMode(): "markdown" | "html" | undefined {
+    return normalizeParseMode((this.config as { replyParseMode?: unknown }).replyParseMode);
   }
 
   async sendText(args: SendTextArgs) {

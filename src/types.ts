@@ -15,6 +15,12 @@ export type GroupConfig = {
 export type PluginConfig = {
   apiId: number;
   /**
+   * Parse mode for replies (2.3.1). The `send` action takes parseMode
+   * per call; the reply pipeline has no per-call slot, so the format is
+   * configured on the account. Absent = plain text, as before 2.3.1.
+   */
+  replyParseMode?: "markdown" | "md" | "html";
+  /**
    * Credentials as configured: either the literal value or a SecretRef that
    * account start-up resolves. The client is only ever handed the resolved
    * form — see `secret-refs.ts`.
