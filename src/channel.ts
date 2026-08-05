@@ -69,6 +69,7 @@ import {
   isReplyToSelfMessage,
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
+  normalizeParseMode,
 } from './helpers';
 import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
@@ -1361,6 +1362,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
         const replyToId = readStringOrNumberParam(params, "replyToId") ?? readStringOrNumberParam(params, "replyTo");
         const threadId = readStringOrNumberParam(params, "threadId");
         const messageThreadId = parseOptionalThreadId(threadId);
+        const parseMode = normalizeParseMode((params as Record<string, unknown> | undefined)?.parseMode);
+
         actionLog.info("clawgram handleAction send", {
           requestedAccountId: accountId,
           dryRun: dryRun === true,
@@ -1369,6 +1372,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           targetKind,
           replyToId: replyToId ?? null,
           threadId: threadId ?? null,
+          parseMode: parseMode ?? null,
           toolContextCurrentChannelId: toolContext?.currentChannelId ?? null,
         });
 
@@ -1467,6 +1471,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           targetKind,
           replyToMessageId: resolveReplyToMessageIdForTarget(rawTo, replyToId),
           messageThreadId,
+          parseMode,
         });
 
         if (

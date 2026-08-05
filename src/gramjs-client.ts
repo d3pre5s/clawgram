@@ -357,6 +357,9 @@ export class GramJsClientManager {
 
     return this.client.sendMessage(resolved.peer as any, {
       message: args.text,
+      // GramJS accepts "md" | "html"; absent keeps plain text so every
+      // pre-2.3.0 caller behaves exactly as before.
+      ...(args.parseMode ? { parseMode: args.parseMode === "markdown" ? "md" : "html" } : {}),
       ...replyParams,
     });
   }

@@ -68,6 +68,8 @@ export type SendTextArgs = {
   targetKind?: "user" | "group" | "channel";
   replyToMessageId?: number;
   messageThreadId?: number;
+  /** GramJS parse mode; absent = plain text, exactly as before 2.3.0. */
+  parseMode?: "markdown" | "html";
 };
 
 export type SendMediaArgs = {

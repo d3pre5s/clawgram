@@ -9,8 +9,17 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-08-06
+
 ### Added
 
+- **`parseMode` on the `send` action** (`"markdown"` / `"md"` / `"html"`).
+  The value is validated at the action boundary — an unknown mode fails
+  loudly instead of delivering markup as literal text to a live human —
+  and reaches GramJS as its `md`/`html` parse mode. Absent means plain
+  text: every pre-2.3.0 caller behaves exactly as before. Requested by
+  the owner so assistant digests can carry real links (`[title](url)`)
+  instead of bare URLs.
 - **ClawHub publishing runs in the release pipeline**, in the step after npm. It was manual, and
   ClawHub fell two versions behind because of it. The step skips itself when `CLAWHUB_TOKEN` is
   unset — npm still publishes — and skips again when ClawHub already carries the version, so
@@ -176,7 +185,8 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.2.2...HEAD
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/d3pre5s/clawgram/compare/v2.2.2...v2.3.0
 [2.2.2]: https://github.com/d3pre5s/clawgram/compare/v2.2.1...v2.2.2
 [2.2.1]: https://github.com/d3pre5s/clawgram/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/d3pre5s/clawgram/compare/v2.1.0...v2.2.0

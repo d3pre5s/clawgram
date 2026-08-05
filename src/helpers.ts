@@ -624,6 +624,20 @@ async function resolveSenderProfileWithTimeout(message: any, input?: {
   return await withTimeout(resolveSenderProfile(message, input), timeoutMs) ?? {};
 }
 
+/**
+ * Send accepts parseMode so drafts can carry real links ([text](url)) instead
+ * of bare URLs. The value reaches GramJS, so it is validated here: an unknown
+ * mode fails loudly at the action boundary rather than silently sending
+ * markup as literal text to a live human.
+ */
+function normalizeParseMode(raw: unknown): "markdown" | "html" | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const value = String(raw).toLowerCase();
+  if (value === "md" || value === "markdown") return "markdown";
+  if (value === "html") return "html";
+  throw new Error(`clawgram: invalid parseMode "${String(raw)}" — use "markdown" or "html"`);
+}
+
 export {
   normalizeOutboundTarget,
   resolveConfiguredAccountId,
@@ -655,4 +669,5 @@ export {
   isReplyToSelfMessage,
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
+  normalizeParseMode,
 };
