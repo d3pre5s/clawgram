@@ -187,6 +187,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
           enabled: account?.enabled,
           accountId,
           proxy: resolveProxyConfig(account?.proxy),
+          // Field-by-field construction means every new account setting has to
+          // be listed here as well: 2.3.1 shipped replyParseMode read by the
+          // client from a config object this function had already stripped it
+          // from, so the setting validated, deployed and did nothing.
+          replyParseMode: account?.replyParseMode,
         };
       },
     },

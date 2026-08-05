@@ -9,6 +9,18 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.3.3] — 2026-08-06
+
+### Fixed
+
+- **`replyParseMode` actually reaches the client.** 2.3.1 added the setting
+  and 2.3.2 taught the schema to accept it, but `resolveAccount` builds the
+  plugin config field by field and never copied it — so the setting
+  validated, deployed, restarted and did nothing, twice. Now carried
+  through, with a regression test on `resolveAccount` itself. **Rule for
+  every future account setting: `src/` + manifest schema + `resolveAccount`
+  + tests, in one commit.**
+
 ## [2.3.2] — 2026-08-06
 
 ### Fixed
@@ -208,7 +220,8 @@ Never published — superseded by 2.1.0 the same day.
 
 - The test build could emit no test files and still report green; it now fails loudly.
 
-[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/d3pre5s/clawgram/compare/v2.3.3...HEAD
+[2.3.3]: https://github.com/d3pre5s/clawgram/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/d3pre5s/clawgram/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/d3pre5s/clawgram/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/d3pre5s/clawgram/compare/v2.2.2...v2.3.0

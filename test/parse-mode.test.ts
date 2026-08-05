@@ -57,3 +57,34 @@ describe("resolveReplyParseMode (reply pipeline, 2.3.1)", () => {
     assert.throws(() => resolveReplyParseMode(withMode("bbcode"), "default"), /invalid parseMode/);
   });
 });
+
+import { createChannelPlugin } from "../src/channel";
+import type { RuntimeMap } from "../src/types";
+
+/**
+ * resolveAccount builds PluginConfig field by field, so a setting missing
+ * from that list is silently dropped between a valid config and the client
+ * that reads it — which is exactly how 2.3.1 shipped a working, deployed and
+ * completely inert replyParseMode.
+ */
+describe("resolveAccount carries the reply format through", () => {
+  const channel = createChannelPlugin(new Map() as RuntimeMap) as any;
+  const cfgWith = (mode: unknown) => ({
+    channels: { clawgram: { accounts: { default: {
+      apiId: 1, apiHash: "h", sessionString: "s", allowFrom: ["*"], replyParseMode: mode,
+    } } } },
+  });
+
+  it("keeps replyParseMode on the resolved account", () => {
+    const resolved = channel.config.resolveAccount(cfgWith("markdown"), "default");
+    assert.equal(resolved.replyParseMode, "markdown");
+  });
+
+  it("leaves it undefined when unset", () => {
+    const resolved = channel.config.resolveAccount(
+      { channels: { clawgram: { accounts: { default: { apiId: 1, apiHash: "h", sessionString: "s" } } } } },
+      "default",
+    );
+    assert.equal(resolved.replyParseMode, undefined);
+  });
+});
