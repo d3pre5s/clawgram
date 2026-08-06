@@ -1527,23 +1527,40 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
     },
 
     outbound: {
-      async resolveTarget(ctx: { accountId: string; to: string }) {
-        actionLog.info("clawgram outbound resolveTarget", {
-          accountId: ctx.accountId,
-          rawTo: ctx.to,
-        });
-        const gram = runtimes.get(ctx.accountId);
-        if (!gram) {
-          throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
+      // Core's agent-delivery path (`--deliver`, subagent announces) calls this
+      // with `to: undefined` whenever a delivery has no explicit target and the
+      // session route yielded none — and it does not catch a rejection from
+      // here. A throw is therefore an unhandled rejection that takes down the
+      // entire gateway process, which is exactly what happened on 2026-08-06
+      // (systemd: Main process exited, status=1). The contract, read from
+      // core's resolveOutboundTargetWithPlugin: answer { ok: false, error } for
+      // anything unresolvable. Never throw.
+      async resolveTarget(ctx: { accountId: string; to?: string }) {
+        try {
+          const raw = typeof ctx.to === "string" ? ctx.to.trim() : "";
+          actionLog.info("clawgram outbound resolveTarget", {
+            accountId: ctx.accountId,
+            rawTo: raw || null,
+          });
+          if (!raw) {
+            return { ok: false as const, error: "clawgram: no delivery target — pass `to` or use a session with a bound chat" };
+          }
+
+          const gram = runtimes.get(ctx.accountId);
+          if (!gram) {
+            return { ok: false as const, error: `clawgram: runtime not found for account ${ctx.accountId}` };
+          }
+
+          const targetKind = inferOutboundTargetKind(raw);
+          const target = normalizeOutboundTarget(raw);
+
+          return {
+            ok: true as const,
+            to: (await gram.resolvePeer(target, { kind: targetKind })).chatId ?? target,
+          };
+        } catch (err) {
+          return { ok: false as const, error: `clawgram: target resolution failed: ${String(err)}` };
         }
-
-        const targetKind = inferOutboundTargetKind(ctx.to);
-        const target = normalizeOutboundTarget(ctx.to);
-
-        return {
-          ok: true,
-          to: (await gram.resolvePeer(target, { kind: targetKind })).chatId ?? target,
-        };
       },
 
       async sendText(ctx: {

@@ -9,6 +9,21 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.4.2] — 2026-08-06
+
+### Fixed
+
+- **`outbound.resolveTarget` can no longer take down the gateway.** Core's
+  agent-delivery path (`--deliver`, subagent completion announces) calls it
+  with `to: undefined` when a delivery has no explicit target and the
+  session route yields none — and does not catch a rejection from the hook.
+  The old code called `.trim()` through the target-kind helper and threw,
+  which surfaced as an unhandled rejection and killed the whole gateway
+  process (systemd restart, live case 2026-08-06 18:27 UTC: a research
+  subagent died with it). The hook now never rejects: missing target,
+  missing runtime and resolver failures all answer `{ ok: false, error }`,
+  which is the contract core's own fallback path implements.
+
 ## [2.4.1] — 2026-08-06
 
 ### Fixed
