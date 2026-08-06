@@ -644,6 +644,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   channel: "clawgram",
                   accountId: route.accountId ?? accountId,
                 });
+                // Boundary for the transcript fallback below: only replies
+                // written after this instant may be salvaged. Same clock as
+                // the transcript writer — both live in this process.
+                const dispatchStartedAt = Date.now();
                 const dispatchResult = await dispatchBase.dispatchReplyWithBufferedBlockDispatcher({
                   ctx: ctxPayload,
                   cfg,
@@ -718,7 +722,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   (dispatchCounts.final ?? 0) === 0;
 
                 if (nothingDelivered) {
-                  const fallbackText = readLatestAssistantFallbackFromTranscript(route.sessionKey, storePath);
+                  const fallbackText = readLatestAssistantFallbackFromTranscript(route.sessionKey, storePath, dispatchStartedAt);
                   // A suppressed silent reply legitimately delivers nothing, so
                   // this fallback fires right after it. Without the same check
                   // the token would be read back from the transcript and sent.

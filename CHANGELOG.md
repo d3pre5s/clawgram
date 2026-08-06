@@ -9,6 +9,20 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.4.1] — 2026-08-06
+
+### Fixed
+
+- **The transcript fallback no longer echoes old replies.** It exists to
+  salvage a reply that reached the transcript but not stdout; on a turn
+  that aborted with zero output it instead salvaged the newest entry —
+  by definition from an earlier turn — and re-sent an old answer to a new
+  question. Live case: a turn tripped over a dead background workflow,
+  aborted in 664ms, and the previous reply went out twice to two different
+  questions. The fallback now takes the dispatch start time and refuses
+  anything stamped earlier (or not stamped at all); a static test pins the
+  call site to keep passing it.
+
 ## [2.4.0] — 2026-08-06
 
 ### Added

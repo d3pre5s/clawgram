@@ -102,7 +102,17 @@ function resolveTranscriptPathFromStoreEntry(input: {
   }
 }
 
-function readLatestAssistantFallbackFromTranscript(sessionKey: string, storePath?: string): string | undefined {
+/**
+ * Salvages a reply that reached the transcript but not stdout.
+ *
+ * `notBeforeMs` is the start of the current dispatch. Only entries stamped at
+ * or after it count: on a turn that aborted with zero output, the newest
+ * assistant entry is by definition from an earlier turn, and re-sending it
+ * addresses an old answer to a new question (the 2026-08-06 duplicates,
+ * note 0054 in the control repo). An entry with no parseable timestamp cannot
+ * prove it is fresh, so it does not count either.
+ */
+function readLatestAssistantFallbackFromTranscript(sessionKey: string, storePath?: string, notBeforeMs?: number): string | undefined {
   if (!storePath?.trim()) {
     return undefined;
   }
@@ -128,6 +138,7 @@ function readLatestAssistantFallbackFromTranscript(sessionKey: string, storePath
       try {
         const entry = JSON.parse(lines[ index ]) as {
           type?: string;
+          timestamp?: string;
           message?: {
             role?: string;
             content?: Array<{ type?: string; text?: string }>;
@@ -136,6 +147,15 @@ function readLatestAssistantFallbackFromTranscript(sessionKey: string, storePath
 
         if (entry?.type !== "message" || entry?.message?.role !== "assistant" || !Array.isArray(entry.message.content)) {
           continue;
+        }
+
+        if (notBeforeMs !== undefined) {
+          const stamped = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+          if (!Number.isFinite(stamped) || stamped < notBeforeMs) {
+            // Entries are appended in order; everything below this one is
+            // older still. Stop instead of walking further into the past.
+            return undefined;
+          }
         }
 
         const textPart = entry.message.content.find((part) => part?.type === "text" && typeof part.text === "string" && part.text.trim());
