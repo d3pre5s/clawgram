@@ -9,6 +9,20 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.4.3] — 2026-08-06
+
+### Fixed
+
+- **Subagent announces and `--deliver` reach the chat.** Core's
+  `resolveAgentDeliveryPlanWithSessionRoute` calls `outbound.resolveTarget`
+  without await; an async hook hands it a Promise, `.ok` reads undefined and
+  the error branch crashes on `error.message` — which is why every subagent
+  completion announce into a group session gave up at the retry limit. The
+  hook is now synchronous (peer resolution already happens in `sendText`)
+  and a not-ok result carries an Error-like `error`, since core reads
+  `error.message`. Await-based call sites are unaffected: awaiting a plain
+  value is a no-op.
+
 ## [2.4.2] — 2026-08-06
 
 ### Fixed

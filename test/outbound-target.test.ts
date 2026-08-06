@@ -4,62 +4,70 @@ import { createChannelPlugin } from "../src/channel";
 
 /**
  * `outbound.resolveTarget` is called by core's agent-delivery path — the one
- * behind `openclaw agent --deliver` and subagent completion announces. Core
- * passes `to: undefined` whenever a delivery has no explicit target and the
- * session route yielded none, and it does NOT catch a rejection from this
- * hook: a throw here is an unhandled rejection that takes down the whole
- * gateway process.
+ * behind `openclaw agent --deliver` and subagent completion announces. Three
+ * facts about that caller, all learned the hard way on 2026-08-06:
  *
- * Not hypothetical. 2026-08-06 18:27:51: an agent turn in the management
- * chat session hit exactly this — `TypeError: Cannot read properties of
- * undefined (reading 'trim')` through inferOutboundTargetKind — and systemd
- * logged `Main process exited, status=1` with a stability bundle. A research
- * subagent died with the gateway, and its completion announce then failed
- * on the same path (note 0055 in the control repo).
+ * 1. It passes `to: undefined` when a delivery has no explicit target and the
+ *    session route yielded none, and it does not catch a rejection: a throw
+ *    here is an unhandled rejection that killed the whole gateway process
+ *    (18:27 UTC, systemd status=1, a research subagent died with it).
  *
- * The contract, read from core (`resolveOutboundTargetWithPlugin`): answer
- * `{ ok: false, error }` for anything unresolvable. Never throw.
+ * 2. `resolveAgentDeliveryPlanWithSessionRoute` calls the hook WITHOUT await.
+ *    An async hook hands it a Promise: `promise.ok` is undefined, the error
+ *    branch runs, `promise.error` is undefined, and core's
+ *    `isReservedTargetLiteralError` crashes on `error.message` — which is why
+ *    every subagent announce into the management chat gave up with
+ *    "Cannot read properties of undefined (reading 'message')". The hook must
+ *    return a plain value. (Await of a plain value still works, so the sites
+ *    that do await are unaffected.)
+ *
+ * 3. That same core helper reads `error.message.includes(...)`: the error in
+ *    a not-ok result must be Error-like, not a bare string.
  */
 
 function plugin() {
   return createChannelPlugin(new Map()) as any;
 }
 
-describe("outbound.resolveTarget never rejects", () => {
-  test("undefined target answers ok:false — the gateway-killer case", async () => {
-    const r = await plugin().outbound.resolveTarget({ accountId: "default", to: undefined });
-    assert.equal(r.ok, false);
-    assert.match(String(r.error), /target/i);
-  });
-
-  test("blank target answers ok:false", async () => {
-    const r = await plugin().outbound.resolveTarget({ accountId: "default", to: "   " });
-    assert.equal(r.ok, false);
-  });
-
-  test("missing runtime answers ok:false instead of throwing", async () => {
-    const r = await plugin().outbound.resolveTarget({ accountId: "ghost", to: "123456" });
-    assert.equal(r.ok, false);
-    assert.match(String(r.error), /runtime/i);
-  });
-
-  test("a resolver failure downstream is contained, not propagated", async () => {
-    const runtimes = new Map([ [ "default", {
-      resolvePeer: async () => { throw new Error("FLOOD_WAIT_42"); },
-    } ] ]);
-    const p = createChannelPlugin(runtimes as any) as any;
-    const r = await p.outbound.resolveTarget({ accountId: "default", to: "123456" });
-    assert.equal(r.ok, false);
-    assert.match(String(r.error), /FLOOD_WAIT_42/);
-  });
-
-  test("a valid target still resolves", async () => {
-    const runtimes = new Map([ [ "default", {
-      resolvePeer: async (target: string) => ({ chatId: `resolved:${target}` }),
-    } ] ]);
-    const p = createChannelPlugin(runtimes as any) as any;
-    const r = await p.outbound.resolveTarget({ accountId: "default", to: "123456" });
+describe("outbound.resolveTarget contract with core", () => {
+  test("returns a plain value, not a Promise — core reads it without await", () => {
+    const r = plugin().outbound.resolveTarget({ accountId: "default", to: "123456" });
+    assert.ok(!(r instanceof Promise), "resolveTarget must be synchronous");
     assert.equal(r.ok, true);
-    assert.equal(r.to, "resolved:123456");
+  });
+
+  test("undefined target answers ok:false — the gateway-killer case", () => {
+    const r = plugin().outbound.resolveTarget({ accountId: "default", to: undefined });
+    assert.equal(r.ok, false);
+    assert.equal(typeof r.error?.message, "string", "error must be Error-like: core reads error.message");
+    assert.match(r.error.message, /target/i);
+  });
+
+  test("blank target answers ok:false with an Error-like error", () => {
+    const r = plugin().outbound.resolveTarget({ accountId: "default", to: "   " });
+    assert.equal(r.ok, false);
+    assert.equal(typeof r.error?.message, "string");
+  });
+
+  test("a session-route chat id passes through unchanged", () => {
+    // The announce path feeds back the id the session key carries; changing it
+    // would break the route match.
+    const r = plugin().outbound.resolveTarget({ accountId: "default", to: "-1001503965698" });
+    assert.equal(r.ok, true);
+    assert.equal(r.to, "-1001503965698");
+  });
+
+  test("channel-prefixed targets are normalized", () => {
+    const r = plugin().outbound.resolveTarget({ accountId: "default", to: "clawgram:123456" });
+    assert.equal(r.ok, true);
+    assert.equal(r.to, "123456");
+  });
+
+  test("never throws, whatever arrives", () => {
+    for (const to of [ null, 42, {}, [] ] as any[]) {
+      const r = plugin().outbound.resolveTarget({ accountId: "default", to });
+      assert.equal(r.ok, false, `expected ok:false for ${JSON.stringify(to)}`);
+      assert.equal(typeof r.error?.message, "string");
+    }
   });
 });

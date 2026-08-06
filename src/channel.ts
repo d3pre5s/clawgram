@@ -1528,14 +1528,22 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
 
     outbound: {
       // Core's agent-delivery path (`--deliver`, subagent announces) calls this
-      // with `to: undefined` whenever a delivery has no explicit target and the
-      // session route yielded none — and it does not catch a rejection from
-      // here. A throw is therefore an unhandled rejection that takes down the
-      // entire gateway process, which is exactly what happened on 2026-08-06
-      // (systemd: Main process exited, status=1). The contract, read from
-      // core's resolveOutboundTargetWithPlugin: answer { ok: false, error } for
-      // anything unresolvable. Never throw.
-      async resolveTarget(ctx: { accountId: string; to?: string }) {
+      // hook under three constraints, all learned live on 2026-08-06:
+      //
+      // - `to` may be undefined (no explicit target, session route yielded
+      //   none), and a rejection is NOT caught: a throw here is an unhandled
+      //   rejection that takes down the entire gateway process.
+      // - `resolveAgentDeliveryPlanWithSessionRoute` calls it WITHOUT await.
+      //   An async hook hands core a Promise, `promise.ok` reads undefined and
+      //   the error branch dereferences `promise.error.message` — the crash
+      //   every subagent announce died on. The hook must return a plain value;
+      //   the call sites that do await are unaffected, await of a value works.
+      // - In a not-ok result core reads `error.message`, so the error must be
+      //   Error-like, not a bare string.
+      //
+      // Peer resolution deliberately does not happen here: `sendText` resolves
+      // the peer itself, and doing it here would force the hook async again.
+      resolveTarget(ctx: { accountId: string; to?: string }) {
         try {
           const raw = typeof ctx.to === "string" ? ctx.to.trim() : "";
           actionLog.info("clawgram outbound resolveTarget", {
@@ -1543,23 +1551,12 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
             rawTo: raw || null,
           });
           if (!raw) {
-            return { ok: false as const, error: "clawgram: no delivery target — pass `to` or use a session with a bound chat" };
+            return { ok: false as const, error: new Error("clawgram: no delivery target — pass `to` or use a session with a bound chat") };
           }
 
-          const gram = runtimes.get(ctx.accountId);
-          if (!gram) {
-            return { ok: false as const, error: `clawgram: runtime not found for account ${ctx.accountId}` };
-          }
-
-          const targetKind = inferOutboundTargetKind(raw);
-          const target = normalizeOutboundTarget(raw);
-
-          return {
-            ok: true as const,
-            to: (await gram.resolvePeer(target, { kind: targetKind })).chatId ?? target,
-          };
+          return { ok: true as const, to: normalizeOutboundTarget(raw) };
         } catch (err) {
-          return { ok: false as const, error: `clawgram: target resolution failed: ${String(err)}` };
+          return { ok: false as const, error: err instanceof Error ? err : new Error(String(err)) };
         }
       },
 
