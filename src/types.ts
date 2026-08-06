@@ -53,6 +53,15 @@ export type NormalizedInbound = {
   messageId: string;
   text?: string;
   replyToMessageId?: string;
+  /**
+   * The fragment the sender highlighted when replying (2.4.0). Telegram keeps
+   * it out of the message text — it rides on `MessageReplyHeader.quoteText` —
+   * so without lifting it here the gesture is invisible: the agent sees the
+   * reply and the parent id, but not which line of the parent was pointed at.
+   */
+  replyQuoteText?: string;
+  /** True when the reply targets a highlighted fragment rather than the whole message. */
+  replyIsQuote?: boolean;
   chatType: "direct" | "group" | "channel";
   timestamp?: number;
   isOutgoing: boolean;

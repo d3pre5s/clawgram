@@ -237,8 +237,9 @@ describe("normalizeHistoryMessage", () => {
     const normalized = normalizeHistoryMessage(message(1, { className: "Message", _client: {} }));
     assert.equal(Object.hasOwn(normalized as object, "raw"), false);
     assert.deepEqual(Object.keys(normalized as object).sort(), [
-      "chatId", "isOutgoing", "media", "messageId", "messageThreadId", "replyToMessageId",
-      "senderDisplay", "senderId", "senderUsername", "sentAt", "text", "timestamp",
+      "chatId", "isOutgoing", "media", "messageId", "messageThreadId", "replyQuoteText",
+      "replyToMessageId", "senderDisplay", "senderId", "senderUsername", "sentAt", "text",
+      "timestamp",
     ]);
   });
 

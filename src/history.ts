@@ -44,6 +44,13 @@ export type HistoryMessage = {
    */
   sentAt?: string;
   replyToMessageId?: string;
+  /**
+   * The fragment the sender highlighted when replying (2.4.0). Reading a chat
+   * window is where the agent reconstructs a conversation it did not witness,
+   * and a reply stripped of its highlight reads as an answer to the whole
+   * parent message rather than to the one line that was pointed at.
+   */
+  replyQuoteText?: string;
   messageThreadId?: string;
   /**
    * Attachment metadata, when the message carries one. Absent for plain text.
@@ -281,6 +288,15 @@ function resolveSenderDisplay(msg: any): string | undefined {
 }
 
 /**
+ * Same rule as the inbound path (`normalize.ts`): the text is the evidence,
+ * not the `quote` flag, and blank text means no highlight.
+ */
+function resolveHistoryReplyQuote(msg: any): string | undefined {
+  const raw = msg?.replyTo?.quoteText ?? msg?.quoteText;
+  return typeof raw === "string" && raw.trim() ? raw : undefined;
+}
+
+/**
  * Deliberately drops `raw`. Inbound events carry it because the runtime may need
  * the original object; history is read straight into a model's context, where an
  * unbounded GramJS structure is both expensive and a way for internals to leak
@@ -313,6 +329,7 @@ export function normalizeHistoryMessage(msg: any, fallbackChatId?: string): Hist
     timestamp,
     sentAt: timestamp === undefined ? undefined : new Date(timestamp * 1000).toISOString(),
     replyToMessageId: toStringId(msg?.replyTo?.replyToMsgId) ?? toStringId(msg?.replyToMsgId),
+    replyQuoteText: resolveHistoryReplyQuote(msg),
     messageThreadId: toStringId(msg?.replyTo?.replyToTopId) ?? toStringId(msg?.replyToTopId),
     media: describeMedia(msg?.media),
     isOutgoing: msg?.out === true,

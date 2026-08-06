@@ -67,6 +67,21 @@ function resolveMessageThreadId(msg: any): string | undefined {
   );
 }
 
+/**
+ * The highlighted fragment of a reply, when there is one.
+ *
+ * Telegram sends the flag and the text separately, and clients in the wild are
+ * not consistent about the flag. The text is the evidence: if `quoteText` has
+ * content, a fragment was highlighted regardless of what `quote` says. Blank
+ * text is treated as no highlight rather than as an empty one.
+ */
+function resolveReplyQuote(msg: any): { text?: string; isQuote?: boolean } {
+  const raw = msg?.replyTo?.quoteText ?? msg?.quoteText;
+  const text = typeof raw === "string" && raw.trim() ? raw : undefined;
+  if (!text) return {};
+  return { text, isQuote: true };
+}
+
 export function normalizeTelegramEvent(event: any, accountId: string): NormalizedInbound | null {
   const msg = event?.message;
   if (!msg) return null;
@@ -90,6 +105,7 @@ export function normalizeTelegramEvent(event: any, accountId: string): Normalize
     toStringId(msg.replyTo?.replyToMsgId) ??
     toStringId(msg.replyToMsgId);
   const messageThreadId = resolveMessageThreadId(msg);
+  const replyQuote = resolveReplyQuote(msg);
 
   const text =
     typeof msg.message === "string"
@@ -130,6 +146,8 @@ export function normalizeTelegramEvent(event: any, accountId: string): Normalize
     messageId,
     text,
     replyToMessageId,
+    replyQuoteText: replyQuote.text,
+    replyIsQuote: replyQuote.isQuote,
     chatType,
     timestamp: toTimestamp(msg.date),
     isOutgoing: Boolean(msg.out),

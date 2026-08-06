@@ -9,6 +9,28 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-08-06
+
+### Added
+
+- **Highlighted replies reach the agent.** Telegram lets a reply point at a
+  fragment of the message it answers; the fragment travels on
+  `MessageReplyHeader.quoteText`, not in the reply text. clawgram never read
+  it, so the gesture was invisible: the agent saw the reply and the parent
+  id, and nothing about which line was being pointed at. Lifted into
+  `NormalizedInbound.replyQuoteText` / `.replyIsQuote` and passed as
+  `ReplyToQuoteText` / `ReplyToIsQuote` at both inbound sites; core already
+  renders those as `[Replying to: "…"]` when the provider is telegram, so no
+  format is invented here. History (`read`) carries `replyQuoteText` too —
+  reconstructing a conversation from a window is exactly where a reply
+  stripped of its highlight reads as an answer to the whole parent message.
+
+  The flag is not trusted on its own: the text is the evidence, and blank
+  text counts as no highlight. A static guard asserts that every site
+  passing `ReplyToId` also passes the quote — the two sites (group and DM)
+  are linked by nothing in the type system, and wiring one while forgetting
+  the other would work in groups and silently do nothing in DMs.
+
 ## [2.3.3] — 2026-08-06
 
 ### Fixed

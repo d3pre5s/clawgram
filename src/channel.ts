@@ -574,6 +574,12 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                 MessageSidFull: normalized.messageId,
                 Timestamp: normalized.timestamp,
                 ReplyToId: normalized.replyToMessageId,
+                // Core renders these itself as `[Replying to: "…"]` ahead of the
+                // user body — it keys off Provider being "telegram", which is set
+                // below. Without them a highlighted reply reaches the agent as
+                // bare text, and the fragment the person pointed at is lost.
+                ReplyToQuoteText: normalized.replyQuoteText,
+                ReplyToIsQuote: normalized.replyIsQuote,
                 MessageThreadId: normalized.messageThreadId,
                 NativeChannelId: normalized.chatId,
                 OriginatingChannel: "clawgram",
@@ -866,6 +872,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
                   SenderUsername: normalized.senderUsername,
                   SenderName: normalized.senderDisplay,
                   ReplyToId: normalized.replyToMessageId,
+                  // Same reason as the group path: highlighted replies happen in
+                  // direct messages too, and the fragment is not part of the text.
+                  ReplyToQuoteText: normalized.replyQuoteText,
+                  ReplyToIsQuote: normalized.replyIsQuote,
                   NativeChannelId: normalized.chatId,
                 },
                 deliver: async (payload) => {
