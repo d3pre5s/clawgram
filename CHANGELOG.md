@@ -9,6 +9,22 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-08-07
+
+### Added
+
+- **Files can be sent, not just described.** `sendMedia` was implemented from
+  the start, but the channel never advertised it: `describeMessageTool` listed
+  every action except `upload-file`, so core had no way to hand the agent a
+  file and the agent had no way to ask. It failed as a shrug rather than an
+  error — asked to draw a cat, the agent generated the image, watched core
+  resize it, and then answered "Вот кот 🐱" in plain text while the PNG sat on
+  disk. `upload-file` is now advertised (with `sendAttachment` accepted as the
+  legacy alias) and routed to `sendMedia`, and `mediaSourceParams` tells core
+  which params carry the file so sandboxed paths are normalized. Caption
+  handling matches `send`, including refusing to post the `NO_REPLY` sentinel —
+  a sentinel caption drops the caption, never the file.
+
 ## [2.5.1] — 2026-08-07
 
 ### Fixed

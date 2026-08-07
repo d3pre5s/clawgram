@@ -13,7 +13,7 @@ import { existsSync } from "node:fs";
 const INBOUND_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
 import { downloadInboundMediaToTempFile } from "./media";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
-import { readStringOrNumberParam } from "openclaw/plugin-sdk/param-readers";
+import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
 import { extractToolSend } from "openclaw/plugin-sdk/tool-send";
 import {
   dispatchInboundDirectDmWithRuntime,
@@ -1299,8 +1299,16 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         }
 
         return {
-          actions: [ "send", "read", "participants", "joins", "react", "chatInfo" ],
+          // `upload-file` is what core dispatches when an agent has an
+          // attachment to deliver — a generated image is the common case.
+          // Leaving it out does not degrade to a text send: the agent simply
+          // never sees a way to send the file, announces it in words, and the
+          // file stays on disk. That is exactly what happened on 2026-08-07.
+          actions: [ "send", "read", "participants", "joins", "react", "chatInfo", "upload-file" ],
           capabilities: [],
+          mediaSourceParams: {
+            "upload-file": [ "filePath", "path", "media" ],
+          },
         };
       },
 
@@ -1529,6 +1537,82 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             chatId: reactionParams.target,
             messageId: reactionParams.messageId,
             removed: reactionParams.remove,
+          });
+        }
+
+        // Core dispatches `upload-file`; `sendAttachment` is its legacy alias
+        // and arrives from older callers, so both land here.
+        if (action === "upload-file" || action === "sendAttachment") {
+          const rawUploadTo = resolveActionTarget(params, toolContext);
+          const uploadTo = normalizeOutboundTarget(rawUploadTo);
+          const uploadAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!uploadAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          // Core normalizes whichever of these it filled in to a local path
+          // (see `mediaSourceParams` above); `mediaUrl` stays a URL, which
+          // GramJS accepts as well.
+          const file =
+            readStringParam(params, "filePath")
+            ?? readStringParam(params, "path")
+            ?? readStringParam(params, "media")
+            ?? readStringParam(params, "mediaUrl");
+          if (!file) {
+            throw new Error("clawgram: upload-file requires filePath, path, media, or mediaUrl");
+          }
+
+          const captionText = readMessageText(params) || (readStringParam(params, "caption") ?? "");
+          // A caption is optional, but the silent-reply sentinel must never
+          // reach Telegram as one — same reasoning as the `send` path below.
+          const caption = captionText.trim() && isSilentReplyText(captionText)
+            ? ""
+            : captionText.replaceAll("\\n", "\n");
+          const uploadReplyToId = readStringOrNumberParam(params, "replyToId") ?? readStringOrNumberParam(params, "replyTo");
+          const uploadThreadId = readStringOrNumberParam(params, "threadId");
+
+          actionLog.info("clawgram handleAction upload-file", {
+            accountId: uploadAccountId,
+            dryRun: dryRun === true,
+            to: uploadTo,
+            hasCaption: Boolean(caption),
+            replyToId: uploadReplyToId ?? null,
+            threadId: uploadThreadId ?? null,
+          });
+
+          if (dryRun === true) {
+            return jsonResult({
+              ok: true,
+              dryRun: true,
+              to: uploadTo,
+              accountId: uploadAccountId,
+            });
+          }
+
+          const uploadGram = runtimes.get(uploadAccountId);
+          if (!uploadGram) {
+            throw new Error(`clawgram: runtime not found for account ${uploadAccountId}`);
+          }
+
+          const uploaded = await uploadGram.sendMedia({
+            target: uploadTo,
+            file,
+            caption: caption || undefined,
+            replyToMessageId: resolveReplyToMessageIdForTarget(rawUploadTo, uploadReplyToId),
+            messageThreadId: parseOptionalThreadId(uploadThreadId),
+          });
+
+          actionLog.info("clawgram handleAction upload-file completed", {
+            accountId: uploadAccountId,
+            to: uploadTo,
+            sentMessageId: String((uploaded as any)?.id ?? ""),
+          });
+
+          return jsonResult({
+            ok: true,
+            to: uploadTo,
+            accountId: uploadAccountId,
+            messageId: String((uploaded as any)?.id ?? ""),
           });
         }
 

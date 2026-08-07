@@ -1,6 +1,6 @@
 {
   "name": "clawgram",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
   "main": "./dist/index.js",
   "scripts": {
