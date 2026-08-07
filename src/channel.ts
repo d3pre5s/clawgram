@@ -4,6 +4,8 @@ import {
   jsonResult,
 } from "openclaw/plugin-sdk/core";
 import os from "node:os";
+import path from "node:path";
+import { existsSync } from "node:fs";
 
 /** Attachments above this are left unread: a long recording or a huge image is
  *  a different conversation from a spoken line or a screenshot, and the
@@ -131,6 +133,26 @@ function parseOptionalThreadId(value: unknown): number | undefined {
  * "you sent something I could not read" than staying silent, which is
  * indistinguishable from being offline.
  */
+/**
+ * Locates the agent directory that image understanding needs.
+ *
+ * Image models are called with the agent's own credentials, so the pipeline
+ * refuses to run without this path — audio does not need it, which is why
+ * voice notes worked before images did. The platform exposes no resolver to
+ * plugins, so the documented layout is reconstructed here and checked before
+ * use: a wrong guess would fail the read anyway, and returning undefined lets
+ * the caller degrade instead of throwing.
+ */
+function resolveAgentDirForMedia(cfg: any): string | undefined {
+  const stateDir = typeof process.env.OPENCLAW_STATE_DIR === "string" && process.env.OPENCLAW_STATE_DIR.trim()
+    ? process.env.OPENCLAW_STATE_DIR.trim()
+    : path.join(os.homedir(), ".openclaw");
+  const configuredId = cfg?.agents?.defaults?.id;
+  const agentId = typeof configuredId === "string" && configuredId.trim() ? configuredId.trim() : "main";
+  const dir = path.join(stateDir, "agents", agentId, "agent");
+  return existsSync(dir) ? dir : undefined;
+}
+
 async function readInboundAttachment(params: {
   gram: any;
   event: any;
@@ -180,6 +202,7 @@ async function readInboundAttachment(params: {
         filePath: downloaded.path,
         cfg: params.cfg,
         mime: downloaded.mimeType,
+        agentDir: resolveAgentDirForMedia(params.cfg),
       });
     const read = typeof result?.text === "string" ? result.text.trim() : "";
     if (!read) {

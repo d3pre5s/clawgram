@@ -9,6 +9,18 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-08-07
+
+### Fixed
+
+- **Images are actually read now.** 2.5.0 fetched them and then failed with
+  `Image understanding requires agentDir`: image models are called with the
+  agent's own credentials, so the pipeline refuses to run without that path.
+  Audio never needed it, which is why voice notes worked while pictures did
+  not. The plugin now resolves the documented agent directory and checks it
+  exists before use — a missing directory degrades to "attachment not read"
+  instead of throwing.
+
 ## [2.5.0] — 2026-08-07
 
 ### Added
