@@ -3,6 +3,13 @@ import {
   createSubsystemLogger,
   jsonResult,
 } from "openclaw/plugin-sdk/core";
+import os from "node:os";
+
+/** Attachments above this are left unread: a long recording or a huge image is
+ *  a different conversation from a spoken line or a screenshot, and the
+ *  transfer is not free. */
+const INBOUND_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+import { downloadInboundMediaToTempFile } from "./media";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam } from "openclaw/plugin-sdk/param-readers";
 import { extractToolSend } from "openclaw/plugin-sdk/tool-send";
@@ -110,7 +117,111 @@ function parseOptionalThreadId(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export const createChannelPlugin = (runtimes: RuntimeMap) => {
+
+/**
+ * Turns an inbound attachment into text the agent can read.
+ *
+ * The work is deliberately delegated: `runtime.mediaUnderstanding` already
+ * knows which backend this installation uses for speech and for images, so
+ * the channel stays out of that choice — a local model today, something else
+ * tomorrow, without touching this file.
+ *
+ * Failure is not an error worth dropping the message over. An attachment that
+ * could not be read still happened, and the assistant is better off saying
+ * "you sent something I could not read" than staying silent, which is
+ * indistinguishable from being offline.
+ */
+async function readInboundAttachment(params: {
+  gram: any;
+  event: any;
+  cfg: any;
+  runtime?: PluginRuntime;
+  log?: any;
+  accountId: string;
+  chatId: string;
+  messageId: string;
+}): Promise<{ text: string; understanding: "transcript" | "description" } | undefined> {
+  const media = params.runtime?.mediaUnderstanding;
+  const message = params.event?.message;
+  if (!media || !message) {
+    return undefined;
+  }
+
+  let downloaded: Awaited<ReturnType<typeof downloadInboundMediaToTempFile>>;
+  try {
+    downloaded = await downloadInboundMediaToTempFile({
+      client: params.gram.getClient() as any,
+      message,
+      maxBytes: INBOUND_MEDIA_MAX_BYTES,
+      tmpDir: os.tmpdir(),
+    });
+  } catch (err) {
+    params.log?.info?.("clawgram attachment download failed", {
+      accountId: params.accountId,
+      chatId: params.chatId,
+      messageId: params.messageId,
+      error: String(err),
+    });
+    return undefined;
+  }
+
+  if (!downloaded) {
+    return undefined;
+  }
+
+  try {
+    const result = downloaded.understanding === "transcript"
+      ? await media.transcribeAudioFile({
+        filePath: downloaded.path,
+        cfg: params.cfg,
+        mime: downloaded.mimeType,
+      })
+      : await media.describeImageFile({
+        filePath: downloaded.path,
+        cfg: params.cfg,
+        mime: downloaded.mimeType,
+      });
+    const read = typeof result?.text === "string" ? result.text.trim() : "";
+    if (!read) {
+      params.log?.info?.("clawgram attachment read empty", {
+        accountId: params.accountId,
+        chatId: params.chatId,
+        messageId: params.messageId,
+        understanding: downloaded.understanding,
+      });
+      return undefined;
+    }
+    params.log?.info?.("clawgram attachment read", {
+      accountId: params.accountId,
+      chatId: params.chatId,
+      messageId: params.messageId,
+      understanding: downloaded.understanding,
+      characters: read.length,
+    });
+    return { text: read, understanding: downloaded.understanding };
+  } catch (err) {
+    params.log?.info?.("clawgram attachment read failed", {
+      accountId: params.accountId,
+      chatId: params.chatId,
+      messageId: params.messageId,
+      understanding: downloaded.understanding,
+      error: String(err),
+    });
+    return undefined;
+  } finally {
+    void (async () => {
+      try {
+        const { rm } = await import("node:fs/promises");
+        const { dirname } = await import("node:path");
+        await rm(dirname(downloaded!.path), { recursive: true, force: true });
+      } catch {
+        // Leaving a temp file behind is not worth failing a delivered message.
+      }
+    })();
+  }
+}
+
+export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: PluginRuntime) => {
   const resolveRuntimeAccountId = (cfg: any, preferred?: string | null): string | undefined => {
     const configured = resolveConfiguredAccountId(cfg, preferred);
     if (configured && runtimes.has(configured)) {
@@ -355,7 +466,30 @@ export const createChannelPlugin = (runtimes: RuntimeMap) => {
               return;
             }
 
-            const text = normalized.text?.trim();
+            let text = normalized.text?.trim();
+
+            // An attachment carries no text of its own, and dropping it as
+            // "empty" is how the assistant used to go silent on being spoken
+            // to or shown something. Read it into the body instead: for a
+            // voice note and a screenshot alike, the attachment *is* the
+            // message. A caption is kept and the reading appended, because
+            // "look at this" plus the picture is one thought, not two.
+            const attachment = await readInboundAttachment({
+              gram,
+              event,
+              cfg,
+              runtime: pluginRuntime,
+              log,
+              accountId,
+              chatId: normalized.chatId,
+              messageId: normalized.messageId,
+            });
+            if (attachment) {
+              const marker = attachment.understanding === "transcript" ? "голосовое" : "изображение";
+              const read = `[${marker}] ${attachment.text}`;
+              text = text ? `${text}\n\n${read}` : read;
+            }
+
             if (!text) {
               log?.info?.("clawgram skipping empty inbound text", {
                 accountId,

@@ -9,6 +9,40 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-08-07
+
+### Added
+
+- **Voice notes and images arrive as readable messages.** A message whose whole
+  content was an attachment used to be dropped as `skipping empty inbound
+  text`: with no text there was nothing to hand the agent, so being sent a
+  voice note looked exactly like the assistant being offline. Inbound voice,
+  audio and images are now fetched and read through
+  `runtime.mediaUnderstanding` — speech becomes a transcript, a picture becomes
+  a description — and the result lands in the message body prefixed with
+  `[голосовое]` or `[изображение]`, so the agent knows it is reading a
+  machine's reading and not typed words.
+
+  A caption is kept and the reading appended after it: "look at this" plus the
+  picture is one thought, not two.
+
+  Which backend does the reading stays out of this plugin — that is the
+  installation's `tools.media.*` choice, local model or hosted, and it can
+  change without touching the channel.
+
+### Notes
+
+- Attachments this channel does not read (documents, video, stickers) keep the
+  old treatment: metadata only. "spec.pdf, 240 KB" already tells a reader what
+  happened, and fetching every attachment would be a different feature with
+  different costs. An image sent *as a file* is read anyway — only the
+  envelope differs, the pixels are the message.
+- Reads are capped at 25 MB and the cap is checked against the size Telegram
+  reports, before any transfer.
+- A failed read never drops the message. The turn proceeds without the
+  attachment text, because saying "you sent something I could not read" beats
+  silence, which is indistinguishable from being offline.
+
 ## [2.4.3] — 2026-08-06
 
 ### Fixed

@@ -1,7 +1,11 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-import { describeMedia } from "../src/media";
+import os from "node:os";
+import { readFileSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
+
+import { describeMedia, downloadInboundMediaToTempFile, inboundMediaUnderstanding } from "../src/media";
 
 /**
  * Shapes here mirror what GramJS hands over: a `className` string plus the
@@ -122,5 +126,144 @@ describe("describeMedia", () => {
     });
 
     assert.equal(media?.size, 1_048_576);
+  });
+});
+
+/**
+ * A voice note is the one attachment whose bytes have to be fetched: its text
+ * is empty, so without the audio there is nothing for the assistant to read.
+ * These cover the decisions made before any transfer happens.
+ */
+describe("downloadInboundMediaToTempFile", () => {
+  const voiceMessage = {
+    media: {
+      className: "MessageMediaDocument",
+      document: {
+        mimeType: "audio/ogg",
+        size: 12_000,
+        attributes: [{ className: "DocumentAttributeAudio", voice: true, duration: 5 }],
+      },
+    },
+  };
+
+  it("leaves attachments it does not read alone", async () => {
+    const client = {
+      downloadMedia: async () => {
+        throw new Error("must not download an attachment that is only announced");
+      },
+    };
+
+    const result = await downloadInboundMediaToTempFile({
+      client,
+      message: {
+        media: {
+          className: "MessageMediaDocument",
+          document: {
+            mimeType: "application/pdf",
+            size: 12_000,
+            attributes: [{ className: "DocumentAttributeFilename", fileName: "spec.pdf" }],
+          },
+        },
+      },
+      maxBytes: 1_000_000,
+      tmpDir: os.tmpdir(),
+    });
+
+    assert.equal(result, undefined);
+  });
+
+  it("downloads a photo so the picture can be described", async () => {
+    const client = { downloadMedia: async () => Buffer.from("fake-jpeg-bytes") };
+
+    const result = await downloadInboundMediaToTempFile({
+      client,
+      message: { media: { className: "MessageMediaPhoto" } },
+      maxBytes: 1_000_000,
+      tmpDir: os.tmpdir(),
+    });
+
+    assert.equal(result?.understanding, "description");
+    assert.equal(readFileSync(result!.path).toString(), "fake-jpeg-bytes");
+    rmSync(dirname(result!.path), { recursive: true, force: true });
+  });
+
+  it("refuses an oversized note before spending the transfer", async () => {
+    let attempted = false;
+    const client = {
+      downloadMedia: async () => {
+        attempted = true;
+        return Buffer.from("never");
+      },
+    };
+
+    const result = await downloadInboundMediaToTempFile({
+      client,
+      message: voiceMessage,
+      maxBytes: 1_000,
+      tmpDir: os.tmpdir(),
+    });
+
+    assert.equal(result, undefined);
+    assert.equal(attempted, false, "size is known upfront, so nothing should be fetched");
+  });
+
+  it("writes the audio to a temp file and reports its mime type", async () => {
+    const payload = Buffer.from("fake-opus-bytes");
+    const client = { downloadMedia: async () => payload };
+
+    const result = await downloadInboundMediaToTempFile({
+      client,
+      message: voiceMessage,
+      maxBytes: 1_000_000,
+      tmpDir: os.tmpdir(),
+    });
+
+    assert.ok(result, "a voice note within limits should be downloaded");
+    assert.equal(result?.mimeType, "audio/ogg");
+    assert.equal(result?.understanding, "transcript");
+    assert.equal(readFileSync(result!.path).toString(), "fake-opus-bytes");
+    rmSync(dirname(result!.path), { recursive: true, force: true });
+  });
+
+  it("treats an empty download as no audio rather than an empty file", async () => {
+    const client = { downloadMedia: async () => Buffer.alloc(0) };
+
+    const result = await downloadInboundMediaToTempFile({
+      client,
+      message: voiceMessage,
+      maxBytes: 1_000_000,
+      tmpDir: os.tmpdir(),
+    });
+
+    assert.equal(result, undefined);
+  });
+});
+
+/**
+ * The split between "read this" and "just say it arrived" is the whole policy:
+ * a voice note and a screenshot are the message, a spreadsheet is a fact about
+ * the message.
+ */
+describe("inboundMediaUnderstanding", () => {
+  it("reads voice notes and audio as speech", () => {
+    assert.equal(inboundMediaUnderstanding({ kind: "voice" }), "transcript");
+    assert.equal(inboundMediaUnderstanding({ kind: "audio" }), "transcript");
+  });
+
+  it("reads photos as pictures", () => {
+    assert.equal(inboundMediaUnderstanding({ kind: "photo" }), "description");
+  });
+
+  it("reads an image sent as a file — only the envelope differs", () => {
+    assert.equal(
+      inboundMediaUnderstanding({ kind: "document", mimeType: "image/png" }),
+      "description",
+    );
+  });
+
+  it("leaves other documents announced rather than read", () => {
+    assert.equal(inboundMediaUnderstanding({ kind: "document", mimeType: "application/pdf" }), undefined);
+    assert.equal(inboundMediaUnderstanding({ kind: "video" }), undefined);
+    assert.equal(inboundMediaUnderstanding(undefined), undefined);
   });
 });

@@ -139,3 +139,88 @@ export function describeMedia(media: unknown): HistoryMedia | undefined {
   // as "something was attached" — a blank message is the failure being fixed.
   return { kind: "other", telegramType: className };
 }
+
+/**
+ * Downloads a voice or audio note to a temporary file.
+ *
+ * Voice messages arrive with an empty `text`, so the channel used to drop them
+ * as "empty inbound" — the assistant simply never saw them. Metadata is not
+ * enough here: unlike a screenshot in a work chat, where knowing "spec.pdf,
+ * 240 KB" is a usable summary, a voice note *is* the message. The bytes have
+ * to be fetched for the audio pipeline to turn them into words.
+ *
+ * Returns the path, or undefined when the message carries no downloadable
+ * audio. The caller owns the file and is responsible for removing it.
+ */
+/** What an inbound attachment can be turned into for the agent to read. */
+export type InboundMediaUnderstanding = "transcript" | "description";
+
+/**
+ * Decides whether an attachment is worth fetching, and what reading it means.
+ *
+ * Voice notes and images are the two kinds whose bytes *are* the message:
+ * dropping them leaves the assistant silent on being spoken to or shown
+ * something. Other attachments keep the old treatment — metadata only —
+ * because "spec.pdf, 240 KB" already tells a reader what happened, and
+ * fetching every document would be a different feature with different costs.
+ */
+export function inboundMediaUnderstanding(media: HistoryMedia | undefined): InboundMediaUnderstanding | undefined {
+  if (!media) return undefined;
+  if (media.kind === "voice" || media.kind === "audio") return "transcript";
+  if (media.kind === "photo") return "description";
+  // A document can be an image sent "as file" — Telegram keeps the pixels,
+  // only the envelope differs, so read it rather than announce it.
+  if (media.kind === "document" && media.mimeType?.startsWith("image/")) return "description";
+  return undefined;
+}
+
+/**
+ * Downloads an inbound attachment to a temporary file.
+ *
+ * Returns the path, or undefined when the attachment is not one this channel
+ * reads, or is too large to be worth the transfer. The caller owns the file
+ * and is responsible for removing it.
+ */
+export async function downloadInboundMediaToTempFile(params: {
+  client: { downloadMedia: (message: unknown, options?: unknown) => Promise<unknown> };
+  message: unknown;
+  maxBytes: number;
+  tmpDir: string;
+}): Promise<{ path: string; mimeType?: string; understanding: InboundMediaUnderstanding } | undefined> {
+  const described = describeMedia((params.message as any)?.media);
+  const understanding = inboundMediaUnderstanding(described);
+  if (!described || !understanding) {
+    return undefined;
+  }
+
+  // A cap belongs here rather than in the caller: an oversized attachment
+  // should be reported as such, not fetched and then discarded after the
+  // transfer cost.
+  if (typeof described.size === "number" && described.size > params.maxBytes) {
+    return undefined;
+  }
+
+  const buffer = await params.client.downloadMedia(params.message, {});
+  if (!buffer || !(buffer instanceof Buffer) || buffer.length === 0) {
+    return undefined;
+  }
+
+  const extension = extensionFor(described, understanding);
+  const { mkdtemp, writeFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const dir = await mkdtemp(join(params.tmpDir, "clawgram-media-"));
+  const path = join(dir, `attachment.${extension}`);
+  await writeFile(path, buffer);
+  return { path, mimeType: described.mimeType, understanding };
+}
+
+function extensionFor(media: HistoryMedia, understanding: InboundMediaUnderstanding): string {
+  if (understanding === "description") {
+    if (media.mimeType === "image/png") return "png";
+    if (media.mimeType === "image/webp") return "webp";
+    return "jpg";
+  }
+  if (media.mimeType === "audio/mpeg") return "mp3";
+  if (media.mimeType === "audio/mp4") return "m4a";
+  return "ogg";
+}

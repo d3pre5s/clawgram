@@ -17,7 +17,9 @@ const plugin = {
       descriptors: getTelegramUserbotCliDescriptors()
     });
 
-    api.registerChannel({ plugin: createChannelPlugin(runtimes) });
+    // api.runtime carries the media-understanding pipeline; without it an
+    // inbound voice note has nothing to be turned into words with.
+    api.registerChannel({ plugin: createChannelPlugin(runtimes, api?.runtime) });
   }
 };
 
