@@ -1540,9 +1540,20 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           });
         }
 
+        // Core normalizes whichever of these it filled in to a local path (see
+        // `mediaSourceParams` above); `mediaUrl` stays a URL, which GramJS
+        // accepts as well.
+        const attachedFile =
+          readStringParam(params, "filePath")
+          ?? readStringParam(params, "path")
+          ?? readStringParam(params, "media")
+          ?? readStringParam(params, "mediaUrl");
+
         // Core dispatches `upload-file`; `sendAttachment` is its legacy alias
-        // and arrives from older callers, so both land here.
-        if (action === "upload-file" || action === "sendAttachment") {
+        // and arrives from older callers. A plain `send` carrying a file lands
+        // here too — `openclaw message send --media` does exactly that, and
+        // routing it to the text path dropped the file without a word.
+        if (action === "upload-file" || action === "sendAttachment" || (action === "send" && attachedFile)) {
           const rawUploadTo = resolveActionTarget(params, toolContext);
           const uploadTo = normalizeOutboundTarget(rawUploadTo);
           const uploadAccountId = resolveRuntimeAccountId(cfg, accountId);
@@ -1550,14 +1561,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             throw new Error("clawgram: no configured account found");
           }
 
-          // Core normalizes whichever of these it filled in to a local path
-          // (see `mediaSourceParams` above); `mediaUrl` stays a URL, which
-          // GramJS accepts as well.
-          const file =
-            readStringParam(params, "filePath")
-            ?? readStringParam(params, "path")
-            ?? readStringParam(params, "media")
-            ?? readStringParam(params, "mediaUrl");
+          const file = attachedFile;
           if (!file) {
             throw new Error("clawgram: upload-file requires filePath, path, media, or mediaUrl");
           }

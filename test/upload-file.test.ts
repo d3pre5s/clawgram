@@ -140,6 +140,39 @@ describe("upload-file carries a real file", () => {
     );
   });
 
+  // `openclaw message send --media photo.jpg` is a documented invocation, and
+  // it arrives as action "send" with the file in params. Routing that to the
+  // text path sent the caption and silently dropped the picture.
+  it("sends the file when a plain send carries one", async () => {
+    const { channel, calls } = withRecordingRuntime();
+
+    await channel.actions.handleAction({
+      action: "send",
+      params: { to: "-100123", message: "подпись", media: "/tmp/cat.png" },
+      cfg,
+      accountId: "default",
+    });
+
+    assert.equal(calls.length, 1, "a send carrying media must not degrade to text");
+    assert.equal(calls[ 0 ].file, "/tmp/cat.png");
+    assert.equal(calls[ 0 ].caption, "подпись");
+  });
+
+  it("leaves a send without a file on the text path", async () => {
+    const { channel, calls } = withRecordingRuntime();
+
+    // No runtime method for text here, so reaching the text path throws —
+    // which is the assertion: it must not have been treated as media.
+    await assert.rejects(() => channel.actions.handleAction({
+      action: "send",
+      params: { to: "-100123", message: "просто текст" },
+      cfg,
+      accountId: "default",
+    }));
+
+    assert.equal(calls.length, 0, "a plain text send must not call sendMedia");
+  });
+
   it("answers a dry run without touching Telegram", async () => {
     const { channel, calls } = withRecordingRuntime();
 

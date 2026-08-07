@@ -9,6 +9,17 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-08-07
+
+### Fixed
+
+- **A `send` carrying a file no longer drops it.** `openclaw message send
+  --media photo.jpg` is a documented invocation and arrives as action `send`
+  with the file among the params; the text path ignored those params, so the
+  caption went out and the picture did not. Found immediately after 2.6.0 while
+  verifying the new action live. A `send` with a file now takes the same route
+  as `upload-file`; a `send` without one is untouched.
+
 ## [2.6.0] — 2026-08-07
 
 ### Added
