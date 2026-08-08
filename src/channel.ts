@@ -1921,6 +1921,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         caption?: string;
         replyToId?: string | null;
         threadId?: string | number | null;
+        /** Core's signal that this file is a voice note, not an audio document. */
+        audioAsVoice?: boolean;
       }) {
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
@@ -1929,13 +1931,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
         actionLog.info("clawgram outbound sendMedia", {
           accountId: ctx.accountId,
-          to: ctx.to,
+          rawTo: ctx.to,
           replyToId: ctx.replyToId ?? null,
           threadId: ctx.threadId ?? null,
           filePath: ctx.filePath ?? null,
           mediaUrl: ctx.mediaUrl ?? null,
           hasText: Boolean(ctx.text),
           hasCaption: Boolean(ctx.caption),
+          asVoice: ctx.audioAsVoice === true,
         });
 
         const file = ctx.filePath ?? ctx.mediaUrl;
@@ -1943,13 +1946,19 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           throw new Error("clawgram: sendMedia requires filePath or mediaUrl");
         }
         const messageThreadId = parseOptionalThreadId(ctx.threadId);
+        // Same normalization `sendText` does two functions up. Without it the
+        // channel prefix reaches peer resolution and the send throws — which is
+        // exactly how a synthesized group reply died on 2026-08-08, silently
+        // enough that the transcript fallback posted it as raw text instead.
+        const target = normalizeOutboundTarget(ctx.to);
 
         const sent = await gram.sendMedia({
-          target: ctx.to,
+          target,
           file,
           caption: ctx.caption ?? ctx.text,
           replyToMessageId: resolveReplyToMessageIdForTarget(ctx.to, ctx.replyToId),
           messageThreadId,
+          asVoice: ctx.audioAsVoice === true,
         });
 
         actionLog.info("clawgram outbound sendMedia completed", {

@@ -13,6 +13,21 @@ recorded in `git log` only.
 
 ### Fixed
 
+- **A synthesized voice reply could never leave a group.** `outbound.sendMedia`
+  is the path core uses to deliver TTS audio, and it passed the target to peer
+  resolution with the `clawgram:` prefix still attached — `sendText`, two
+  functions above, has always called `normalizeOutboundTarget`. The send threw,
+  no `sendMedia completed` line ever followed, the dispatch counters stayed at
+  zero, and the transcript fallback posted the reply as raw text instead.
+
+  The same function also dropped `audioAsVoice`, core's own signal that the
+  file is a voice note, so even a successful send would have produced a grey
+  audio document.
+
+  Direct messages never hit either defect: that path goes through the
+  `upload-file` action, which normalizes the target and reads the flag. The
+  bug needed a group — and a voice reply — to become visible.
+
 - **TTS markup no longer reaches a human.** The transcript fallback rescues a
   reply that would otherwise vanish, and it does that by reading the
   assistant's raw text out of the session file. Core strips `[[tts:…]]` markup
