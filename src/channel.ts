@@ -105,6 +105,7 @@ import {
   toDisplayName,
   prefixReplyTextToAddress,
   stripSilentReplyToken,
+  stripTtsDirectives,
   isSilentReplyText,
   resolveReplyTarget,
   resolveChatTarget,
@@ -909,7 +910,16 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                   // A suppressed silent reply legitimately delivers nothing, so
                   // this fallback fires right after it. Without the same check
                   // the token would be read back from the transcript and sent.
-                  const visibleFallbackText = fallbackText ? stripSilentReplyToken(fallbackText) : "";
+                  //
+                  // TTS markup needs the same treatment for the same reason:
+                  // core strips it on the normal reply path, but this text comes
+                  // straight out of the transcript. On 2026-08-08 a group got
+                  // `[[tts:text]]Привет, Вася!…[[/tts:text]]` verbatim. The
+                  // spoken words are kept — a synthesis that did not happen
+                  // should degrade to readable text, not to markup.
+                  const visibleFallbackText = fallbackText
+                    ? stripTtsDirectives(stripSilentReplyToken(fallbackText))
+                    : "";
                   if (fallbackText && !visibleFallbackText) {
                     log?.info?.("clawgram skipping silent transcript fallback", {
                       accountId,

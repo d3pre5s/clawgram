@@ -9,6 +9,23 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.7.1] — 2026-08-08
+
+### Fixed
+
+- **TTS markup no longer reaches a human.** The transcript fallback rescues a
+  reply that would otherwise vanish, and it does that by reading the
+  assistant's raw text out of the session file. Core strips `[[tts:…]]` markup
+  before a channel sees it, but only on the normal reply path — so the
+  fallback shipped it verbatim, and a group chat received
+  `@top1ceo, [[tts:text]]Привет, Вася! …[[/tts:text]]`.
+
+  The fallback now strips directives the same way it already stripped the
+  silent-reply token. `[[tts:text]]…[[/tts:text]]` is **unwrapped** rather than
+  dropped: those are the words the agent meant to say, so a synthesis that did
+  not happen degrades to readable text instead of to markup — or to nothing,
+  which is what happened the first time this path misfired.
+
 ## [2.7.0] — 2026-08-08
 
 ### Added

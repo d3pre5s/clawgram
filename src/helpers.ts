@@ -208,6 +208,30 @@ function resolveReplyToMessageIdForTarget(rawTarget: string, replyToId?: string 
 }
 
 /**
+ * Разметка синтеза речи, которая не должна доехать до человека.
+ *
+ * Core вырезает `[[tts:...]]` из видимого текста сам, но только на штатном
+ * пути ответа. Аварийный путь (`readLatestAssistantFallbackFromTranscript`)
+ * читает сырой текст из стенограммы, поэтому 2026-08-08 в групповой чат
+ * ушло `[[tts:text]]Привет, Вася!…[[/tts:text]]` как есть.
+ *
+ * Блок `[[tts:text]]…[[/tts:text]]` РАЗВОРАЧИВАЕТСЯ, а не удаляется: внутри
+ * лежит то, что агент собирался сказать. Если синтез не состоялся, человек
+ * должен получить эти слова текстом — деградация в читаемое, а не в мусор
+ * и не в пустоту.
+ */
+const TTS_TEXT_BLOCK = /\[\[tts:text\]\]([\s\S]*?)\[\[\/tts:text\]\]/gi;
+const TTS_DIRECTIVE = /\[\[\s*\/?\s*(?:tts:[^\]]*|audio_as_voice)\s*\]\]/gi;
+
+function stripTtsDirectives(text: string): string {
+  return text
+    .replace(TTS_TEXT_BLOCK, (_match, spoken: string) => spoken)
+    .replace(TTS_DIRECTIVE, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/**
  * Whether an outbound file should become a Telegram voice message.
  *
  * Core emits `asVoice` and, on some paths, the older `audioAsVoice` — both
@@ -700,6 +724,7 @@ export {
   resolveReplyToMessageIdForTarget,
   readMessageText,
   readVoiceNoteFlag,
+  stripTtsDirectives,
   resolveAllowFrom,
   resolveGroupPolicy,
   resolveGroups,
