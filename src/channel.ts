@@ -11,6 +11,37 @@ import { existsSync } from "node:fs";
  *  a different conversation from a spoken line or a screenshot, and the
  *  transfer is not free. */
 const INBOUND_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+
+/**
+ * What this channel promises the Gateway.
+ *
+ * Annotated with core's own `ChannelCapabilities` on purpose: the shape is read
+ * by core (`resolveChannelTtsVoiceDelivery` reaches straight into
+ * `capabilities.tts.voice`), so a typo here would not fail — it would silently
+ * fall back to a default. With the annotation the compiler checks the promise
+ * against the version of OpenClaw we build against.
+ */
+const CHANNEL_CAPABILITIES: ChannelCapabilities = {
+  chatTypes: [ "direct", "group" ],
+  reactions: true,
+  threads: true,
+  media: true,
+  nativeCommands: false,
+  blockStreaming: false,
+  // Without this key core resolves the default "audio-file" and delivers
+  // synthesized speech as a document: a grey file card you must download
+  // before you know what it is. Advertising "voice-note" makes core mark such
+  // sends with `asVoice`, which the upload path honours.
+  //
+  // `transcodesAudio` is deliberately absent: we ship no ffmpeg and add no
+  // dependencies, so core must hand us Ogg/Opus — the only container Telegram
+  // renders as a voice bubble.
+  tts: {
+    voice: {
+      synthesisTarget: "voice-note",
+    },
+  },
+};
 import { downloadInboundMediaToTempFile } from "./media";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
@@ -25,6 +56,7 @@ import {
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-sdk/inbound-envelope";
 import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
+import type { ChannelCapabilities } from "openclaw/plugin-sdk";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
@@ -63,6 +95,7 @@ import {
   resolveActionTarget,
   resolveReplyToMessageIdForTarget,
   readMessageText,
+  readVoiceNoteFlag,
   resolveAllowFrom,
   resolveGroups,
   resolveGroupConfig,
@@ -271,14 +304,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
       aliases: [ "tguserbot" ],
     },
 
-    capabilities: {
-      chatTypes: [ "direct", "group" ] as const,
-      reactions: true,
-      threads: true,
-      media: true,
-      nativeCommands: false,
-      blockStreaming: false,
-    },
+    capabilities: CHANNEL_CAPABILITIES,
 
     agentPrompt: {
       messageToolHints: () => [
@@ -1574,6 +1600,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             : captionText.replaceAll("\\n", "\n");
           const uploadReplyToId = readStringOrNumberParam(params, "replyToId") ?? readStringOrNumberParam(params, "replyTo");
           const uploadThreadId = readStringOrNumberParam(params, "threadId");
+          const asVoice = readVoiceNoteFlag(params);
 
           actionLog.info("clawgram handleAction upload-file", {
             accountId: uploadAccountId,
@@ -1582,6 +1609,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             hasCaption: Boolean(caption),
             replyToId: uploadReplyToId ?? null,
             threadId: uploadThreadId ?? null,
+            asVoice,
           });
 
           if (dryRun === true) {
@@ -1604,6 +1632,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             caption: caption || undefined,
             replyToMessageId: resolveReplyToMessageIdForTarget(rawUploadTo, uploadReplyToId),
             messageThreadId: parseOptionalThreadId(uploadThreadId),
+            asVoice,
           });
 
           actionLog.info("clawgram handleAction upload-file completed", {

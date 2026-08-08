@@ -93,4 +93,10 @@ export type SendMediaArgs = {
   caption?: string;
   replyToMessageId?: number;
   messageThreadId?: number;
+  /**
+   * Deliver as a Telegram voice message rather than an audio document.
+   * Core sets this (`asVoice`/`audioAsVoice`) for synthesized speech once the
+   * channel advertises `capabilities.tts.voice.synthesisTarget: "voice-note"`.
+   */
+  asVoice?: boolean;
 };

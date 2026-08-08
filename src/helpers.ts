@@ -207,6 +207,18 @@ function resolveReplyToMessageIdForTarget(rawTarget: string, replyToId?: string 
   return undefined;
 }
 
+/**
+ * Whether an outbound file should become a Telegram voice message.
+ *
+ * Core emits `asVoice` and, on some paths, the older `audioAsVoice` — both
+ * carry the same meaning, so both are read. Only a real `true` counts: a
+ * string "true" or a stray truthy value must not silently turn a document
+ * into a voice bubble.
+ */
+function readVoiceNoteFlag(params: Record<string, unknown>): boolean {
+  return params?.asVoice === true || params?.audioAsVoice === true;
+}
+
 function readMessageText(params: Record<string, unknown>): string {
   const message = readStringParam(params, "message", { allowEmpty: true });
   if (typeof message === "string") {
@@ -687,6 +699,7 @@ export {
   resolveActionTarget,
   resolveReplyToMessageIdForTarget,
   readMessageText,
+  readVoiceNoteFlag,
   resolveAllowFrom,
   resolveGroupPolicy,
   resolveGroups,

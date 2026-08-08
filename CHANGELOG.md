@@ -9,6 +9,29 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-08-08
+
+### Added
+
+- **Synthesized speech arrives as a voice message, not a file card.** The
+  channel now advertises `capabilities.tts.voice.synthesisTarget: "voice-note"`.
+  Core resolves that key through `resolveChannelTtsVoiceDelivery` and falls
+  back to `"audio-file"` when it is absent — which is why TTS audio used to
+  land as a grey document you had to download before you knew what it was.
+  With the capability advertised, core marks such sends with `asVoice` (older
+  callers send `audioAsVoice`); both are read, and the upload path passes
+  `voiceNote` to GramJS, which builds `DocumentAttributeAudio(voice: true)`
+  itself.
+
+  `transcodesAudio` is deliberately **not** advertised: the plugin ships no
+  ffmpeg and adds no dependencies, so core keeps producing Ogg/Opus — the only
+  container Telegram renders as a voice bubble.
+
+  `capabilities` is now annotated with core's own `ChannelCapabilities` type.
+  The block is read by reaching into it by path, so a typo would not fail —
+  it would silently resolve to a default. With the annotation it is a build
+  error instead (verified: a bad `synthesisTarget` gives `TS2820`).
+
 ## [2.6.1] — 2026-08-07
 
 ### Fixed

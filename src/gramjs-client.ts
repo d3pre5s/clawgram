@@ -90,6 +90,23 @@ function parseTargetWithThread(rawTarget: string): {
   };
 }
 
+/**
+ * Voice-message option for `sendFile`.
+ *
+ * GramJS branches on `voiceNote` and builds `DocumentAttributeAudio` with
+ * `voice: true` itself, so the attribute must not be assembled by hand.
+ * The key is omitted rather than set to `false`: this codebase already paid
+ * for the lesson that a key's mere presence can flip a branch (see the MTProxy
+ * note in `proxy-config.ts`).
+ *
+ * Telegram renders a voice bubble only for Ogg/Opus; core is responsible for
+ * handing us that container, which is why the channel does not advertise
+ * `transcodesAudio`.
+ */
+export function buildVoiceNoteParams(asVoice?: boolean): { voiceNote?: true } {
+  return asVoice === true ? { voiceNote: true } : {};
+}
+
 function buildForumReplyParams(messageThreadId?: number, replyToMessageId?: number): {
   replyTo?: number;
   topMsgId?: number;
@@ -611,6 +628,7 @@ export class GramJsClientManager {
       file: args.file,
       caption: args.caption,
       ...replyParams,
+      ...buildVoiceNoteParams(args.asVoice),
     });
   }
 }
