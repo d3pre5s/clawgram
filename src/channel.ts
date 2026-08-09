@@ -72,7 +72,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
+import { buildReactionHintLines, parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import {
   applyAccountSecrets,
@@ -118,6 +118,16 @@ import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
 
 const actionLog = createSubsystemLogger("channels/clawgram");
+
+/** Reads the configured reaction level for an account, tolerating a missing config. */
+function readAccountReactionLevel(cfg: any, accountId?: string | null): unknown {
+  const resolvedAccountId = resolveConfiguredAccountId(cfg, accountId);
+  if (!resolvedAccountId) {
+    return undefined;
+  }
+
+  return cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]?.reactionLevel;
+}
 
 /**
  * Read scope as configured for the account. Left `undefined` when the key is
@@ -336,14 +346,27 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         return level ? { level, channelLabel: "Telegram" } : undefined;
       },
 
-      messageToolHints: () => [
-        "Use clawgram to send Telegram replies from the connected personal account.",
-        "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
-        "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
-        "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
-        "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
-        "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
-      ],
+      messageToolHints: ({ cfg, accountId }: { cfg?: any; accountId?: string | null } = {}) => {
+        const level = resolveAgentReactionGuidance(readAccountReactionLevel(cfg, accountId));
+
+        // Logged for the same reason reactionGuidance is: this path is the
+        // workaround for core skipping that hook, so "did our text reach the
+        // prompt" has to be answerable from the log rather than by inference.
+        actionLog.info("clawgram messageToolHints", {
+          accountId: accountId ?? null,
+          reactionLevel: level ?? null,
+        });
+
+        return [
+          "Use clawgram to send Telegram replies from the connected personal account.",
+          "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
+          "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
+          "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
+          "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
+          "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
+          ...buildReactionHintLines(level),
+        ];
+      },
       messageToolCapabilities: () => [
         "clawgram can reply in the current Telegram conversation when no explicit target is provided.",
         "clawgram can send text messages to direct chats and groups from the connected personal account.",

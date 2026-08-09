@@ -9,6 +9,36 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-08-09
+
+### Changed
+
+- **Reaction guidance moved into `messageToolHints`, because core never asks
+  for it.** 2.8.1 added a log line to the `reactionGuidance` hook. Across live
+  turns it printed **nothing**, while the assembled prompt stayed byte-identical
+  — so core was not calling the hook at all, and the earlier reasoning that the
+  model simply declined to react had been resting on a hook that never ran.
+
+  Both resolvers sit in the same core function, two lines apart:
+
+  ```
+  messageToolHints = runtimeChannel ? resolve(...) : undefined
+  reactionGuidance = runtimeChannel && params.config ? resolve(...) : undefined
+  ```
+
+  The extra `params.config` is the only structural difference, and it lives in
+  the minified `openclaw` dependency — not ours to change, and patching
+  `node_modules` would vanish on the next update.
+
+  So the guidance now rides the hints, which are guarded only by the channel
+  resolving. The workaround does not depend on that diagnosis being right: if
+  the hints reach the prompt, so does the text. Wording follows core's own, so
+  nothing changes should core ever start calling the hook.
+
+  `reactionGuidance` is kept as-is for that day. Both paths log, so "did our
+  text reach the prompt" stays answerable from the log instead of by inference
+  — which is what cost three rewrites of the workspace rule.
+
 ## [2.8.1] — 2026-08-09
 
 ### Changed
