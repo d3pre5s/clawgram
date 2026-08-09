@@ -319,6 +319,18 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           : undefined;
         const level = resolveAgentReactionGuidance(account?.reactionLevel);
 
+        // Logged because "the hook returns the right thing" and "the prompt
+        // gained a Reactions section" turned out to be different questions:
+        // on 2.8.0 the first was verifiable by hand on the server while the
+        // prompt stayed byte-identical. Without this line there is no way to
+        // tell a hook core never calls from a hook that answers undefined.
+        actionLog.info("clawgram reactionGuidance", {
+          accountId: resolvedAccountId ?? null,
+          requestedAccountId: accountId ?? null,
+          configuredLevel: typeof account?.reactionLevel === "string" ? account.reactionLevel : null,
+          level: level ?? null,
+        });
+
         // "clawgram" is our plugin id; the section reads "Reactions are
         // enabled for <label>", and the label is the platform people see.
         return level ? { level, channelLabel: "Telegram" } : undefined;

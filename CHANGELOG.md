@@ -9,6 +9,20 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.8.1] — 2026-08-09
+
+### Changed
+
+- **`reactionGuidance` logs when core calls it.** 2.8.0 shipped the hook, the
+  server proved it returns `{level:"extensive"}` when invoked by hand, and the
+  config validated — yet the assembled system prompt stayed byte-identical,
+  with no `## Reactions` section. "The hook answers correctly" and "core asked
+  it" are different questions, and nothing in the logs could tell them apart.
+
+  One info line per invocation carrying the resolved account, the requested
+  account and the configured level. Silence in the log now means core never
+  called the hook, which is a different defect from the hook declining.
+
 ## [2.8.0] — 2026-08-09
 
 ### Added
