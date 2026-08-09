@@ -124,7 +124,7 @@ import {
   isReplyToSelfMessage,
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
-  normalizeParseMode,
+  resolveOutboundParseMode,
 } from './helpers';
 import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
@@ -2096,7 +2096,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const replyToId = readStringOrNumberParam(params, "replyToId") ?? readStringOrNumberParam(params, "replyTo");
         const threadId = readStringOrNumberParam(params, "threadId");
         const messageThreadId = parseOptionalThreadId(threadId);
-        const parseMode = normalizeParseMode((params as Record<string, unknown> | undefined)?.parseMode);
+        // Omitting parseMode inherits the account's configured mode rather
+        // than falling back to plain text (2.13.0): an account set to `html`
+        // used to render replies as HTML and these sends as raw markup.
+        const parseMode = resolveOutboundParseMode(
+          params as Record<string, unknown> | undefined,
+          cfg,
+          resolveConfiguredAccountId(cfg, accountId) ?? accountId ?? "default",
+        );
 
         actionLog.info("clawgram handleAction send", {
           requestedAccountId: accountId,

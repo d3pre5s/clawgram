@@ -711,6 +711,39 @@ function resolveReplyParseMode(
   return normalizeParseMode(account?.replyParseMode);
 }
 
+/**
+ * Parse mode for the `send` action (2.13.0).
+ *
+ * The per-call parameter still wins — a caller that knows its text is markdown
+ * has to be able to say so, and `parseMode: ""` still means "exactly as typed".
+ * What changed is the default: an omitted parameter now inherits the account's
+ * configured mode instead of silently sending plain text.
+ *
+ * Before this, the two send paths disagreed. An account set to `html` rendered
+ * replies as HTML and tool-driven sends as plain text, so an answer written in
+ * markup arrived with its markup showing — which is what happened on
+ * 2026-08-09 at 22:30 UTC, in a work chat, to a long answer. Two sends half an
+ * hour earlier had passed `parseMode` by hand and looked right; that is the
+ * tell, not the reassurance. Correctness that depends on remembering a
+ * parameter on every call is correctness that will lapse.
+ */
+function resolveOutboundParseMode(
+  params: Record<string, unknown> | undefined,
+  cfg: unknown,
+  accountId: string,
+): "markdown" | "html" | undefined {
+  const raw = params?.parseMode;
+
+  // An explicitly empty value is a decision, not an omission: send it raw.
+  if (raw === "" || raw === null) {
+    return undefined;
+  }
+
+  return raw === undefined
+    ? resolveReplyParseMode(cfg, accountId)
+    : normalizeParseMode(raw);
+}
+
 export {
   normalizeOutboundTarget,
   resolveConfiguredAccountId,
@@ -746,4 +779,5 @@ export {
   resolveSenderProfileWithTimeout,
   normalizeParseMode,
   resolveReplyParseMode,
+  resolveOutboundParseMode,
 };

@@ -33,7 +33,7 @@ describe("normalizeParseMode", () => {
   });
 });
 
-import { resolveReplyParseMode } from "../src/helpers";
+import { resolveOutboundParseMode, resolveReplyParseMode } from "../src/helpers";
 
 describe("resolveReplyParseMode (reply pipeline, 2.3.1)", () => {
   const withMode = (m: unknown) => ({ channels: { clawgram: { accounts: { default: { replyParseMode: m } } } } });
@@ -131,5 +131,46 @@ describe("sendText hands parseMode to GramJS", () => {
   it("exposes the account setting for the reply path", () => {
     const { mgr } = build("markdown");
     assert.equal(mgr.replyParseMode, "markdown");
+  });
+});
+
+/**
+ * The account setting used to cover only the reply pipeline. The `send` action
+ * took parseMode per call, so a send that omitted it went out as plain text —
+ * from an account explicitly configured for HTML.
+ *
+ * 2026-08-09, 22:30 UTC: a long answer in a work chat arrived with its
+ * markdown visible, `**Вне каталога — Telegram**` and all, because that one
+ * call omitted the parameter. Two sends half an hour earlier had passed it by
+ * hand and rendered correctly — which is the tell: correctness depended on
+ * remembering, every single time.
+ */
+describe("resolveOutboundParseMode (send action, 2.13.0)", () => {
+  const cfg = (replyParseMode?: string) => ({
+    channels: { clawgram: { accounts: { default: { ...(replyParseMode ? { replyParseMode } : {}) } } } },
+  });
+
+  it("falls back to the account setting when the call omits parseMode", () => {
+    assert.equal(resolveOutboundParseMode(undefined, cfg("html"), "default"), "html");
+    assert.equal(resolveOutboundParseMode({}, cfg("html"), "default"), "html");
+  });
+
+  it("lets an explicit per-call value win", () => {
+    // A caller that knows its text is markdown must still be able to say so.
+    assert.equal(resolveOutboundParseMode({ parseMode: "markdown" }, cfg("html"), "default"), "markdown");
+  });
+
+  it("keeps plain text available against a configured account", () => {
+    // Empty string is the escape hatch: send this exactly as typed.
+    assert.equal(resolveOutboundParseMode({ parseMode: "" }, cfg("html"), "default"), undefined);
+  });
+
+  it("stays plain when nothing is configured anywhere", () => {
+    assert.equal(resolveOutboundParseMode({}, cfg(), "default"), undefined);
+    assert.equal(resolveOutboundParseMode({}, {}, "default"), undefined);
+  });
+
+  it("still refuses an invalid per-call value", () => {
+    assert.throws(() => resolveOutboundParseMode({ parseMode: "rtf" }, cfg("html"), "default"), /invalid parseMode/);
   });
 });

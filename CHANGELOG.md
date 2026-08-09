@@ -9,6 +9,31 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.13.0] — 2026-08-10
+
+### Changed
+
+- **`send` now inherits the account's parse mode instead of defaulting to
+  plain text.** The two send paths disagreed: replies used
+  `accounts.*.replyParseMode`, while the `send` action took `parseMode` per
+  call and fell back to plain when it was omitted. An account configured for
+  `html` therefore rendered replies as HTML and tool-driven sends as raw
+  markup.
+
+  On 2026-08-09 at 22:30 UTC a long answer arrived in a work chat with
+  `**Вне каталога — Telegram**` visible. Two sends half an hour earlier had
+  passed `parseMode` by hand and looked right — which is the tell rather than
+  the reassurance: correctness that depends on remembering a parameter on
+  every call is correctness that will lapse.
+
+  The per-call parameter still wins, and `parseMode: ""` still means "send it
+  exactly as typed" — the escape hatch for text holding characters HTML would
+  choke on. Only the default changed.
+
+  A configured account is a **behaviour change for existing sends**: text that
+  previously went out raw is now parsed. Set `parseMode: ""` on any call that
+  must stay literal.
+
 ## [2.12.1] — 2026-08-09
 
 ### Fixed
