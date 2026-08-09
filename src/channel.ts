@@ -72,7 +72,8 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { buildReactionHintLines, parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
+import { parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
+import { reactToSilentMention } from "./silent-reaction";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import {
   applyAccountSecrets,
@@ -127,6 +128,49 @@ function readAccountReactionLevel(cfg: any, accountId?: string | null): unknown 
   }
 
   return cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]?.reactionLevel;
+}
+
+/**
+ * Wires `reactToSilentMention` to this account's runtime, config and log.
+ *
+ * The decision itself lives in `silent-reaction.ts`, testable without a
+ * Telegram connection; everything here is lookup. Missing pieces — no
+ * connected client, no model access — resolve to no reaction rather than to
+ * an error, because by this point the agent has already declined to reply.
+ */
+async function reactToSilentMentionForAccount(params: {
+  cfg: any;
+  accountId: string;
+  gram?: { sendReaction: (args: { target: unknown; messageId: number; emoji: string; remove: boolean }) => Promise<void> };
+  pluginRuntime?: PluginRuntime;
+  chatId: unknown;
+  messageId: unknown;
+  messageText?: string;
+  wasMentioned: boolean;
+}): Promise<void> {
+  const gram = params.gram;
+  const llm = params.pluginRuntime?.llm;
+  if (!gram || typeof llm?.complete !== "function") {
+    return;
+  }
+
+  await reactToSilentMention({
+    appetite: resolveAgentReactionGuidance(readAccountReactionLevel(params.cfg, params.accountId)),
+    wasMentioned: params.wasMentioned,
+    chatId: params.chatId,
+    messageId: params.messageId,
+    messageText: params.messageText,
+    deps: {
+      // Bound rather than destructured: the SDK may implement this as a
+      // method that needs its receiver.
+      complete: (args) => llm.complete(args as any) as Promise<{ text?: string }>,
+      sendReaction: (args) => gram.sendReaction(args),
+      onDecision: (info) => actionLog.info("clawgram silent-mention reaction", {
+        accountId: params.accountId,
+        ...info,
+      }),
+    },
+  });
 }
 
 /**
@@ -318,55 +362,24 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
     capabilities: CHANNEL_CAPABILITIES,
 
     agentPrompt: {
-      // Core injects its `## Reactions` section only when this returns a
-      // level. Without it the prompt never mentions reactions, and the agent
-      // treats the `react` action as one more entry in a 106-property schema:
-      // she used it when asked outright in a DM and never once on her own.
-      reactionGuidance: ({ cfg, accountId }: { cfg: any; accountId?: string | null }) => {
-        const resolvedAccountId = resolveConfiguredAccountId(cfg, accountId);
-        const account = resolvedAccountId
-          ? cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]
-          : undefined;
-        const level = resolveAgentReactionGuidance(account?.reactionLevel);
-
-        // Logged because "the hook returns the right thing" and "the prompt
-        // gained a Reactions section" turned out to be different questions:
-        // on 2.8.0 the first was verifiable by hand on the server while the
-        // prompt stayed byte-identical. Without this line there is no way to
-        // tell a hook core never calls from a hook that answers undefined.
-        actionLog.info("clawgram reactionGuidance", {
-          accountId: resolvedAccountId ?? null,
-          requestedAccountId: accountId ?? null,
-          configuredLevel: typeof account?.reactionLevel === "string" ? account.reactionLevel : null,
-          level: level ?? null,
-        });
-
-        // "clawgram" is our plugin id; the section reads "Reactions are
-        // enabled for <label>", and the label is the platform people see.
-        return level ? { level, channelLabel: "Telegram" } : undefined;
-      },
-
-      messageToolHints: ({ cfg, accountId }: { cfg?: any; accountId?: string | null } = {}) => {
-        const level = resolveAgentReactionGuidance(readAccountReactionLevel(cfg, accountId));
-
-        // Logged for the same reason reactionGuidance is: this path is the
-        // workaround for core skipping that hook, so "did our text reach the
-        // prompt" has to be answerable from the log rather than by inference.
-        actionLog.info("clawgram messageToolHints", {
-          accountId: accountId ?? null,
-          reactionLevel: level ?? null,
-        });
-
-        return [
-          "Use clawgram to send Telegram replies from the connected personal account.",
-          "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
-          "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
-          "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
-          "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
-          "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
-          ...buildReactionHintLines(level),
-        ];
-      },
+      // Nothing here steers reactions, and that is deliberate. 2.8.0 added a
+      // `reactionGuidance` hook and 2.9.0 moved the same text onto these
+      // hints; instrumentation then showed both hooks logging zero
+      // invocations across live turns while the assembled prompt stayed
+      // byte-identical at 44 266 chars. Core resolves the channel for prompt
+      // assembly from `params.messageChannel ?? params.messageProvider`,
+      // which is empty on this path, so nothing this channel contributes to
+      // the prompt reaches the agent at all. Reactions are decided in code
+      // instead — see `reactToSilentMention`. Do not re-add prompt text here
+      // expecting it to arrive.
+      messageToolHints: () => [
+        "Use clawgram to send Telegram replies from the connected personal account.",
+        "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
+        "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
+        "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
+        "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
+        "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
+      ],
       messageToolCapabilities: () => [
         "clawgram can reply in the current Telegram conversation when no explicit target is provided.",
         "clawgram can send text messages to direct chats and groups from the connected personal account.",
@@ -971,14 +984,52 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                   const visibleFallbackText = fallbackText
                     ? stripTtsDirectives(stripSilentReplyToken(fallbackText))
                     : "";
-                  if (fallbackText && !visibleFallbackText) {
-                    log?.info?.("clawgram skipping silent transcript fallback", {
+                  if (!visibleFallbackText) {
+                    if (fallbackText) {
+                      log?.info?.("clawgram skipping silent transcript fallback", {
+                        accountId,
+                        chatId: normalized.chatId,
+                        messageId: normalized.messageId,
+                        routeSessionKey: route.sessionKey,
+                      });
+                    } else {
+                      log?.warn?.("clawgram transcript fallback unavailable", {
+                        accountId,
+                        chatId: normalized.chatId,
+                        messageId: normalized.messageId,
+                        routeSessionKey: route.sessionKey,
+                      });
+                    }
+
+                    // Named, and nothing came back: leave a reaction so the
+                    // decision is visible instead of reading as her ignoring
+                    // people. The condition is her silence, not the shape of
+                    // the transcript — a turn that wrote no entry at all is
+                    // just as silent as one that wrote the NO_REPLY token.
+                    //
+                    // Never allowed to disturb the turn: the reply is already
+                    // settled by this point, so a failure here stays silent.
+                    await reactToSilentMentionForAccount({
+                      cfg,
                       accountId,
+                      gram: runtimes.get(accountId),
+                      pluginRuntime,
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
-                      routeSessionKey: route.sessionKey,
+                      messageText: normalized.text,
+                      // Same sense of "addressed" the agent was given for this
+                      // turn on line 817: a reply to her own message counts as
+                      // being spoken to, mention or not.
+                      wasMentioned: mentionDecision.effectiveWasMentioned || wasReplyToSelf,
+                    }).catch((err) => {
+                      log?.info?.("clawgram silent-mention reaction failed", {
+                        accountId,
+                        chatId: normalized.chatId,
+                        messageId: normalized.messageId,
+                        error: String(err),
+                      });
                     });
-                  } else if (visibleFallbackText) {
+                  } else {
                     log?.warn?.("clawgram using transcript fallback reply", {
                       accountId,
                       chatId: normalized.chatId,
@@ -991,13 +1042,6 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                       text: prefixReplyTextToAddress(visibleFallbackText, groupReplyAddress),
                       replyToMessageId: Number(normalized.messageId),
                       messageThreadId,
-                    });
-                  } else {
-                    log?.warn?.("clawgram transcript fallback unavailable", {
-                      accountId,
-                      chatId: normalized.chatId,
-                      messageId: normalized.messageId,
-                      routeSessionKey: route.sessionKey,
                     });
                   }
                 }

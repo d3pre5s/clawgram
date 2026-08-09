@@ -19,16 +19,13 @@ export type ReactionParams = {
 };
 
 /**
- * How chatty the agent may be with reactions, as core understands it.
+ * How freely the agent may react, from the account's `reactionLevel`.
  *
- * Core injects a `## Reactions` section into the system prompt only when a
- * channel returns a level from `agentPrompt.reactionGuidance`. Return nothing
- * and the prompt never mentions reactions at all — which is what happened
- * here until 2.8.0: the `react` action existed, the agent had it, and no line
- * of the prompt suggested using it.
- *
- * Levels and fallbacks mirror the bundled Telegram channel so the two behave
- * the same for the same config:
+ * This started as an answer for core's `agentPrompt.reactionGuidance` hook,
+ * which core turned out never to call for this channel. The config key stays
+ * and keeps its meaning; it now steers `reactToSilentMention` instead of a
+ * paragraph of prompt text. Levels mirror the bundled Telegram channel so the
+ * same config reads the same way in both:
  *
  * - `off`, `ack` — no agent reactions (`ack` is the "seen it" emoji core sends
  *   by itself, which is a different feature);
@@ -38,44 +35,6 @@ export type ReactionParams = {
  * An invalid value yields no guidance rather than a guess: a typo turning a
  * work chat chatty is worse than a typo turning it quiet.
  */
-/**
- * The reaction guidance as prompt lines, carried by `messageToolHints`.
- *
- * Core has its own `## Reactions` section, but it only builds it when
- * `params.config` is truthy in the prompt assembler — a condition our channel
- * never satisfied: the hook logged zero invocations across live turns while
- * the neighbouring `messageToolHints`, guarded only by the channel being
- * resolved, is called every time.
- *
- * That condition lives in the minified `openclaw` dependency, so it is not
- * ours to fix; patching `node_modules` would evaporate on the next update.
- * The hints path is ours, reaches the same prompt, and does not depend on
- * that diagnosis being right — if the hints arrive, so does the text.
- *
- * Wording follows core's own so behaviour stays the same if it ever starts
- * calling the hook and both appear.
- */
-export function buildReactionHintLines(level: "minimal" | "extensive" | undefined): string[] {
-  if (!level) {
-    return [];
-  }
-
-  const shared = [
-    "Use the `react` action for this: it leaves an emoji on a message without sending one.",
-    "A reaction is not a reply — you can react and still return NO_REPLY, and that is the point when someone names you but needs no answer.",
-  ];
-
-  return level === "minimal"
-    ? [
-      "Reactions are enabled for Telegram in MINIMAL mode. React ONLY when truly relevant: acknowledge an important request or confirmation, or show genuine sentiment sparingly. Do not react to routine messages or to your own replies. Guideline: at most 1 reaction per 5-10 exchanges.",
-      ...shared,
-    ]
-    : [
-      "Reactions are enabled for Telegram in EXTENSIVE mode. React liberally: acknowledge messages with a fitting emoji, show sentiment and personality, react to humour, notable events or good news, and use a reaction to confirm agreement. Guideline: react whenever it feels natural.",
-      ...shared,
-    ];
-}
-
 export function resolveAgentReactionGuidance(value: unknown): "minimal" | "extensive" | undefined {
   if (value === undefined || value === null) {
     return "minimal";

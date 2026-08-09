@@ -9,6 +9,55 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.10.0] — 2026-08-09
+
+### Added
+
+- **The channel now reacts when the agent is addressed and says nothing.**
+  Named in a group, nothing worth replying — an emoji goes on the message
+  instead of silence. The emoji is picked per message by a small model call
+  (`maxTokens: 8`), so it answers the mood rather than stamping a fixed ack.
+
+  This is the fourth attempt at the feature and the first that does not go
+  through the prompt. 2.8.0 added `reactionGuidance`, 2.9.0 moved the same text
+  onto `messageToolHints`; instrumentation on both showed **zero invocations**
+  across live turns while the assembled prompt stayed byte-identical at 44 266
+  chars. Core resolves the channel for prompt assembly from
+  `params.messageChannel ?? params.messageProvider`, which is empty on this
+  path — so nothing this channel contributes to the prompt has ever reached the
+  agent. Three rewrites of the workspace rule were arguing with a delivery
+  failure.
+
+  The decision now sits in code, at the one unambiguous moment: the turn was
+  addressed to her and delivered nothing. Guardrails:
+
+  - only when she was addressed — an `@`-mention or a reply to her own message,
+    the same sense of "addressed" the turn itself was given;
+  - `reactionLevel` still governs: `off`/`ack` react never, `minimal` is told to
+    be sparing, `extensive` to be generous;
+  - the model is told to answer `NONE` on conflictual or evaluative messages —
+    an emoji on "Петя опять сорвал сроки" is a public verdict on a colleague;
+  - anything that is not a bare emoji is discarded rather than sent hopefully;
+  - every failure degrades to no reaction. The reply is already settled when
+    this runs, so nothing here can break a turn.
+
+  Groups only. A silent DM is a different problem and gets no reaction.
+
+### Changed
+
+- **The silent-reply branch now keys on her silence, not on the transcript.**
+  It previously required a transcript entry that stripped to empty; a turn that
+  wrote no entry at all fell through to a bare warning. Both are equally silent
+  and are now handled together.
+
+### Removed
+
+- **`reactionGuidance`, and the reaction text on `messageToolHints`.** Both are
+  dead weight: neither hook is called for this channel, proven by logging
+  rather than inferred. `reactionLevel` keeps its meaning and now steers the
+  code path above. A comment in `channel.ts` records why prompt text must not
+  be re-added there.
+
 ## [2.9.0] — 2026-08-09
 
 ### Changed
