@@ -318,6 +318,32 @@ describe("the emoji prompt", () => {
     assert.match(buildEmojiSystemPrompt("extensive"), /generous/i);
   });
 
+  it("fixes the three answers the owner named", () => {
+    const prompt = buildEmojiSystemPrompt("extensive");
+
+    assert.match(prompt, /praised or thanked.*→ ❤/);
+    assert.match(prompt, /asked or told to do something → 🫡, or 👌/);
+    assert.match(prompt, /something written.*→ ✍/);
+  });
+
+  it("spells the fixed answers the way Telegram accepts them", () => {
+    // ❤ and ✍ are U+2764 and U+270D with nothing after them. A stray U+FE0F
+    // in this file would be invisible in an editor and would make the model
+    // copy back a form the API refuses — the 2.10.0 failure, reintroduced
+    // through the prompt instead of the parser.
+    const prompt = buildEmojiSystemPrompt("extensive");
+
+    assert.ok(prompt.includes("❤ "), "❤ must be bare U+2764");
+    assert.ok(!prompt.includes("❤️"), "❤ must not carry U+FE0F");
+    assert.ok(!prompt.includes("✍️"), "✍ must not carry U+FE0F");
+  });
+
+  it("tells the model not to swap a fixed answer for a near-miss", () => {
+    // Without this the model answered 👍 to praise, which is the exact
+    // substitution the owner objected to.
+    assert.match(buildEmojiSystemPrompt("extensive"), /do not substitute a similar emoji/);
+  });
+
   it("holds back where a reaction reads as a verdict on someone", () => {
     // She sits in work chats. An emoji on "Петя опять сорвал сроки" is a
     // public opinion about a colleague, not an acknowledgement.

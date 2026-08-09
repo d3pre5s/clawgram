@@ -9,6 +9,26 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.11.0] — 2026-08-09
+
+### Changed
+
+- **Three reactions are now fixed rather than left to the model's taste.**
+  First working run reacted 👍 to "самая умная в этой ситуации оказалась
+  тина" — defensible, and wrong: 👍 approves of the praise instead of being
+  touched by it. The owner named the mapping:
+
+  - praised, thanked, or spoken well of → `❤` (explicitly never 👍)
+  - asked or told to do something → `🫡`, or `👌` for a small routine request
+  - anything about producing something written → `✍`
+
+  Everything else still follows the mood rule, and the NONE rule for
+  conflictual or evaluative messages is unchanged and still wins.
+
+  `❤` and `✍` are written as bare U+2764 and U+270D in the prompt, with a test
+  asserting no U+FE0F crept in: the prompt is a second way to reintroduce the
+  2.10.1 bug, since the model copies back what it is shown.
+
 ## [2.10.1] — 2026-08-09
 
 ### Fixed

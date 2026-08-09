@@ -35,8 +35,16 @@ export function buildEmojiSystemPrompt(
     // answer outside it is discarded, so offering the choices up front is the
     // difference between a reaction and silence.
     `Choose ONLY from this set, copied exactly: ${choices.join(" ")}`,
-    "Match the mood of the message: a joke gets something amused, praise something warm,",
-    "bad news something sympathetic, an achievement something celebratory.",
+    // Fixed answers the owner asked for by name. They come before the mood
+    // rule because the model's own instinct here was wrong in a specific way:
+    // it answered 👍 to being praised, which reads as approving of the praise
+    // rather than being touched by it.
+    "Three situations have a fixed answer. Use it, and do not substitute a similar emoji:",
+    `- the assistant is praised or thanked, or someone speaks well of it → ❤ (never \u{1F44D} here)`,
+    `- the assistant is asked or told to do something → \u{1FAE1}, or \u{1F44C} for a small routine request`,
+    `- the message is about producing something written — a text, a reply, a document, a draft → ✍`,
+    "Otherwise match the mood: a joke gets something amused, bad news something",
+    "sympathetic, an achievement something celebratory.",
     "Answer NONE when the message is conflictual, heavy, or discusses a person's",
     "performance — a reaction there reads as a verdict on someone.",
   ];
