@@ -344,6 +344,22 @@ describe("the emoji prompt", () => {
     assert.match(buildEmojiSystemPrompt("extensive"), /do not substitute a similar emoji/);
   });
 
+  it("exempts the assistant from the do-not-judge-people rule", () => {
+    // Live regression: "ладно, молодец тина" got NONE, and "самой умной
+    // оказалась тина" got 😁 instead of ❤. Both are literally statements
+    // about someone's performance, so the model applied the restraint rule
+    // exactly as written and swallowed the praise rule with it.
+    const prompt = buildEmojiSystemPrompt("extensive");
+
+    assert.match(prompt, /SOMEONE ELSE'S work or behaviour/i);
+    assert.match(prompt, /does NOT apply to the assistant/i);
+    assert.match(prompt, /'молодец' is praise → ❤/);
+  });
+
+  it("says the fixed answers outrank the mood rule", () => {
+    assert.match(buildEmojiSystemPrompt("extensive"), /fixed answer applies, it wins/);
+  });
+
   it("holds back where a reaction reads as a verdict on someone", () => {
     // She sits in work chats. An emoji on "Петя опять сорвал сроки" is a
     // public opinion about a colleague, not an acknowledgement.

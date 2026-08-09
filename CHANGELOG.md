@@ -9,6 +9,25 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.12.1] — 2026-08-09
+
+### Fixed
+
+- **The do-not-judge-people rule was swallowing the praise rule.** Live:
+  "ладно, молодец тина" produced `chose: "none"`, and "самой умной в этой
+  ситуации оказалась тина" produced 😁 rather than the `❤` 2.11.0 fixed for
+  praise. Neither was a delivery failure — the mention was seen, the turn was
+  silent, the reaction step ran, and the model declined on purpose.
+
+  It was following the prompt exactly. The restraint clause read "answer NONE
+  when the message … discusses a person's performance", and "молодец тина" is
+  literally that. The carve-out the assistant has in its own rules — the ban on
+  judging people protects *others*, not itself — was never repeated here.
+
+  The clause is now scoped to someone *else's* work or behaviour, with the
+  exemption spelled out, plus an explicit precedence line: when a fixed answer
+  applies, it beats the mood rule.
+
 ## [2.12.0] — 2026-08-09
 
 ### Added

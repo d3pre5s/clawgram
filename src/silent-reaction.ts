@@ -45,8 +45,19 @@ export function buildEmojiSystemPrompt(
     `- the message is about producing something written — a text, a reply, a document, a draft → ✍`,
     "Otherwise match the mood: a joke gets something amused, bad news something",
     "sympathetic, an achievement something celebratory.",
-    "Answer NONE when the message is conflictual, heavy, or discusses a person's",
-    "performance — a reaction there reads as a verdict on someone.",
+    "Answer NONE when the message is conflictual or heavy, or when it judges",
+    "SOMEONE ELSE's work or behaviour — a reaction there reads as a verdict on",
+    "that person.",
+    // Without this the NONE rule swallowed the praise rule: "молодец тина" is
+    // literally a statement about someone's performance, the model applied the
+    // rule as written, and answered NONE to being praised. The carve-out
+    // exists in the assistant's own rules — the ban on judging people protects
+    // others, not itself — and had to be repeated here.
+    "That restraint protects other people and does NOT apply to the assistant",
+    "itself. Praise, teasing, thanks or criticism aimed at the assistant is",
+    "exactly what the fixed answers above are for: being called clever, useful",
+    "or 'молодец' is praise → ❤, not a verdict on a third party.",
+    "When a fixed answer applies, it wins over the mood rule.",
   ];
 
   return appetite === "minimal"
