@@ -9,6 +9,28 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-08-09
+
+### Added
+
+- **The prompt now tells the agent that reacting exists.** Core has a whole
+  reactions subsystem a channel opts into: it calls
+  `agentPrompt.reactionGuidance`, and when a channel returns a level it injects
+  a `## Reactions` section into the system prompt — "React ONLY when truly
+  relevant" for `minimal`, "react whenever it feels natural" for `extensive`.
+
+  clawgram never implemented the hook, so that section was absent entirely.
+  The `react` action was advertised and available, and the agent used it the
+  moment she was asked point blank in a DM — but never once on her own in a
+  group, across every turn in the logs. Three rewrites of the owner's
+  workspace rule failed against a prompt that otherwise never mentioned
+  reactions at all.
+
+  New account setting `reactionLevel`: `off` / `ack` / `minimal` /
+  `extensive`, absent means `minimal`, an invalid value disables agent
+  reactions rather than guessing. Levels and fallbacks mirror the bundled
+  Telegram channel so the same config behaves the same way in both.
+
 ## [2.7.1] — 2026-08-08
 
 ### Fixed

@@ -18,6 +18,48 @@ export type ReactionParams = {
   remove: boolean;
 };
 
+/**
+ * How chatty the agent may be with reactions, as core understands it.
+ *
+ * Core injects a `## Reactions` section into the system prompt only when a
+ * channel returns a level from `agentPrompt.reactionGuidance`. Return nothing
+ * and the prompt never mentions reactions at all — which is what happened
+ * here until 2.8.0: the `react` action existed, the agent had it, and no line
+ * of the prompt suggested using it.
+ *
+ * Levels and fallbacks mirror the bundled Telegram channel so the two behave
+ * the same for the same config:
+ *
+ * - `off`, `ack` — no agent reactions (`ack` is the "seen it" emoji core sends
+ *   by itself, which is a different feature);
+ * - `minimal` — react sparingly; the default when nothing is configured;
+ * - `extensive` — react whenever it feels natural.
+ *
+ * An invalid value yields no guidance rather than a guess: a typo turning a
+ * work chat chatty is worse than a typo turning it quiet.
+ */
+export function resolveAgentReactionGuidance(value: unknown): "minimal" | "extensive" | undefined {
+  if (value === undefined || value === null) {
+    return "minimal";
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const level = value.trim();
+  if (!level) {
+    return "minimal";
+  }
+  if (level === "minimal" || level === "extensive") {
+    return level;
+  }
+  if (level === "off" || level === "ack") {
+    return undefined;
+  }
+
+  return undefined;
+}
+
 export type ReactionToolContext = {
   currentChannelId?: string;
   currentMessageId?: string | number;

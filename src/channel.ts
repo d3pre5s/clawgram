@@ -72,7 +72,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { parseReactionParams } from "./reactions";
+import { parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import {
   applyAccountSecrets,
@@ -308,6 +308,22 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
     capabilities: CHANNEL_CAPABILITIES,
 
     agentPrompt: {
+      // Core injects its `## Reactions` section only when this returns a
+      // level. Without it the prompt never mentions reactions, and the agent
+      // treats the `react` action as one more entry in a 106-property schema:
+      // she used it when asked outright in a DM and never once on her own.
+      reactionGuidance: ({ cfg, accountId }: { cfg: any; accountId?: string | null }) => {
+        const resolvedAccountId = resolveConfiguredAccountId(cfg, accountId);
+        const account = resolvedAccountId
+          ? cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]
+          : undefined;
+        const level = resolveAgentReactionGuidance(account?.reactionLevel);
+
+        // "clawgram" is our plugin id; the section reads "Reactions are
+        // enabled for <label>", and the label is the platform people see.
+        return level ? { level, channelLabel: "Telegram" } : undefined;
+      },
+
       messageToolHints: () => [
         "Use clawgram to send Telegram replies from the connected personal account.",
         "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
