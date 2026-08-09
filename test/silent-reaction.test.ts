@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildEmojiSystemPrompt,
+  canonicalizeReactionEmoji,
   parseEmojiChoice,
   reactToSilentMention,
   shouldReactToSilentTurn,
@@ -84,11 +85,44 @@ describe("reading the model's emoji choice", () => {
     assert.equal(parseEmojiChoice(null), undefined);
   });
 
-  it("keeps multi-codepoint emoji whole", () => {
-    // Skin tones and ZWJ sequences run several code units long; the length
-    // guard must not chop them into a lone modifier.
-    assert.equal(parseEmojiChoice("👍🏽"), "👍🏽");
-    assert.equal(parseEmojiChoice("❤️"), "❤️");
+  it("strips the U+FE0F that Telegram refuses", () => {
+    // The live failure. Telegram's reaction set holds `❤` as U+2764 alone, and
+    // `messages.SendReaction` answers REACTION_INVALID for the decorated form
+    // models emit by habit. Same for ⚡, ✍, 🕊, ☃.
+    assert.equal(parseEmojiChoice("❤️"), "❤");
+    assert.equal(parseEmojiChoice("⚡️"), "⚡");
+    assert.equal(canonicalizeReactionEmoji("❤️"), "❤");
+  });
+
+  it("drops skin tones, which are not members of the set", () => {
+    assert.equal(parseEmojiChoice("👍🏽"), "👍");
+  });
+
+  it("refuses an emoji Telegram does not accept as a reaction", () => {
+    // A perfectly ordinary emoji that is simply not in the reaction set. The
+    // old parser passed anything emoji-shaped and let Telegram reject it,
+    // which cost the first live attempt.
+    assert.equal(parseEmojiChoice("🍕"), undefined);
+    assert.equal(parseEmojiChoice("🚀"), undefined);
+  });
+
+  it("narrows to what a restricted chat permits", () => {
+    assert.equal(parseEmojiChoice("🔥", [ "👍", "🔥" ]), "🔥");
+    assert.equal(parseEmojiChoice("😁", [ "👍", "🔥" ]), undefined);
+  });
+
+  it("matches a restricted set written with the decorated form", () => {
+    // The allowed list comes off the wire and may carry U+FE0F; comparing raw
+    // would reject a reaction the chat actually permits.
+    assert.equal(parseEmojiChoice("❤", [ "❤️" ]), "❤");
+  });
+
+  it("permits nothing when the chat has reactions switched off", () => {
+    // ChatReactionsNone arrives as an empty list. Treating empty as "no
+    // restriction" — the natural falsy reading — would react in exactly the
+    // chats that forbid reacting.
+    assert.equal(parseEmojiChoice("👍", []), undefined);
+    assert.equal(parseEmojiChoice("👍", undefined), "👍");
   });
 });
 
@@ -156,7 +190,49 @@ describe("reacting to a silent mention end to end", () => {
 
     assert.equal(await call(h.deps), undefined);
     assert.deepEqual(h.sent, []);
-    assert.deepEqual(h.decisions, [ { messageId: 2188, appetite: "extensive", chose: "none" } ]);
+    assert.deepEqual(h.decisions, [ {
+      messageId: 2188,
+      appetite: "extensive",
+      chose: "none",
+      emoji: undefined,
+      allowedCount: undefined,
+    } ]);
+  });
+
+  it("offers the model only what a restricted chat permits", async () => {
+    const h = harness("🔥");
+    (h.deps as any).allowedReactions = async () => [ "👍", "🔥" ];
+
+    assert.equal(await call(h.deps), "🔥");
+    assert.match(String(h.asked[ 0 ].systemPrompt), /Choose ONLY from this set, copied exactly: 👍 🔥$/m);
+  });
+
+  it("does not react at all where the chat switched reactions off", async () => {
+    // ChatReactionsNone. Asking the model here would spend a call to produce
+    // an emoji that cannot be sent.
+    const h = harness("🔥");
+    (h.deps as any).allowedReactions = async () => [];
+
+    assert.equal(await call(h.deps), undefined);
+    assert.deepEqual(h.asked, []);
+    assert.deepEqual(h.sent, []);
+    assert.deepEqual(h.decisions, [ {
+      messageId: 2188,
+      appetite: "extensive",
+      chose: "none",
+      allowedCount: 0,
+    } ]);
+  });
+
+  it("falls back to the full set when the chat cannot be read", async () => {
+    // A failed lookup must not mean "forbidden": most chats allow everything,
+    // and this path runs after the reply is already settled.
+    const h = harness("🔥");
+    (h.deps as any).allowedReactions = async () => {
+      throw new Error("CHANNEL_PRIVATE");
+    };
+
+    assert.equal(await call(h.deps), "🔥");
   });
 
   it("never asks the model when the turn does not qualify", async () => {
@@ -201,13 +277,20 @@ describe("reacting to a silent mention end to end", () => {
     assert.equal(String((h.asked[ 0 ].messages as any[])[ 0 ].content).length, 2000);
   });
 
-  it("keeps the message body out of the decision log", async () => {
-    // The channel's standing rule: bodies are private correspondence. The log
-    // records that a reaction happened, never what it was about.
+  it("logs the emoji but never the message body", async () => {
+    // Bodies are private correspondence; the emoji is our own act, and the
+    // first live failure was undiagnosable without it in the log.
     const h = harness("🔥");
     await call(h.deps);
 
-    assert.deepEqual(h.decisions, [ { messageId: 2188, appetite: "extensive", chose: "emoji" } ]);
+    assert.deepEqual(h.decisions, [ {
+      messageId: 2188,
+      appetite: "extensive",
+      chose: "emoji",
+      emoji: "🔥",
+      allowedCount: undefined,
+    } ]);
+    assert.doesNotMatch(JSON.stringify(h.decisions), /спасла/);
   });
 
   it("lets a model failure surface to the caller, which swallows it", async () => {

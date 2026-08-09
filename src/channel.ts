@@ -141,7 +141,10 @@ function readAccountReactionLevel(cfg: any, accountId?: string | null): unknown 
 async function reactToSilentMentionForAccount(params: {
   cfg: any;
   accountId: string;
-  gram?: { sendReaction: (args: { target: unknown; messageId: number; emoji: string; remove: boolean }) => Promise<void> };
+  gram?: {
+    sendReaction: (args: { target: unknown; messageId: number; emoji: string; remove: boolean }) => Promise<void>;
+    getAllowedReactions?: (target: unknown) => Promise<readonly string[] | undefined>;
+  };
   pluginRuntime?: PluginRuntime;
   chatId: unknown;
   messageId: unknown;
@@ -165,6 +168,9 @@ async function reactToSilentMentionForAccount(params: {
       // method that needs its receiver.
       complete: (args) => llm.complete(args as any) as Promise<{ text?: string }>,
       sendReaction: (args) => gram.sendReaction(args),
+      allowedReactions: gram.getAllowedReactions
+        ? () => gram.getAllowedReactions!(params.chatId)
+        : undefined,
       onDecision: (info) => actionLog.info("clawgram silent-mention reaction", {
         accountId: params.accountId,
         ...info,

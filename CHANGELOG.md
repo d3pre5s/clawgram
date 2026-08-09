@@ -9,6 +9,41 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.10.1] — 2026-08-09
+
+### Fixed
+
+- **The silent-mention reaction reached Telegram and was refused.** First live
+  run, message 2228:
+
+  ```
+  clawgram silent-mention reaction         { messageId: 2228, appetite: 'extensive', chose: 'emoji' }
+  clawgram silent-mention reaction failed  { error: 'RPCError: 400: REACTION_INVALID (caused by messages.SendReaction)' }
+  ```
+
+  Every step worked — mention seen, turn silent, emoji chosen — and the send
+  failed. Reactions are not "any emoji": Telegram keeps a fixed set, and five
+  of its members carry **no** variation selector (`❤` is U+2764 alone, likewise
+  `⚡`, `✍`, `🕊`, `☃`). The parser preserved the U+FE0F models emit by habit,
+  and a test even asserted it did — the wrong contract, verified.
+
+  Now the answer is canonicalized (U+FE0F and skin-tone modifiers stripped) and
+  matched against the reaction set; the set is also handed to the model up
+  front, so it picks from what Telegram will take instead of being corrected
+  afterwards.
+
+- **Chats that restrict reactions are honoured.** `availableReactions` is read
+  off the full chat: `ChatReactionsSome` narrows both the prompt and the
+  validation, and `ChatReactionsNone` skips the step entirely without spending
+  a model call. A failed lookup falls back to the full set — not knowing is not
+  the same as being forbidden.
+
+### Changed
+
+- **The decision log carries the emoji and the size of the allowed set.** The
+  body stays out, as always, but the reaction is our own act, and the first
+  live failure could not be diagnosed from `chose: "emoji"` alone.
+
 ## [2.10.0] — 2026-08-09
 
 ### Added

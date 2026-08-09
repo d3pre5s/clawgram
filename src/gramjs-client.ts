@@ -428,6 +428,49 @@ export class GramJsClientManager {
   }
 
   /**
+   * Which reactions a chat permits, or `undefined` when it permits all.
+   *
+   * Telegram models this three ways on the full chat: absent or
+   * `ChatReactionsAll` means everything, `ChatReactionsSome` carries the
+   * allowed list, and `ChatReactionsNone` means reactions are switched off —
+   * reported here as an empty list, which callers must read as "react with
+   * nothing", not as "no restriction".
+   *
+   * Custom emoji entries are dropped: they need a Premium account to send.
+   */
+  async getAllowedReactions(target: unknown): Promise<readonly string[] | undefined> {
+    const resolved = await this.resolvePeer(target);
+    const entity = await this.client.getEntity(resolved.peer as any);
+
+    const full = await (async () => {
+      switch ((entity as any)?.className) {
+        case "Channel":
+          return (await this.client.invoke(new Api.channels.GetFullChannel({
+            channel: entity as any,
+          }))).fullChat;
+        case "Chat":
+          return (await this.client.invoke(new Api.messages.GetFullChat({
+            chatId: (entity as any).id,
+          }))).fullChat;
+        default:
+          return undefined;
+      }
+    })();
+
+    const available = (full as any)?.availableReactions;
+    switch (available?.className) {
+      case "ChatReactionsNone":
+        return [];
+      case "ChatReactionsSome":
+        return (available.reactions ?? [])
+          .map((reaction: any) => reaction?.emoticon)
+          .filter((emoticon: unknown): emoticon is string => typeof emoticon === "string");
+      default:
+        return undefined;
+    }
+  }
+
+  /**
    * Adds or clears this account's reaction on a message.
    *
    * Telegram models "no reaction" as an empty reaction list rather than a

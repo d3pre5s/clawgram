@@ -22,11 +22,19 @@
 /** How freely to react, mirroring the configured reaction level. */
 export type ReactionAppetite = "minimal" | "extensive";
 
-export function buildEmojiSystemPrompt(appetite: ReactionAppetite): string {
+export function buildEmojiSystemPrompt(
+  appetite: ReactionAppetite,
+  allowed?: readonly string[],
+): string {
+  const choices = allowed === undefined || allowed.length === 0 ? TELEGRAM_REACTIONS : allowed;
   const shared = [
     "You pick a single emoji reaction for a chat message.",
     "The assistant was mentioned in this message but decided it needs no written reply.",
     "Answer with exactly one emoji and nothing else, or the word NONE if no reaction fits.",
+    // The set is not decoration: Telegram refuses anything outside it, and an
+    // answer outside it is discarded, so offering the choices up front is the
+    // difference between a reaction and silence.
+    `Choose ONLY from this set, copied exactly: ${choices.join(" ")}`,
     "Match the mood of the message: a joke gets something amused, praise something warm,",
     "bad news something sympathetic, an achievement something celebratory.",
     "Answer NONE when the message is conflictual, heavy, or discusses a person's",
@@ -45,14 +53,55 @@ export function buildEmojiSystemPrompt(appetite: ReactionAppetite): string {
 }
 
 /**
- * Turns a model answer into an emoji, or nothing.
+ * The emoji Telegram accepts as reactions, in the exact form it expects.
  *
- * Deliberately strict. A wrong emoji is a visible act on someone else's
- * message, and Telegram rejects emoji outside the chat's allowed set anyway —
- * so anything that does not look like a bare emoji is treated as "no
- * reaction" rather than sent hopefully.
+ * Reactions are not "any emoji". Telegram keeps a fixed set, and several of
+ * its members carry **no** variation selector — `❤` is U+2764 alone, and so
+ * are `⚡`, `✍`, `🕊`, `☃`. Sending the U+FE0F-decorated form of any of them
+ * fails, which is exactly what happened on the first live attempt:
+ *
+ *   RPCError: 400: REACTION_INVALID (caused by messages.SendReaction)
+ *
+ * The list is written with explicit escapes for those five, because the
+ * difference is invisible in an editor and a stray U+FE0F would break them
+ * again silently.
  */
-export function parseEmojiChoice(raw: string | undefined | null): string | undefined {
+export const TELEGRAM_REACTIONS: readonly string[] = [
+  "👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱",
+  "🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "\u{1F54A}", "🤡",
+  "🥱", "🥴", "😍", "🐳", "🌚", "🌭", "💯", "🤣", "⚡", "🍌",
+  "🏆", "💔", "🤨", "😐", "🍓", "🍾", "💋", "😈", "😴", "😭",
+  "🤓", "👻", "👀", "🎃", "🙈", "😇", "😨", "🤝", "✍", "🤗",
+  "🫡", "🎅", "🎄", "☃", "💅", "🤪", "🗿", "🆒", "💘", "🙉",
+  "🦄", "😘", "💊", "🙊", "😎", "👾", "🤷", "😡",
+];
+
+/**
+ * Strips the decorations a model adds that Telegram will not accept.
+ *
+ * U+FE0F is the big one — models emit `❤️` and `⚡️` by habit, and the reaction
+ * set wants them bare. Skin-tone modifiers are dropped for the same reason:
+ * `👍🏽` is not a member of the set, `👍` is.
+ */
+export function canonicalizeReactionEmoji(value: string): string {
+  return value.replace(/️/g, "").replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "");
+}
+
+/**
+ * Turns a model answer into an emoji Telegram will actually take, or nothing.
+ *
+ * Deliberately strict, and strict in the one way that matters: the result is
+ * matched against the reaction set rather than merely "looks like an emoji".
+ * The first live attempt proved the difference — the model picked a perfectly
+ * sensible emoji, the parser passed it, and Telegram refused it.
+ *
+ * `allowed` narrows the set further for chats that restrict which reactions
+ * they permit; omit it when the chat allows all of them.
+ */
+export function parseEmojiChoice(
+  raw: string | undefined | null,
+  allowed?: readonly string[],
+): string | undefined {
   if (typeof raw !== "string") {
     return undefined;
   }
@@ -68,13 +117,15 @@ export function parseEmojiChoice(raw: string | undefined | null): string | undef
     return undefined;
   }
 
-  // Latin letters and digits mean words like "NONE", "ok" or "1" slipped
-  // through; an emoji has none of them.
-  if (/[A-Za-z0-9]/.test(cleaned)) {
-    return undefined;
-  }
+  const candidate = canonicalizeReactionEmoji(cleaned);
+  // `undefined` is "the chat does not restrict reactions"; an empty list is
+  // `ChatReactionsNone` — reactions switched off — and must permit nothing.
+  // Collapsing the two would react in a chat that forbids reacting.
+  const permitted = allowed === undefined
+    ? TELEGRAM_REACTIONS
+    : allowed.map(canonicalizeReactionEmoji);
 
-  return cleaned;
+  return permitted.includes(candidate) ? candidate : undefined;
 }
 
 /**
@@ -108,8 +159,24 @@ export type SilentReactionDeps = {
     purpose: string;
   }) => Promise<{ text?: string } | undefined>;
   sendReaction: (args: { target: unknown; messageId: number; emoji: string; remove: boolean }) => Promise<void>;
-  /** Never receives the message body — only whether a reaction came of it. */
-  onDecision?: (info: { messageId: number; appetite: ReactionAppetite; chose: "emoji" | "none" }) => void;
+  /**
+   * Which reactions this chat permits, when it restricts them at all.
+   * Resolving it is best-effort: a failure here means "all of them", not
+   * "none", because a chat that allows everything is the common case.
+   */
+  allowedReactions?: () => Promise<readonly string[] | undefined>;
+  /**
+   * Never receives the message body — only what the reaction step did with it.
+   * The emoji is our own act, not correspondence, and the first live failure
+   * was undiagnosable without it.
+   */
+  onDecision?: (info: {
+    messageId: number;
+    appetite: ReactionAppetite;
+    chose: "emoji" | "none";
+    emoji?: string;
+    allowedCount?: number;
+  }) => void;
 };
 
 /**
@@ -145,15 +212,35 @@ export async function reactToSilentMention(params: {
     return undefined;
   }
 
+  // A chat that restricts reactions would reject anything outside its own set,
+  // so the restriction has to reach the model rather than be discovered by a
+  // rejected send. Not knowing is not the same as being forbidden: a failure
+  // here falls back to the full Telegram set.
+  const allowed = await (params.deps.allowedReactions?.() ?? Promise.resolve(undefined))
+    .catch(() => undefined);
+
+  // Reactions switched off for the whole chat: nothing to pick from, and no
+  // reason to spend a model call finding that out.
+  if (allowed !== undefined && allowed.length === 0) {
+    params.deps.onDecision?.({ messageId, appetite, chose: "none", allowedCount: 0 });
+    return undefined;
+  }
+
   const answer = await params.deps.complete({
     messages: [ { role: "user", content: String(params.messageText ?? "").slice(0, MAX_JUDGED_CHARS) } ],
-    systemPrompt: buildEmojiSystemPrompt(appetite),
+    systemPrompt: buildEmojiSystemPrompt(appetite, allowed),
     maxTokens: 8,
     purpose: "clawgram: emoji reaction for a silent mention",
   });
 
-  const emoji = parseEmojiChoice(answer?.text);
-  params.deps.onDecision?.({ messageId, appetite, chose: emoji ? "emoji" : "none" });
+  const emoji = parseEmojiChoice(answer?.text, allowed);
+  params.deps.onDecision?.({
+    messageId,
+    appetite,
+    chose: emoji ? "emoji" : "none",
+    emoji,
+    allowedCount: allowed?.length,
+  });
   if (!emoji) {
     return undefined;
   }
