@@ -26,6 +26,7 @@ const FORBIDDEN_LOG_KEYS = new Set([
   "apiHash",
   "sessionString",
   "password",
+  "twoFaPassword",
 ]);
 
 type LogCall = { name: string; line: number; keys: string[] };

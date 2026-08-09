@@ -32,6 +32,7 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 - **Read receipts** — mark messages as read
 - **Emoji reactions** — acknowledge a message with a reaction instead of a reply (`react` action)
 - **Chat metadata** — title, type, member count, description, forum flag and pinned message (`chatInfo` action)
+- **Chat management** — create supergroups, add/remove members, promote/demote admins, transfer ownership, export invite links (`createGroup`, `addMembers`, `removeMember`, `promoteAdmin`, `demoteAdmin`, `transferOwnership`, `inviteLink`) — off until `manageChats` allows it
 - **User allowlist** — control which user has access to send messages for direct
 - **Chat allowlist** — control which chats the assistant can access
 - **Multi-account** — run multiple Telegram accounts simultaneously
@@ -226,6 +227,8 @@ openclaw gateway restart
 | `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames for direct messages only |
 | `groups` | object | `{}` | Allowed groups map keyed by explicit group id or `*` |
 | `proxy` | object | unset | Optional SOCKS4/SOCKS5 proxy for this account — see [Proxy (SOCKS4/SOCKS5)](#proxy-socks4socks5) |
+| `manageChats` | string[] | unset | Chats the assistant may **manage** — see [Chat management](#chat-management). Absent or empty = management off; `["*"]` = every chat |
+| `twoFaPassword` | string \| SecretRef | unset | The account's Telegram 2FA password; read only by `transferOwnership` |
 
 Group config fields:
 
@@ -579,6 +582,58 @@ Bindings
 ```
 
 
+## Chat management
+
+Since 2.12.0 the assistant can assemble a chat, not only speak in it: create a supergroup, add and
+remove members, promote and demote admins, hand the chat to a new owner, and issue invite links.
+This exists because the plugin drives a personal MTProto account — Telegram's Bot API forbids most
+of these to bots (a bot cannot create a group, cannot add an unwilling member, and cannot transfer
+ownership at all).
+
+**Off by default.** Every action below is gated by `accounts.*.manageChats`, and the default is the
+exact opposite of `readChats`: absent or empty means *manage nothing*, a list of chat ids confines
+management to those chats, `["*"]` allows every chat. A non-empty list also unlocks `createGroup`
+(the chat being created is not in any list yet). All actions honour `dryRun`, and the gate is
+checked before the dry-run answer, so a dry run exercises the same refusals a real call would hit.
+
+| Action | Parameters | Notes |
+|---|---|---|
+| `createGroup` | `title`, `about?`, `users?` | Creates a **supergroup** (megagroup) — granular admin rights, bans and ownership transfer only exist there. Initial members are invited right after creation; who could not be added is returned in `missing` |
+| `addMembers` | `chatId`, `users` | Adds to supergroups in one call, to basic groups one by one. Ids Telegram refused (privacy settings) come back in `missing` instead of failing the call |
+| `removeMember` | `chatId`, `user`, `ban?` | Soft kick by default — the person may be re-invited later. `ban: true` keeps them out until unbanned |
+| `promoteAdmin` | `chatId`, `user`, `rank?`, `rights?` | Grants a deliberate default set (change info, delete messages, ban, invite, pin, calls, topics). `addAdmins` and `anonymous` stay **off** unless explicitly set in `rights` |
+| `demoteAdmin` | `chatId`, `user` | Strips every admin right |
+| `transferOwnership` | `chatId`, `user` | Supergroups only. Requires `twoFaPassword` (below); Telegram's own rules surface as errors — see the fine print |
+| `inviteLink` | `chatId`, `expireDate?`, `usageLimit?`, `title?`, `requestNeeded?` | The path for people whose privacy settings refuse a direct add. `expireDate` takes unix seconds or an ISO date |
+
+User references in `users`/`user` are `@username` or a numeric Telegram id. A `@username` always
+resolves; a bare numeric id only when the account has already seen the user (shared chat, dialog,
+recent contact) — Telegram refuses to look up strangers by id.
+
+**Ownership transfer fine print.** Telegram guards `transferOwnership` with an SRP proof of the
+account's two-step-verification password, so the password has to be available to the runtime:
+`accounts.*.twoFaPassword`, either a literal or a [SecretRef](#keeping-credentials-out-of-the-config-file).
+It is read only by this action, exchanged for the SRP proof in-process, and never travels through
+action parameters or logs. Telegram additionally refuses the transfer when 2FA was enabled less
+than 7 days ago (`PASSWORD_TOO_FRESH_*`), when the session is younger than 24 hours
+(`SESSION_TOO_FRESH_*`), or when the new owner is not yet an admin of the chat — promote them
+first. These errors are surfaced as-is rather than retried.
+
+```json
+{
+  "channels": {
+    "clawgram": {
+      "accounts": {
+        "default": {
+          "manageChats": [ "-1001234567890" ],
+          "twoFaPassword": { "source": "file", "provider": "corp", "id": "/telegram/2fa-password" }
+        }
+      }
+    }
+  }
+}
+```
+
 ## Security and privacy
 
 This plugin holds credentials for a real Telegram account and handles private correspondence. What
@@ -590,6 +645,8 @@ that means in practice, and what the code does about it:
 | Proxy password | `accounts.*.proxy.password`, or a secret store | Also accepts a SecretRef since 2.2.0. Marked `sensitive` in `uiHints`; diagnostics say `socks4`/`socks5` and nothing more. An invalid proxy fails the account rather than falling back to a direct connection, which would leak the host IP to Telegram |
 | Message bodies | channel logs | **Not logged.** Outbound sends record recipient, ids and `textLength`. Until 2.1.0 the full outbound text was written to the channel log — if you ran 2.0.x, treat those journal entries as containing private correspondence |
 | Read scope | `accounts.*.readChats` | History and membership reads are confined to the listed chats. Absent means no restriction; an empty array denies everything |
+| Manage scope | `accounts.*.manageChats` | Creating groups, changing membership, admin rights, ownership and invite links are confined to the listed chats — and **off entirely** when the key is absent or empty (opposite default to `readChats`, because these actions change chats rather than read them) |
+| 2FA password | `accounts.*.twoFaPassword`, or a secret store | Read only by `transferOwnership`, exchanged for an SRP proof in-process. Accepts a SecretRef since 2.12.0; `sensitive` in `uiHints`; on the forbidden-log-keys list the static tests enforce |
 | Who may talk to it | `allowFrom`, `groups.*.groupPolicy` | Direct-message senders and group behaviour are allowlisted; `mention` limits group replies to explicit mentions |
 
 Two static tests (`test/no-secret-logging.test.ts`) fail the build if a message body or a credential

@@ -59,6 +59,16 @@ describe("collectAccountSecretRefs", () => {
     assert.equal(refs.length, 1);
   });
 
+  // The 2FA password guards ownership transfer (2.12.0) and is exactly as
+  // secret as the session string it sits next to.
+  it("collects a reference from twoFaPassword", () => {
+    const refs = collectAccountSecretRefs({
+      twoFaPassword: { source: "file", provider: "corp", id: "/telegram/2fa" },
+    });
+
+    assert.deepEqual(refs.map((ref) => ref.id), [ "/telegram/2fa" ]);
+  });
+
   it("ignores objects that only look like references", () => {
     const refs = collectAccountSecretRefs({
       apiHash: { source: "file", provider: "corp" },
@@ -119,6 +129,20 @@ describe("applyAccountSecrets", () => {
     assert.deepEqual(missing.sort(), [ "apiHash", "proxy.username", "sessionString" ]);
   });
 
+  it("substitutes a resolved twoFaPassword and names it when unresolved", () => {
+    const pwRef = { source: "file", provider: "corp", id: "/telegram/2fa" };
+
+    const resolved = applyAccountSecrets(
+      { apiHash: "h", twoFaPassword: pwRef },
+      new Map([ [ secretRefKey(pwRef as any), "correct horse" ] ]),
+    );
+    assert.equal(resolved.account.twoFaPassword, "correct horse");
+    assert.deepEqual(resolved.missing, []);
+
+    const unresolved = applyAccountSecrets({ twoFaPassword: pwRef }, new Map());
+    assert.deepEqual(unresolved.missing, [ "twoFaPassword" ]);
+  });
+
   it("treats a non-string resolved value as unresolved rather than coercing it", () => {
     const { missing } = applyAccountSecrets(
       { apiHash: REF },
@@ -150,6 +174,7 @@ describe("hasUnresolvedSecretRef", () => {
   it("spots a reference left in a credential field", () => {
     assert.equal(hasUnresolvedSecretRef({ apiHash: REF }), true);
     assert.equal(hasUnresolvedSecretRef({ proxy: { password: REF } }), true);
+    assert.equal(hasUnresolvedSecretRef({ twoFaPassword: REF }), true);
   });
 
   it("is false once everything is a string", () => {

@@ -1,10 +1,20 @@
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
+// Deep import, but the documented one: GramJS ships its SRP helper here and
+// the package has no `exports` field to forbid it.
+import { computeCheck } from "telegram/Password";
 import type { PluginConfig, ResolvedTelegramTarget, SendMediaArgs, SendTextArgs, ChatType } from "./types.ts";
 import { normalizeParseMode } from "./helpers";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
 import { hasUnresolvedSecretRef } from "./secret-refs";
 import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams } from "./history";
+import {
+  readInviteLink,
+  resolveCreatedChannelId,
+  summarizeMissingInvitees,
+  type AdminRights,
+  type InviteLinkParams,
+} from "./manage";
 
 function toStringId(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
@@ -673,5 +683,233 @@ export class GramJsClientManager {
       ...replyParams,
       ...buildVoiceNoteParams(args.asVoice),
     });
+  }
+
+  // ---- Chat management (2.12.0) ----
+  //
+  // Transport only: parameter parsing, the manageChats gate and the readers
+  // for what these calls return live in `manage.ts`, where they are tested.
+  // GramJS resolves EntityLike fields itself (every request below carries a
+  // `resolve()` step), so user references travel as the strings the caller
+  // supplied — `@username` always works; a bare numeric id only when this
+  // account has already seen the user.
+
+  /** The account's 2FA password, if configured — needed only to transfer ownership. */
+  get twoFaPassword(): string | undefined {
+    const value = (this.config as { twoFaPassword?: unknown }).twoFaPassword;
+    return typeof value === "string" && value.length > 0 ? value : undefined;
+  }
+
+  /** True when the resolved chat is a supergroup/channel rather than a basic group. */
+  private isChannelLike(resolved: ResolvedTelegramTarget, fallback: string): boolean {
+    const chatType = resolved.chatType ?? inferChatTypeFromRaw(String(resolved.chatId ?? fallback));
+    return chatType === "channel";
+  }
+
+  /**
+   * The id a basic-group request wants: positive, without the `-` the rest of
+   * this plugin prefixes. Taken from the resolved peer when possible — that is
+   * the exact value Telegram handed us.
+   */
+  private basicChatId(resolved: ResolvedTelegramTarget, fallback: string): unknown {
+    const fromPeer = (resolved.peer as any)?.chatId;
+    if (fromPeer !== undefined && fromPeer !== null) {
+      return fromPeer;
+    }
+
+    return String(resolved.chatId ?? fallback).replace(/^-/, "");
+  }
+
+  /**
+   * Creates a supergroup (megagroup) and invites the initial members.
+   *
+   * A supergroup rather than a basic group on purpose: granular admin rights,
+   * bans and ownership transfer only exist there, and those are the point of
+   * managing a chat. Members are added in a second call because
+   * `CreateChannel` does not take them; who could not be added (privacy
+   * settings) is reported, not thrown — that is an expected outcome and the
+   * caller's cue to send an invite link.
+   */
+  async createGroup(args: { title: string; about?: string; users: string[] }): Promise<{
+    chatId?: string;
+    missing: string[];
+  }> {
+    const updates = await this.client.invoke(new Api.channels.CreateChannel({
+      title: args.title,
+      about: args.about ?? "",
+      megagroup: true,
+    }));
+
+    const chatId = resolveCreatedChannelId(updates);
+    if (args.users.length === 0) {
+      return { chatId, missing: [] };
+    }
+
+    // The Channel object out of the same Updates is the most reliable handle:
+    // it carries the access hash, and needs no entity-cache round trip.
+    const createdEntity = ((updates as any)?.chats ?? []).find(
+      (chat: any) => chat?.className === "Channel",
+    );
+    if (!createdEntity) {
+      throw new Error("clawgram: group created, but Telegram's answer carried no channel to invite into");
+    }
+
+    const invited = await this.client.invoke(new Api.channels.InviteToChannel({
+      channel: createdEntity,
+      users: args.users as any,
+    }));
+
+    return { chatId, missing: summarizeMissingInvitees(invited) };
+  }
+
+  /**
+   * Adds members to an existing chat. Supergroups take the whole list in one
+   * call and report who was refused; basic groups only add one user per call,
+   * so refusals are collected per user instead of failing the batch.
+   */
+  async addChatMembers(args: { target: string; users: string[] }): Promise<{
+    chatId?: string;
+    missing: string[];
+  }> {
+    const resolved = await this.resolvePeer(args.target, { kind: "group" });
+
+    if (this.isChannelLike(resolved, args.target)) {
+      const invited = await this.client.invoke(new Api.channels.InviteToChannel({
+        channel: resolved.peer as any,
+        users: args.users as any,
+      }));
+
+      return { chatId: resolved.chatId, missing: summarizeMissingInvitees(invited) };
+    }
+
+    const chatId = this.basicChatId(resolved, args.target);
+    const missing: string[] = [];
+    for (const user of args.users) {
+      try {
+        // fwdLimit is how much recent history the newcomer sees; 50 is
+        // Telegram's own default in official clients.
+        await this.client.invoke(new Api.messages.AddChatUser({
+          chatId: chatId as any,
+          userId: user as any,
+          fwdLimit: 50,
+        }));
+      } catch {
+        missing.push(user);
+      }
+    }
+
+    return { chatId: resolved.chatId, missing };
+  }
+
+  /**
+   * Removes a member. In a supergroup removal is a ban that may then be
+   * lifted: lifting it (the default) leaves the person able to come back by
+   * invite, keeping the ban makes the removal stick. Basic groups have no ban
+   * concept, so there the two collapse into plain removal.
+   */
+  async removeChatMember(args: { target: string; user: string; ban: boolean }): Promise<void> {
+    const resolved = await this.resolvePeer(args.target, { kind: "group" });
+
+    if (this.isChannelLike(resolved, args.target)) {
+      await this.client.invoke(new Api.channels.EditBanned({
+        channel: resolved.peer as any,
+        participant: args.user as any,
+        bannedRights: new Api.ChatBannedRights({ untilDate: 0, viewMessages: true }),
+      }));
+
+      if (!args.ban) {
+        await this.client.invoke(new Api.channels.EditBanned({
+          channel: resolved.peer as any,
+          participant: args.user as any,
+          bannedRights: new Api.ChatBannedRights({ untilDate: 0 }),
+        }));
+      }
+
+      return;
+    }
+
+    await this.client.invoke(new Api.messages.DeleteChatUser({
+      chatId: this.basicChatId(resolved, args.target) as any,
+      userId: args.user as any,
+      revokeHistory: false,
+    }));
+  }
+
+  /**
+   * Grants or revokes admin rights. Supergroups take the granular set; basic
+   * groups only know a boolean, so the rights collapse to `isAdmin` there.
+   */
+  async setChatAdmin(args: {
+    target: string;
+    user: string;
+    isAdmin: boolean;
+    rights: AdminRights;
+    rank?: string;
+  }): Promise<void> {
+    const resolved = await this.resolvePeer(args.target, { kind: "group" });
+
+    if (this.isChannelLike(resolved, args.target)) {
+      await this.client.invoke(new Api.channels.EditAdmin({
+        channel: resolved.peer as any,
+        userId: args.user as any,
+        adminRights: new Api.ChatAdminRights({ ...args.rights }),
+        rank: args.rank ?? "",
+      }));
+
+      return;
+    }
+
+    await this.client.invoke(new Api.messages.EditChatAdmin({
+      chatId: this.basicChatId(resolved, args.target) as any,
+      userId: args.user as any,
+      isAdmin: args.isAdmin,
+    }));
+  }
+
+  /**
+   * Hands the chat to a new owner. Telegram demands an SRP proof of the
+   * account's 2FA password for this — the one action here that cannot be
+   * softened or undone by the old owner, so the proof is the ceremony.
+   *
+   * The password never leaves this object: it is read from the resolved
+   * account config, exchanged for the SRP check, and the check is what goes
+   * to Telegram. Callers pass who and where, never the secret.
+   */
+  async transferChatOwnership(args: { target: string; user: string }): Promise<void> {
+    const password = this.twoFaPassword;
+    if (!password) {
+      throw new Error("clawgram: ownership transfer requires twoFaPassword in the account config");
+    }
+
+    const resolved = await this.resolvePeer(args.target, { kind: "group" });
+    if (!this.isChannelLike(resolved, args.target)) {
+      throw new Error("clawgram: ownership of a basic group cannot be transferred — Telegram only supports this for supergroups");
+    }
+
+    const srp = await this.client.invoke(new Api.account.GetPassword());
+    const check = await computeCheck(srp, password);
+
+    await this.client.invoke(new Api.channels.EditCreator({
+      channel: resolved.peer as any,
+      userId: args.user as any,
+      password: check,
+    }));
+  }
+
+  /** Issues an invite link — the path for people whose privacy settings refuse a direct add. */
+  async exportChatInviteLink(args: InviteLinkParams): Promise<{ link?: string }> {
+    const resolved = await this.resolvePeer(args.target, { kind: "group" });
+
+    const exported = await this.client.invoke(new Api.messages.ExportChatInvite({
+      peer: resolved.peer as any,
+      ...(args.expireDate !== undefined ? { expireDate: args.expireDate } : {}),
+      ...(args.usageLimit !== undefined ? { usageLimit: args.usageLimit } : {}),
+      ...(args.title ? { title: args.title } : {}),
+      // Presence flips the flag, so the key only exists when asked for —
+      // the same lesson the proxy config paid for (see MTProxy note there).
+      ...(args.requestNeeded ? { requestNeeded: true } : {}),
+    }));
+
+    return { link: readInviteLink(exported) };
   }
 }

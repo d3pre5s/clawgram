@@ -73,6 +73,17 @@ import {
   selectJoinRecords,
 } from "./joins";
 import { parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
+import {
+  isChatManageable,
+  isManagementEnabled,
+  parseAddMembersParams,
+  parseCreateGroupParams,
+  parseDemoteAdminParams,
+  parseInviteLinkParams,
+  parsePromoteAdminParams,
+  parseRemoveMemberParams,
+  parseTransferOwnershipParams,
+} from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import {
@@ -194,6 +205,50 @@ function readAccountReadChats(account: any): string[] | undefined {
 function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefined {
   return readAccountReadChats(cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]);
 }
+
+/**
+ * Management scope as configured. Handed to `isChatManageable` raw: unlike
+ * `readChats`, an absent value already means "deny", so there is nothing to
+ * tell apart here.
+ */
+function resolveAccountManageChats(cfg: any, accountId: string): unknown {
+  return cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]?.manageChats;
+}
+
+/** Same normalization `readChats` gets, for the resolved-account copy. */
+function readAccountManageChats(account: any): string[] | undefined {
+  const raw = account?.manageChats;
+  if (raw === undefined || raw === null) return undefined;
+  const entries = Array.isArray(raw) ? raw : [ raw ];
+  return entries.map((entry) => String(entry).trim()).filter(Boolean);
+}
+
+/** Canonical management action for every accepted spelling. */
+const MANAGE_ACTION_ALIASES: Record<string, string> = {
+  createGroup: "createGroup",
+  createChat: "createGroup",
+  "create-group": "createGroup",
+  addMembers: "addMembers",
+  addMember: "addMembers",
+  "add-members": "addMembers",
+  removeMember: "removeMember",
+  removeMembers: "removeMember",
+  "remove-member": "removeMember",
+  kick: "removeMember",
+  promoteAdmin: "promoteAdmin",
+  promote: "promoteAdmin",
+  "promote-admin": "promoteAdmin",
+  setAdmin: "promoteAdmin",
+  demoteAdmin: "demoteAdmin",
+  demote: "demoteAdmin",
+  "demote-admin": "demoteAdmin",
+  transferOwnership: "transferOwnership",
+  transferOwner: "transferOwnership",
+  "transfer-ownership": "transferOwnership",
+  inviteLink: "inviteLink",
+  exportInviteLink: "inviteLink",
+  "invite-link": "inviteLink",
+};
 
 function parseOptionalThreadId(value: unknown): number | undefined {
   if (typeof value === "number") {
@@ -385,6 +440,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
         "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
         "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
+        "Use `createGroup` (title, optional about, optional users) to create a new Telegram supergroup; `addMembers`/`removeMember` change who is in a managed chat, `promoteAdmin`/`demoteAdmin` grant or revoke admin rights, `transferOwnership` hands the chat over, `inviteLink` issues an invite link for people Telegram refused to add directly.",
       ],
       messageToolCapabilities: () => [
         "clawgram can reply in the current Telegram conversation when no explicit target is provided.",
@@ -392,6 +448,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "clawgram supports Telegram forum topics via the `threadId` parameter on group sends.",
         "clawgram can add and clear emoji reactions on messages. A plain Telegram account holds one reaction per message, so a new emoji replaces the previous one.",
         "clawgram can describe a chat via `chatInfo`: title, type (direct/group/supergroup/channel), member count, description, whether it is a forum, and the pinned message id.",
+        "clawgram can manage chats where the account's manageChats config allows it: create supergroups, add and remove members, promote and demote admins, transfer ownership, and export invite links.",
       ],
     },
 
@@ -423,6 +480,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // client from a config object this function had already stripped it
           // from, so the setting validated, deployed and did nothing.
           replyParseMode: account?.replyParseMode,
+          manageChats: readAccountManageChats(account),
+          // Optional secret: absent must stay absent, not become "".
+          twoFaPassword: account?.twoFaPassword === undefined || account?.twoFaPassword === null
+            ? undefined
+            : readSecretInput(account.twoFaPassword),
         };
       },
     },
@@ -1441,7 +1503,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // Leaving it out does not degrade to a text send: the agent simply
           // never sees a way to send the file, announces it in words, and the
           // file stays on disk. That is exactly what happened on 2026-08-07.
-          actions: [ "send", "read", "participants", "joins", "react", "chatInfo", "upload-file" ],
+          actions: [
+            "send", "read", "participants", "joins", "react", "chatInfo", "upload-file",
+            // Chat management (2.12.0) — gated by the account's manageChats
+            // scope; without it every one of these is refused.
+            "createGroup", "addMembers", "removeMember",
+            "promoteAdmin", "demoteAdmin", "transferOwnership", "inviteLink",
+          ],
           capabilities: [],
           mediaSourceParams: {
             "upload-file": [ "filePath", "path", "media" ],
@@ -1674,6 +1742,264 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             chatId: reactionParams.target,
             messageId: reactionParams.messageId,
             removed: reactionParams.remove,
+          });
+        }
+
+        // ---- Chat management (2.12.0) ----
+        //
+        // Assembling a chat rather than speaking in it: create a supergroup,
+        // add and remove people, appoint admins, hand the chat over, issue an
+        // invite link. All of it is possible only because this is a personal
+        // MTProto account — a bot could do almost none of this.
+        //
+        // Every branch is gated by the account's `manageChats` scope, which is
+        // opt-in (absent = deny, see manage.ts) — these are the first actions
+        // that change a chat rather than write into it. Parsing runs before
+        // the gate so a malformed call fails on its own shape, and `dryRun`
+        // returns after the gate so a dry run exercises the same refusals a
+        // real call would hit. People's ids stay out of the logs throughout;
+        // the JSON result carries them to the caller, the journal does not.
+        const manageAction = MANAGE_ACTION_ALIASES[ action ];
+        if (manageAction) {
+          const manageAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!manageAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          const manageScope = resolveAccountManageChats(cfg, manageAccountId);
+          const requireManagedChat = (target: string) => {
+            if (!isChatManageable(target, manageScope)) {
+              actionLog.warn("clawgram management refused: chat outside manage scope", {
+                accountId: manageAccountId,
+                action: manageAction,
+                target,
+              });
+              throw new Error(`clawgram: not-managed-chat ${target}`);
+            }
+          };
+          const requireRuntime = () => {
+            const gram = runtimes.get(manageAccountId);
+            if (!gram) {
+              throw new Error(`clawgram: runtime not found for account ${manageAccountId}`);
+            }
+
+            return gram;
+          };
+
+          if (manageAction === "createGroup") {
+            const createParams = parseCreateGroupParams(params);
+            // A group being created is not in any scope yet, so the gate is
+            // coarser: management must be enabled at all for this account.
+            if (!isManagementEnabled(manageScope)) {
+              actionLog.warn("clawgram createGroup refused: management is not enabled", {
+                accountId: manageAccountId,
+              });
+              throw new Error(
+                "clawgram: chat management is not enabled for this account — "
+                + `set channels.clawgram.accounts.${manageAccountId}.manageChats`,
+              );
+            }
+
+            actionLog.info("clawgram handleAction createGroup", {
+              accountId: manageAccountId,
+              dryRun: dryRun === true,
+              users: createParams.users.length,
+              hasAbout: Boolean(createParams.about),
+            });
+
+            if (dryRun === true) {
+              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId });
+            }
+
+            const created = await requireRuntime().createGroup(createParams);
+
+            actionLog.info("clawgram handleAction createGroup completed", {
+              accountId: manageAccountId,
+              chatId: created.chatId ?? null,
+              missing: created.missing.length,
+            });
+
+            return jsonResult({
+              ok: true,
+              accountId: manageAccountId,
+              chatId: created.chatId,
+              missing: created.missing,
+            });
+          }
+
+          if (manageAction === "addMembers") {
+            const addParams = parseAddMembersParams(params, toolContext);
+            requireManagedChat(addParams.target);
+
+            actionLog.info("clawgram handleAction addMembers", {
+              accountId: manageAccountId,
+              dryRun: dryRun === true,
+              target: addParams.target,
+              users: addParams.users.length,
+            });
+
+            if (dryRun === true) {
+              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: addParams.target });
+            }
+
+            const added = await requireRuntime().addChatMembers(addParams);
+
+            actionLog.info("clawgram handleAction addMembers completed", {
+              accountId: manageAccountId,
+              target: addParams.target,
+              requested: addParams.users.length,
+              missing: added.missing.length,
+            });
+
+            return jsonResult({
+              ok: true,
+              accountId: manageAccountId,
+              chatId: added.chatId ?? addParams.target,
+              requested: addParams.users.length,
+              // Telegram refuses silently-restricted invites per user; the
+              // caller gets the ids so it can hand them an invite link.
+              missing: added.missing,
+            });
+          }
+
+          if (manageAction === "removeMember") {
+            const removeParams = parseRemoveMemberParams(params, toolContext);
+            requireManagedChat(removeParams.target);
+
+            actionLog.info("clawgram handleAction removeMember", {
+              accountId: manageAccountId,
+              dryRun: dryRun === true,
+              target: removeParams.target,
+              ban: removeParams.ban,
+            });
+
+            if (dryRun === true) {
+              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: removeParams.target });
+            }
+
+            await requireRuntime().removeChatMember(removeParams);
+
+            actionLog.info("clawgram handleAction removeMember completed", {
+              accountId: manageAccountId,
+              target: removeParams.target,
+              ban: removeParams.ban,
+            });
+
+            return jsonResult({
+              ok: true,
+              accountId: manageAccountId,
+              chatId: removeParams.target,
+              user: removeParams.user,
+              banned: removeParams.ban,
+            });
+          }
+
+          if (manageAction === "promoteAdmin" || manageAction === "demoteAdmin") {
+            const adminParams = manageAction === "promoteAdmin"
+              ? parsePromoteAdminParams(params, toolContext)
+              : parseDemoteAdminParams(params, toolContext);
+            requireManagedChat(adminParams.target);
+
+            actionLog.info("clawgram handleAction setAdmin", {
+              accountId: manageAccountId,
+              dryRun: dryRun === true,
+              target: adminParams.target,
+              isAdmin: adminParams.isAdmin,
+              hasRank: Boolean(adminParams.rank),
+            });
+
+            if (dryRun === true) {
+              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: adminParams.target });
+            }
+
+            await requireRuntime().setChatAdmin(adminParams);
+
+            actionLog.info("clawgram handleAction setAdmin completed", {
+              accountId: manageAccountId,
+              target: adminParams.target,
+              isAdmin: adminParams.isAdmin,
+            });
+
+            return jsonResult({
+              ok: true,
+              accountId: manageAccountId,
+              chatId: adminParams.target,
+              user: adminParams.user,
+              isAdmin: adminParams.isAdmin,
+              ...(adminParams.rank ? { rank: adminParams.rank } : {}),
+            });
+          }
+
+          if (manageAction === "transferOwnership") {
+            const transferParams = parseTransferOwnershipParams(params, toolContext);
+            requireManagedChat(transferParams.target);
+
+            actionLog.info("clawgram handleAction transferOwnership", {
+              accountId: manageAccountId,
+              dryRun: dryRun === true,
+              target: transferParams.target,
+            });
+
+            if (dryRun === true) {
+              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: transferParams.target });
+            }
+
+            const transferGram = requireRuntime();
+            // The password stays inside the runtime: it is read from the
+            // account config at start-up and never travels through dispatch
+            // arguments, which are one log call away from the journal.
+            if (!transferGram.twoFaPassword) {
+              throw new Error(
+                "clawgram: ownership transfer requires twoFaPassword in the account config "
+                + "(the account's Telegram 2FA password, as a literal or a SecretRef)",
+              );
+            }
+
+            await transferGram.transferChatOwnership(transferParams);
+
+            actionLog.info("clawgram handleAction transferOwnership completed", {
+              accountId: manageAccountId,
+              target: transferParams.target,
+            });
+
+            return jsonResult({
+              ok: true,
+              accountId: manageAccountId,
+              chatId: transferParams.target,
+              newOwner: transferParams.user,
+            });
+          }
+
+          // inviteLink — the only management action left.
+          const inviteParams = parseInviteLinkParams(params, toolContext);
+          requireManagedChat(inviteParams.target);
+
+          actionLog.info("clawgram handleAction inviteLink", {
+            accountId: manageAccountId,
+            dryRun: dryRun === true,
+            target: inviteParams.target,
+            hasExpiry: inviteParams.expireDate !== undefined,
+            usageLimit: inviteParams.usageLimit ?? null,
+            requestNeeded: inviteParams.requestNeeded,
+          });
+
+          if (dryRun === true) {
+            return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: inviteParams.target });
+          }
+
+          const exported = await requireRuntime().exportChatInviteLink(inviteParams);
+
+          actionLog.info("clawgram handleAction inviteLink completed", {
+            accountId: manageAccountId,
+            target: inviteParams.target,
+            hasLink: Boolean(exported.link),
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: manageAccountId,
+            chatId: inviteParams.target,
+            link: exported.link,
           });
         }
 

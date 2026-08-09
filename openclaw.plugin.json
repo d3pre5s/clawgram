@@ -2,7 +2,7 @@
   "id": "clawgram",
   "name": "Clawgram",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -322,6 +322,47 @@
                   },
                   "description": "Chat ids the account may read history and membership for. Absent means no restriction; an empty array denies everything."
                 },
+                "manageChats": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Chat ids the account may MANAGE (2.12.0): add/remove members, promote/demote admins, transfer ownership, export invite links; a non-empty list also unlocks createGroup. Opposite default to readChats: absent or empty means chat management is off, [\"*\"] allows every chat."
+                },
+                "twoFaPassword": {
+                  "description": "The account's Telegram 2FA (cloud) password — needed only by transferOwnership, which Telegram guards with an SRP proof. Literal value, or a SecretRef resolved at account start-up.",
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "provider",
+                        "id"
+                      ],
+                      "additionalProperties": false,
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "env",
+                            "file",
+                            "exec"
+                          ]
+                        },
+                        "provider": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  ]
+                },
                 "joinsJournalPath": {
                   "type": "string",
                   "description": "Where joins observed for this account are journalled. Defaults to a per-account file under the OpenClaw state directory."
@@ -356,6 +397,17 @@
         }
       },
       "uiHints": {
+        "accounts.*.manageChats": {
+          "label": "Managed Chats",
+          "help": "Chat ids the assistant may manage (create groups, add/remove members, admins, ownership, invite links). Leave empty to keep chat management off; use * to allow every chat.",
+          "advanced": true
+        },
+        "accounts.*.twoFaPassword": {
+          "label": "2FA Password",
+          "help": "The account's Telegram two-step verification password. Only needed for ownership transfer.",
+          "sensitive": true,
+          "advanced": true
+        },
         "accounts.*.proxy": {
           "label": "SOCKS Proxy",
           "help": "Optional native SOCKS4/SOCKS5 proxy for this account's MTProto connection. GramJS uses raw TCP sockets, so OpenClaw's proxy.proxyUrl does not cover it. This is a SOCKS proxy, not a Telegram MTProxy.",

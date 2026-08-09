@@ -24,7 +24,7 @@ export type SecretRefLike = {
 };
 
 /** Credential fields that accept a reference, in the order they are reported. */
-const ACCOUNT_SECRET_FIELDS = [ "apiHash", "sessionString" ] as const;
+const ACCOUNT_SECRET_FIELDS = [ "apiHash", "sessionString", "twoFaPassword" ] as const;
 const PROXY_SECRET_FIELDS = [ "username", "password" ] as const;
 
 /**

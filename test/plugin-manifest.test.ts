@@ -264,4 +264,39 @@ describe("account schema accepts what the code reads", () => {
     const result = validateAccount({ ...BASE_ACCOUNT, replyParseMode: "bbcode" }) as ValidationResult;
     assert.equal(result.ok, false);
   });
+
+  // The chat-management gate (2.12.0). Same failure mode as readChats before
+  // 1.3.1: the code honours the key, so the schema must not refuse it.
+  test("manageChats is allowed as a list of chat ids or the wildcard", () => {
+    for (const manageChats of [ [ "-100123" ], [ "*" ], [] ]) {
+      const result = validateAccount({ ...BASE_ACCOUNT, manageChats }) as ValidationResult;
+      assert.equal(result.ok, true, errorText(result));
+    }
+  });
+
+  test("manageChats entries must be strings", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, manageChats: [ -100123 ] }) as ValidationResult;
+    assert.equal(result.ok, false, "a numeric chat id should be written as a string");
+  });
+
+  test("twoFaPassword is allowed as a string or a SecretRef", () => {
+    const literal = validateAccount({ ...BASE_ACCOUNT, twoFaPassword: "correct horse" }) as ValidationResult;
+    assert.equal(literal.ok, true, errorText(literal));
+
+    const ref = validateAccount({
+      ...BASE_ACCOUNT,
+      twoFaPassword: { source: "file", provider: "corp", id: "/telegram/2fa" },
+    }) as ValidationResult;
+    assert.equal(ref.ok, true, errorText(ref));
+
+    const number = validateAccount({ ...BASE_ACCOUNT, twoFaPassword: 42 }) as ValidationResult;
+    assert.equal(number.ok, false, "a password is a string or a reference, nothing else");
+  });
+});
+
+describe("openclaw.plugin.json twoFaPassword uiHints", () => {
+  // The dashboard must mask this field exactly as it masks the proxy password.
+  test("twoFaPassword is marked sensitive", () => {
+    assert.equal(channelUiHints[ "accounts.*.twoFaPassword" ]?.sensitive, true);
+  });
 });

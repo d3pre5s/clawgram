@@ -233,7 +233,7 @@ export function buildHistoryQuery(
   return query;
 }
 
-function normalizeChatKey(value: unknown): string {
+export function normalizeChatKey(value: unknown): string {
   return String(value ?? "").trim().replace(/^@/, "").toLowerCase();
 }
 

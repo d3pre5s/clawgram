@@ -35,6 +35,19 @@ export type PluginConfig = {
    * and `groups`, which gate inbound handling, not history access.
    */
   readChats?: string[];
+  /**
+   * Chats the account may MANAGE (2.12.0): add and remove members, appoint
+   * admins, transfer ownership, export invite links; a non-empty list also
+   * unlocks `createGroup`. Opposite default to `readChats`: absent means
+   * management is off, `[ "*" ]` allows every chat.
+   */
+  manageChats?: string[];
+  /**
+   * The account's Telegram 2FA (cloud) password. Needed only by
+   * `transferOwnership` — Telegram demands an SRP proof for `EditCreator`.
+   * Never logged; see `secret-refs.ts` for the reference form.
+   */
+  twoFaPassword?: string | SecretRefLike;
   accountId?: string;
   enabled?: boolean;
   proxy?: RawTelegramProxyConfig;

@@ -9,6 +9,46 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.12.0] — 2026-08-09
+
+### Added
+
+- **Chat management: the assistant can now assemble a team chat, not only
+  speak in it.** Seven new message actions — `createGroup`, `addMembers`,
+  `removeMember`, `promoteAdmin`, `demoteAdmin`, `transferOwnership`,
+  `inviteLink` — all driven by the same personal MTProto account; Telegram's
+  Bot API forbids most of this to bots, which is why the capability lives
+  here. The trigger was live: asked to remove two people from a group, the
+  assistant had to answer that reading, reacting and sending was all it could
+  do there.
+
+  Everything is opt-in behind the new `accounts.*.manageChats` scope, whose
+  default is the exact opposite of `readChats`: absent or empty means manage
+  *nothing*, `["*"]` means every chat. A non-empty list also unlocks
+  `createGroup` — the chat being created is not in any list yet. `dryRun` is
+  honoured everywhere, after the gate, so a dry run exercises the same
+  refusals a real call would hit. People's ids stay out of the channel log;
+  results carry them to the caller, the journal does not.
+
+  The shape of each action follows what Telegram actually permits:
+
+  - `createGroup` creates a supergroup (megagroup), because granular admin
+    rights, bans and ownership transfer only exist there;
+  - people whose privacy settings refuse a direct add come back in `missing`
+    rather than failing the batch — `inviteLink` is the path for them;
+  - `removeMember` kicks softly by default (ban, then lift, so the person can
+    be re-invited); `ban: true` keeps the ban;
+  - `promoteAdmin` grants a run-the-room default set; `addAdmins` and
+    `anonymous` are escalation and impersonation, so each stays off unless
+    set explicitly in `rights`;
+  - `transferOwnership` exchanges the account's 2FA password for an SRP proof
+    in-process — the password comes from the new `accounts.*.twoFaPassword`
+    (literal or SecretRef, `sensitive` in uiHints, on the forbidden-log-keys
+    list), never from action parameters. Telegram's own restrictions surface
+    as errors: supergroups only, 2FA older than 7 days
+    (`PASSWORD_TOO_FRESH_*`), session older than 24 h (`SESSION_TOO_FRESH_*`),
+    new owner already an admin.
+
 ## [2.11.0] — 2026-08-09
 
 ### Changed
