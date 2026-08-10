@@ -9,6 +9,38 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.14.0] — 2026-08-10
+
+### Fixed
+
+- **A reply could greet whoever spoke last instead of whoever asked.** Live in
+  a work chat: the owner asked at 15:33, a colleague asked something else at
+  15:35, and the answer to the owner went out as `@colleague, готово` — the
+  colleague read a result they had not asked for, while the owner's request
+  looked ignored.
+
+  The channel remembers a reply address per incoming message, but also kept a
+  `__latest__` entry so that a send carrying no `replyToId` still greeted
+  somebody. In an interleaved chat that "somebody" is the most recent sender.
+  Recency is not an answer to "who am I replying to": the fallback is gone, and
+  `message.action send` now resolves the address from `toolContext
+  .currentMessageId` — the message the turn is actually answering. No message
+  to answer, no greeting.
+
+- **Every request was answered twice.** The agent replies by calling `send`,
+  then returns text as well, and core delivers that text as a second message:
+  `handleAction send` at 12:39:02, `outbound sendText` at 12:39:09 — the same
+  answer in different words, twice in a row, for two different requests.
+
+  Core's convention is that an agent which already sent a message answers
+  `NO_REPLY`; this catches the turns that forget. A send into the chat the turn
+  came from is now recorded, and core's delivery of that turn's final text is
+  dropped as an echo. The window is 20 seconds — measured against the live
+  7-second gap — so a result the assistant genuinely comes back with later is
+  still delivered. The echo record is kept apart from the existing
+  ten-minute duplicate guard: feeding one from the other would have quietly
+  made that rule stricter.
+
 ## [2.13.1] — 2026-08-10
 
 ### Fixed

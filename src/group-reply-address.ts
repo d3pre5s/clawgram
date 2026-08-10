@@ -2,7 +2,6 @@ import { normalizeOutboundTarget } from "./helpers";
 
 const groupReplyAddresses = new Map<string, { address: string; expiresAt: number }>();
 const GROUP_REPLY_ADDRESS_TTL_MS = 10 * 60 * 1000;
-const GROUP_REPLY_LATEST_ID = "__latest__";
 
 
 function normalizeGroupReplyTarget(rawTarget: unknown): string {
@@ -46,29 +45,25 @@ export function rememberGroupReplyAddress(input: {
     address: input.address,
     expiresAt: Date.now() + GROUP_REPLY_ADDRESS_TTL_MS,
   });
-
-  const latestKey = buildGroupReplyAddressKey({
-    ...input,
-    replyToId: GROUP_REPLY_LATEST_ID,
-  });
-  if (latestKey) {
-    groupReplyAddresses.set(latestKey, {
-      address: input.address,
-      expiresAt: Date.now() + GROUP_REPLY_ADDRESS_TTL_MS,
-    });
-  }
 }
 
+/**
+ * The address remembered for one specific incoming message.
+ *
+ * There used to be a `__latest__` entry as well, so that a send carrying no
+ * `replyToId` still greeted somebody. In a chat where requests interleave that
+ * "somebody" is whoever spoke last, which on 2026-08-10 put the owner's report
+ * out as "@colleague, готово": the colleague read a result they had not asked
+ * for, and the owner's own request looked unanswered. Recency is not an answer
+ * to "who am I replying to", so the fallback is gone — callers pass the message
+ * the turn is actually answering, and no message means no greeting.
+ */
 export function consumeGroupReplyAddress(input: {
   accountId?: string | null;
   chatId: unknown;
   replyToId?: string | number | null;
 }): string | undefined {
-  const latestKey = buildGroupReplyAddressKey({
-    ...input,
-    replyToId: GROUP_REPLY_LATEST_ID,
-  });
-  const key = buildGroupReplyAddressKey(input) ?? latestKey;
+  const key = buildGroupReplyAddressKey(input);
   if (!key) {
     return undefined;
   }
@@ -79,14 +74,16 @@ export function consumeGroupReplyAddress(input: {
   }
 
   groupReplyAddresses.delete(key);
-  if (latestKey) {
-    groupReplyAddresses.delete(latestKey);
-  }
   if (stored.expiresAt < Date.now()) {
     return undefined;
   }
 
   return stored.address;
+}
+
+/** Test seam: the map is module state, and suites must not leak into each other. */
+export function resetGroupReplyAddresses(): void {
+  groupReplyAddresses.clear();
 }
 
 export function buildGroupReplyAddress(input: {

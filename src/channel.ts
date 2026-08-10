@@ -95,7 +95,12 @@ import { resolveSecretRefValues } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { PluginConfig, RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
-import { hasRecentVisibleGroupReply, rememberVisibleGroupReply } from "./group-visible-reply-guard";
+import {
+  hadTurnSendJustNow,
+  hasRecentVisibleGroupReply,
+  rememberTurnSend,
+  rememberVisibleGroupReply,
+} from "./group-visible-reply-guard";
 import {
   normalizeOutboundTarget,
   resolveConfiguredAccountId,
@@ -2161,10 +2166,15 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           });
         }
 
+        // Whom to greet is decided by the message this turn is answering, not
+        // by whoever spoke last. An agent replying to a request rarely passes
+        // `replyToId`, and until 2026-08-10 that fell through to the most
+        // recent sender: in an interleaved chat the owner's report went out
+        // addressed to a colleague who had asked something else entirely.
         const groupReplyAddress = consumeGroupReplyAddress({
           accountId: resolvedAccountId,
           chatId: to,
-          replyToId,
+          replyToId: replyToId ?? currentMessageId,
         });
         const requestedText = readMessageText(params).replaceAll("\\n", "\n");
 
@@ -2227,6 +2237,18 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           currentMessageId !== undefined
         ) {
           rememberVisibleGroupReply({
+            accountId: resolvedAccountId,
+            chatId: to,
+            currentMessageId,
+          });
+        }
+
+        // The turn has now spoken for itself. Recorded for every send into the
+        // chat this turn came from — with or without an explicit replyToId —
+        // so that core delivering the turn's final text a few seconds later
+        // can be recognised as an echo of this same answer.
+        if (currentMessageId !== null && currentMessageId !== undefined) {
+          rememberTurnSend({
             accountId: resolvedAccountId,
             chatId: to,
             currentMessageId,
@@ -2317,6 +2339,30 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
           throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
+        }
+
+        // The agent already answered this message with its own `send`, and this
+        // is core delivering the same turn's final text. Two messages for one
+        // answer is how 2026-08-10 read in a work chat: every request reported
+        // twice, in slightly different words, seconds apart.
+        //
+        // Core's own convention is that an agent which has sent a message
+        // returns NO_REPLY; this catches the turns that forget. The window is
+        // seconds wide, so a result the assistant comes back with later is
+        // still delivered.
+        if (ctx.replyToId !== null && ctx.replyToId !== undefined && hadTurnSendJustNow({
+          accountId: ctx.accountId,
+          chatId: normalizeOutboundTarget(ctx.to),
+          currentMessageId: ctx.replyToId,
+        })) {
+          actionLog.warn("clawgram suppressing echo of a turn that already sent", {
+            accountId: ctx.accountId,
+            rawTo: ctx.to,
+            replyToId: ctx.replyToId,
+            textLength: ctx.text.length,
+          });
+
+          return { skipped: "duplicate" as const };
         }
 
         const groupReplyAddress = consumeGroupReplyAddress({
