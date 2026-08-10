@@ -712,6 +712,26 @@ function resolveReplyParseMode(
 }
 
 /**
+ * Whether this call is a rehearsal, from either position the flag can arrive.
+ *
+ * Core passes `dryRun` as a sibling of `params`. Callers put it inside
+ * `params`, next to `to` and `text`, because that is where every other
+ * parameter lives — and there it used to be read by nobody: the flag vanished
+ * and the send happened for real.
+ *
+ * That is the worst possible failure mode for a safety flag, and it has cost
+ * two irreversible messages in a work chat (2026-08-08, note 0066; and
+ * 2026-08-10 at 02:49 UTC, a bare "ping" the agent then could not delete,
+ * because this channel has no delete action). Either position now counts, and
+ * a disagreement resolves toward **not** sending: a caller who wrote
+ * "dry run" anywhere meant it somewhere.
+ */
+function resolveDryRun(dryRun: unknown, params: Record<string, unknown> | undefined): boolean {
+  const fromParams = params?.dryRun;
+  return dryRun === true || dryRun === "true" || fromParams === true || fromParams === "true";
+}
+
+/**
  * Parse mode for the `send` action (2.13.0).
  *
  * The per-call parameter still wins — a caller that knows its text is markdown
@@ -780,4 +800,5 @@ export {
   normalizeParseMode,
   resolveReplyParseMode,
   resolveOutboundParseMode,
+  resolveDryRun,
 };

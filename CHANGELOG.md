@@ -9,6 +9,26 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.13.1] — 2026-08-10
+
+### Fixed
+
+- **`dryRun` inside `params` was silently ignored, and the message went out
+  for real.** Core passes the flag as a sibling of `params`; callers write it
+  inside `params`, next to `to` and `text`, because that is where every other
+  parameter lives. There it was read by nobody.
+
+  This is the worst possible failure for a safety flag, and it has now put two
+  irreversible messages into a work chat. 2026-08-08 (note 0066), and again
+  2026-08-10 at 02:49 UTC, when a rehearsal posted a bare `ping` (id 2360).
+  The agent immediately tried `message.action delete` — this channel has no
+  delete action — and ended up apologising for it in its own report.
+
+  Either position now counts, and a disagreement between them resolves toward
+  **not** sending: a caller who wrote "dry run" anywhere meant it somewhere.
+  The string `"true"` is accepted alongside the boolean, as elsewhere in the
+  action parameters.
+
 ## [2.13.0] — 2026-08-10
 
 ### Changed

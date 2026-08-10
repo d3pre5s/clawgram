@@ -125,6 +125,7 @@ import {
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
   resolveOutboundParseMode,
+  resolveDryRun,
 } from './helpers';
 import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
@@ -1519,7 +1520,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
       extractToolSend: ({ args }: { args: Record<string, unknown> }) => extractToolSend(args, "sendMessage"),
 
-      handleAction: async ({ action, params, cfg, accountId, dryRun, toolContext }: {
+      handleAction: async ({ action, params, cfg, accountId, dryRun: dryRunFlag, toolContext }: {
         action: string;
         params: Record<string, unknown>;
         cfg: any;
@@ -1530,6 +1531,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           currentMessageId?: string | number;
         };
       }) => {
+        // Core passes the flag beside `params`; callers write it inside.
+        // Both count, because a rehearsal flag that is silently ignored puts
+        // a real message in a real chat — twice, so far (2.13.1).
+        const dryRun = resolveDryRun(dryRunFlag, params);
         // `read` is what OpenClaw core dispatches (`openclaw message read`,
         // MCP `messages_read`). `list` is accepted as a synonym so a caller that
         // guessed the other obvious name is not silently refused.
