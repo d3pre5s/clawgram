@@ -50,11 +50,14 @@ describe("send action inherits the account parse mode", () => {
 
   test("an empty parseMode still means send it exactly as typed", async () => {
     // The escape hatch has to survive: a message about markup, or one holding
-    // characters HTML would choke on, must be sendable raw.
+    // characters HTML would choke on, must be sendable raw. Since 2.15.0 the
+    // hatch resolves to "none", not undefined — undefined at the GramJS
+    // boundary means GramJS's own default markdown parser, which would still
+    // have eaten `**` out of a message that asked for "exactly as typed".
     const h = harness({ replyParseMode: "html" });
     await h.send({ to: "-100123", text: "5 < 7 & 8 > 6", parseMode: "" });
 
-    assert.equal(h.sends[ 0 ].parseMode, undefined);
+    assert.equal(h.sends[ 0 ].parseMode, "none");
   });
 
   test("an unconfigured account still sends plain text", async () => {

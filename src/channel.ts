@@ -740,7 +740,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           }) => {
             const targets = [ conversationTarget, ...conversationFallbackTargets ];
             // Replies have no per-call parseMode slot — the format is an
-            // account setting (2.3.1); absent keeps plain text.
+            // account setting (2.3.1); absent keeps the GramJS default
+            // (its markdown parser — not plain text, see 2.15.0 notes).
             const replyParseMode = gram.replyParseMode;
             let lastError: unknown;
 
@@ -2077,6 +2078,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             target: uploadTo,
             file,
             caption: caption || undefined,
+            // Same resolution as the text `send`: per-call value wins, an
+            // omitted one inherits the account format (2.15.0). A caption is
+            // the same prose as a message and renders identically.
+            parseMode: resolveOutboundParseMode(params, cfg, uploadAccountId),
             replyToMessageId: resolveReplyToMessageIdForTarget(rawUploadTo, uploadReplyToId),
             messageThreadId: parseOptionalThreadId(uploadThreadId),
             asVoice,
@@ -2441,6 +2446,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           target,
           file,
           caption: ctx.caption ?? ctx.text,
+          // Captions follow the account reply format like every other reply:
+          // they are the same agent prose, just attached to a file (2.15.0).
+          parseMode: gram.replyParseMode,
           replyToMessageId: resolveReplyToMessageIdForTarget(ctx.to, ctx.replyToId),
           messageThreadId,
           asVoice: ctx.audioAsVoice === true,

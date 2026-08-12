@@ -2,7 +2,7 @@
   "id": "clawgram",
   "name": "Clawgram",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
-  "version": "2.14.0",
+  "version": "2.15.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -382,9 +382,10 @@
                   "enum": [
                     "markdown",
                     "md",
-                    "html"
+                    "html",
+                    "none"
                   ],
-                  "description": "Parse mode for replies (2.3.1). The send action takes parseMode per call; the reply pipeline has no per-call slot, so the reply format is configured here. Absent means plain text."
+                  "description": "Outbound format for replies, core-delivered text, captions and send calls that omit parseMode. html (2.15.0) renders agent markdown and Telegram HTML into entities; markdown is GramJS's five-delimiter parser; none disables parsing entirely. Absent keeps GramJS's historical default, which is its markdown parser — not plain text."
                 }
               },
               "required": [

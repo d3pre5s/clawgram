@@ -132,6 +132,66 @@ describe("sendText hands parseMode to GramJS", () => {
     const { mgr } = build("markdown");
     assert.equal(mgr.replyParseMode, "markdown");
   });
+
+  it("renders markdown into HTML before an html-mode send (2.15.0)", async () => {
+    // This is the last link the 2026-08-12 00:13 report broke on: the text
+    // reached GramJS's HTML parser with its markdown untouched, so a work
+    // chat read `**Разбор работы…**` asterisks and all.
+    const { mgr, calls } = build();
+    await mgr.sendText({ target: "x", text: "**жирный** и <a href=\"https://x.y/\">линк</a>", parseMode: "html" } as any);
+    assert.equal(calls[0].message, "<b>жирный</b> и <a href=\"https://x.y/\">линк</a>");
+    assert.equal(calls[0].parseMode, "html");
+  });
+
+  it("leaves markdown-mode and plain text untouched", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendText({ target: "x", text: "**как есть**", parseMode: "markdown" } as any);
+    await mgr.sendText({ target: "x", text: "**как есть**" } as any);
+    assert.equal(calls[0].message, "**как есть**");
+    assert.equal(calls[1].message, "**как есть**");
+  });
+
+  it("passes parseMode: false for none — GramJS's absent is not plain", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendText({ target: "x", text: "**дословно**", parseMode: "none" } as any);
+    assert.equal(calls[0].message, "**дословно**");
+    assert.equal(calls[0].parseMode, false);
+  });
+});
+
+describe("sendMedia captions render like messages (2.15.0)", () => {
+  // Captions carry the same agent prose (`caption ?? text` on the outbound
+  // path) and used to carry no mode at all — which was not plain text but
+  // GramJS's default markdown pass, a third behavior nobody configured.
+  const build = () => {
+    const mgr = Object.create(GramJsClientManager.prototype) as any;
+    mgr.config = { apiId: 1, apiHash: "h", sessionString: "s" };
+    const calls: any[] = [];
+    (mgr as any).client = { sendFile: async (_peer: unknown, args: unknown) => { calls.push(args); return { id: 1 }; } };
+    (mgr as any).resolvePeer = async () => ({ peer: {}, messageThreadId: undefined });
+    return { mgr, calls };
+  };
+
+  it("renders an html-mode caption", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendMedia({ target: "x", file: "/tmp/a.png", caption: "**отчёт** за июль", parseMode: "html" } as any);
+    assert.equal(calls[0].caption, "<b>отчёт</b> за июль");
+    assert.equal(calls[0].parseMode, "html");
+  });
+
+  it("keeps an unset mode exactly as before — no key, GramJS default", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendMedia({ target: "x", file: "/tmp/a.png", caption: "**отчёт**" } as any);
+    assert.equal(calls[0].caption, "**отчёт**");
+    assert.equal("parseMode" in calls[0], false);
+  });
+
+  it("passes parseMode: false for none", async () => {
+    const { mgr, calls } = build();
+    await mgr.sendMedia({ target: "x", file: "/tmp/a.png", caption: "**дословно**", parseMode: "none" } as any);
+    assert.equal(calls[0].caption, "**дословно**");
+    assert.equal(calls[0].parseMode, false);
+  });
 });
 
 /**
@@ -161,8 +221,11 @@ describe("resolveOutboundParseMode (send action, 2.13.0)", () => {
   });
 
   it("keeps plain text available against a configured account", () => {
-    // Empty string is the escape hatch: send this exactly as typed.
-    assert.equal(resolveOutboundParseMode({ parseMode: "" }, cfg("html"), "default"), undefined);
+    // Empty string is the escape hatch: send this exactly as typed. "none"
+    // (2.15.0) is what delivers on that — an undefined mode at the GramJS
+    // boundary re-enables GramJS's default markdown parser.
+    assert.equal(resolveOutboundParseMode({ parseMode: "" }, cfg("html"), "default"), "none");
+    assert.equal(resolveOutboundParseMode({ parseMode: "none" }, cfg("html"), "default"), "none");
   });
 
   it("stays plain when nothing is configured anywhere", () => {

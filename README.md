@@ -228,6 +228,7 @@ openclaw gateway restart
 | `groups` | object | `{}` | Allowed groups map keyed by explicit group id or `*` |
 | `proxy` | object | unset | Optional SOCKS4/SOCKS5 proxy for this account — see [Proxy (SOCKS4/SOCKS5)](#proxy-socks4socks5) |
 | `manageChats` | string[] | unset | Chats the assistant may **manage** — see [Chat management](#chat-management). Absent or empty = management off; `["*"]` = every chat |
+| `replyParseMode` | `"html"` \| `"markdown"` \| `"none"` | unset | Outbound format for replies, core-delivered text, captions and `send` calls that omit `parseMode` — see [Message formatting](#message-formatting) |
 | `twoFaPassword` | string \| SecretRef | unset | The account's Telegram 2FA password; read only by `transferOwnership` |
 
 Group config fields:
@@ -238,6 +239,22 @@ Group config fields:
 | `groupPolicy` | `"open"` \| `"mention"` | `"mention"` | `open` replies to any group message, `mention` only on @mention or reply-to-self |
 | `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames inside that group |
 
+### Message formatting
+
+`replyParseMode` sets the outbound format for every path that does not name
+one explicitly: replies, core-delivered text, media captions, and `send`
+actions without a `parseMode` parameter. A per-call `parseMode` still wins.
+
+| Mode | Behavior |
+|---|---|
+| `"html"` | **Recommended for agents.** The text is rendered before sending (2.15.0): markdown (`**bold**`, `*italic*`, `` `code` ``, ``` fences, `[text](url)`, `# headings`, `> quotes`, `~~strike~~`, `\|\|spoiler\|\|`) becomes Telegram entities, hand-written Telegram HTML (`<b>`, `<a href>`, `<code>`, …) passes through, structural HTML (`<ul>`, `<p>`, …) is dropped, and stray `<`, `>`, `&` arrive as literal text instead of vanishing into a failed tag. Markdown inside code is never converted. |
+| `"markdown"` | GramJS's own markdown parser: `**`, `__`, `~~`, `` ` ``, ``` ``` ``` only — no links, no single-asterisk emphasis. |
+| `"none"` | No parsing at all: the text is delivered exactly as typed. |
+| unset | GramJS's historical default, which is its markdown parser — **not** plain text. Set `"none"` if you want plain. |
+
+Agent-authored messages mix markdown and HTML freely, so `"html"` is the mode
+that renders both. There is no reliable way to prompt a model out of writing
+markdown; rendering it is the deterministic fix.
 
 ### Configuration variant for example
 

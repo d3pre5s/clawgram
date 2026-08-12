@@ -5,6 +5,7 @@ import { StringSession } from "telegram/sessions";
 import { computeCheck } from "telegram/Password";
 import type { PluginConfig, ResolvedTelegramTarget, SendMediaArgs, SendTextArgs, ChatType } from "./types.ts";
 import { normalizeParseMode } from "./helpers";
+import { renderTelegramHtml } from "./html-render";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
 import { hasUnresolvedSecretRef } from "./secret-refs";
 import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams } from "./history";
@@ -382,7 +383,7 @@ export class GramJsClientManager {
    * Reply format for this account, validated once at read time.
    * The reply pipeline has no per-call parseMode slot (2.3.1).
    */
-  get replyParseMode(): "markdown" | "html" | undefined {
+  get replyParseMode(): "markdown" | "html" | "none" | undefined {
     return normalizeParseMode((this.config as { replyParseMode?: unknown }).replyParseMode);
   }
 
@@ -392,10 +393,20 @@ export class GramJsClientManager {
     const replyParams = buildForumReplyParams(messageThreadId, args.replyToMessageId);
 
     return this.client.sendMessage(resolved.peer as any, {
-      message: args.text,
-      // GramJS accepts "md" | "html"; absent keeps plain text so every
-      // pre-2.3.0 caller behaves exactly as before.
-      ...(args.parseMode ? { parseMode: args.parseMode === "markdown" ? "md" : "html" } : {}),
+      // In html mode the text is rendered first: the agent writes markdown,
+      // Telegram HTML, or both, and GramJS's HTML parser alone would ship
+      // the markdown as literal asterisks (2026-08-12 00:13 UTC, a whole
+      // monthly report of them).
+      message: args.parseMode === "html" ? renderTelegramHtml(args.text) : args.text,
+      // GramJS accepts "md" | "html". `false` switches parsing off — needed
+      // because an *absent* mode is not plain text: GramJS then applies its
+      // own default markdown parser, and always has. "none" is the honest
+      // spelling of "exactly as typed".
+      ...(args.parseMode === "none"
+        ? { parseMode: false as any }
+        : args.parseMode
+          ? { parseMode: args.parseMode === "markdown" ? "md" : "html" }
+          : {}),
       ...replyParams,
     });
   }
@@ -679,7 +690,18 @@ export class GramJsClientManager {
 
     return this.client.sendFile(resolved.peer as any, {
       file: args.file,
-      caption: args.caption,
+      // Captions are agent prose too — the outbound path sends `caption ??
+      // text` — so they render exactly like sendText does. Before 2.15.0
+      // captions carried no mode at all, which meant GramJS's default
+      // markdown pass, a third rendering behavior nobody chose.
+      caption: args.parseMode === "html" && args.caption
+        ? renderTelegramHtml(args.caption)
+        : args.caption,
+      ...(args.parseMode === "none"
+        ? { parseMode: false as any }
+        : args.parseMode
+          ? { parseMode: args.parseMode === "markdown" ? "md" : "html" }
+          : {}),
       ...replyParams,
       ...buildVoiceNoteParams(args.asVoice),
     });

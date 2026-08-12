@@ -9,6 +9,46 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.15.0] — 2026-08-12
+
+### Fixed
+
+- **Markdown arrived as literal asterisks on html-mode accounts.** 2026-08-12
+  00:13 UTC a 2167-character monthly report reached a work chat as
+  `**Разбор работы…**`, markers showing on every line. The agent writes what
+  language models write — markdown, or markdown mixed with the HTML links it
+  is told to use — while GramJS's HTML parser converts tags only and ships
+  the markdown through untouched. Its markdown mode is no way out: five
+  delimiters, no links, so the HTML half would break instead.
+
+  `parseMode: "html"` now renders the text before sending. Markdown becomes
+  Telegram entities (`**b**`, `*i*`, `_i_`, `~~s~~`, `||spoiler||`, `` `code` ``,
+  fenced blocks with language, `[text](url)`, `# headings` as bold lines,
+  `> quotes` as blockquotes), hand-authored Telegram HTML passes through with
+  its attributes intact — `<a href>` links keep working — structural HTML
+  (`<ul>`, `<p>`, …) is dropped exactly as the parser already dropped it, and
+  stray `<`, `>`, `&` are escaped so they reach the reader as text: a
+  `<placeholder>` the old path swallowed whole now survives. Markdown inside
+  code spans, fences and `<code>`/`<pre>` bodies is never converted.
+  Conversion runs at the transport, so replies, core-delivered text, `send`
+  actions and captions all render the same way.
+
+- **"Plain text" was never plain.** An absent parse mode does not disable
+  parsing in GramJS — it falls back to GramJS's *default markdown parser*,
+  which has quietly eaten `**` and backticks out of "raw" sends since the
+  fork began. The documented escape hatch (`parseMode: ""`) now resolves to
+  the new explicit mode `"none"`, which really does deliver the text exactly
+  as typed (`parseMode: false` at the GramJS boundary). An *unset* account
+  mode keeps the historical GramJS default unchanged.
+
+### Added
+
+- **Captions render like messages.** `sendMedia` accepts `parseMode`; the
+  outbound media path and the `upload-file` action resolve it exactly like
+  text sends (per-call wins, account `replyParseMode` otherwise). Captions
+  are the same agent prose — before this they always took GramJS's default
+  markdown pass, a third rendering behavior nobody configured.
+
 ## [2.14.0] — 2026-08-10
 
 ### Fixed

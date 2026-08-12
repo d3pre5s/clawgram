@@ -686,26 +686,32 @@ async function resolveSenderProfileWithTimeout(message: any, input?: {
  * mode fails loudly at the action boundary rather than silently sending
  * markup as literal text to a live human.
  */
-function normalizeParseMode(raw: unknown): "markdown" | "html" | undefined {
+function normalizeParseMode(raw: unknown): "markdown" | "html" | "none" | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
   const value = String(raw).toLowerCase();
   if (value === "md" || value === "markdown") return "markdown";
   if (value === "html") return "html";
-  throw new Error(`clawgram: invalid parseMode "${String(raw)}" — use "markdown" or "html"`);
+  // "none" switches GramJS parsing off entirely. It exists because absent is
+  // NOT plain text: GramJS falls back to its own markdown parser by default,
+  // which quietly ate `**` from "plain" sends since the fork began.
+  if (value === "none") return "none";
+  throw new Error(`clawgram: invalid parseMode "${String(raw)}" — use "markdown", "html" or "none"`);
 }
 
 /**
  * Reply parse mode for the inbound reply path (2.3.1). The action `send`
  * takes parseMode per-call, but replies to a mention run through the reply
  * pipeline, which has no per-call slot — so the format is a channel setting:
- * `channels.clawgram.accounts.<id>.replyParseMode: "markdown" | "html"`.
- * Absent means plain text, exactly as before 2.3.1. An invalid value throws
- * at config-read time, loud and early, rather than shipping raw markup.
+ * `channels.clawgram.accounts.<id>.replyParseMode: "markdown" | "html" |
+ * "none"`. Absent keeps GramJS's historical default — its markdown parser,
+ * not plain text, which 2.3.1 believed and 2.15.0 disproved. An invalid
+ * value throws at config-read time, loud and early, rather than shipping
+ * raw markup.
  */
 function resolveReplyParseMode(
   cfg: unknown,
   accountId: string,
-): "markdown" | "html" | undefined {
+): "markdown" | "html" | "none" | undefined {
   const channel = (cfg as any)?.channels?.["clawgram"];
   const account = channel?.accounts?.[accountId] ?? channel;
   return normalizeParseMode(account?.replyParseMode);
@@ -751,12 +757,15 @@ function resolveOutboundParseMode(
   params: Record<string, unknown> | undefined,
   cfg: unknown,
   accountId: string,
-): "markdown" | "html" | undefined {
+): "markdown" | "html" | "none" | undefined {
   const raw = params?.parseMode;
 
   // An explicitly empty value is a decision, not an omission: send it raw.
+  // "none" (not undefined) is what actually delivers on that: an absent
+  // parseMode at the GramJS boundary means GramJS's own default markdown
+  // parser, which would still eat `**` out of a message about markup.
   if (raw === "" || raw === null) {
-    return undefined;
+    return "none";
   }
 
   return raw === undefined

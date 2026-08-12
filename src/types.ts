@@ -17,9 +17,11 @@ export type PluginConfig = {
   /**
    * Parse mode for replies (2.3.1). The `send` action takes parseMode
    * per call; the reply pipeline has no per-call slot, so the format is
-   * configured on the account. Absent = plain text, as before 2.3.1.
+   * configured on the account. Absent = GramJS's own default, which is
+   * its markdown parser, not plain text (discovered 2.15.0); `none` is
+   * the explicit way to send exactly as typed.
    */
-  replyParseMode?: "markdown" | "md" | "html";
+  replyParseMode?: "markdown" | "md" | "html" | "none";
   /**
    * Credentials as configured: either the literal value or a SecretRef that
    * account start-up resolves. The client is only ever handed the resolved
@@ -96,14 +98,22 @@ export type SendTextArgs = {
   targetKind?: "user" | "group" | "channel";
   replyToMessageId?: number;
   messageThreadId?: number;
-  /** GramJS parse mode; absent = plain text, exactly as before 2.3.0. */
-  parseMode?: "markdown" | "html";
+  /**
+   * Outbound format. `html` renders agent markdown/HTML into Telegram HTML
+   * first (2.15.0); `markdown` is GramJS's five-delimiter parser; `none`
+   * disables parsing entirely — the honest "exactly as typed". Absent keeps
+   * the historical GramJS default, which is its markdown parser, not plain
+   * text as 2.3.0 believed.
+   */
+  parseMode?: "markdown" | "html" | "none";
 };
 
 export type SendMediaArgs = {
   target: unknown;
   file: string;
   caption?: string;
+  /** Caption format, same semantics as {@link SendTextArgs.parseMode} (2.15.0). */
+  parseMode?: "markdown" | "html" | "none";
   replyToMessageId?: number;
   messageThreadId?: number;
   /**
