@@ -8,7 +8,7 @@ import { normalizeParseMode } from "./helpers";
 import { renderTelegramHtml } from "./html-render";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
 import { hasUnresolvedSecretRef } from "./secret-refs";
-import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams } from "./history";
+import { buildHistoryQuery, collectHistoryWindow, normalizeParticipants, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams, type Participant } from "./history";
 import { normalizeForumTopics, type ForumTopic, type TopicsParams } from "./topics";
 import { normalizeDialogs, type DialogSummary, type DialogsParams } from "./dialogs";
 import {
@@ -579,7 +579,7 @@ export class GramJsClientManager {
    */
   async listParticipants(args: ListParticipantsParams): Promise<{
     chatId?: string;
-    participants: Array<{ userId: string; username?: string; isBot: boolean; firstName?: string; lastName?: string }>;
+    participants: Participant[];
     /** True when `limit` was reached, so the membership may be incomplete. */
     truncated: boolean;
   }> {
@@ -591,32 +591,9 @@ export class GramJsClientManager {
     );
     const raw = Array.isArray(fetched) ? fetched : [];
 
-    const participants: Array<{ userId: string; username?: string; isBot: boolean; firstName?: string; lastName?: string }> = [];
-    for (const entry of raw as any[]) {
-      const rawId = entry?.id;
-      if (rawId === undefined || rawId === null) {
-        continue;
-      }
-      const username = typeof entry?.username === "string" && entry.username.length > 0
-        ? entry.username
-        : undefined;
-      const member: { userId: string; username?: string; isBot: boolean; firstName?: string; lastName?: string } = {
-        userId: String(rawId),
-        username,
-        isBot: entry?.bot === true,
-      };
-      // Display names are personal data, so they are opt-in: only the identity
-      // linking flow asks for them, and it discards them once a link is made.
-      if (args.includeNames) {
-        if (typeof entry?.firstName === "string" && entry.firstName.length > 0) member.firstName = entry.firstName;
-        if (typeof entry?.lastName === "string" && entry.lastName.length > 0) member.lastName = entry.lastName;
-      }
-      participants.push(member);
-    }
-
     return {
       chatId: resolved.chatId,
-      participants,
+      participants: normalizeParticipants(raw, { includeNames: args.includeNames }),
       truncated: raw.length >= args.limit,
     };
   }

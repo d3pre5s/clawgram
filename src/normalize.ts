@@ -1,5 +1,7 @@
 import type { ChatType, NormalizedInbound } from "./types.js";
 
+import { resolveActiveUsername } from "./helpers";
+
 export function toStringId(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
   try {
@@ -115,12 +117,11 @@ export function normalizeTelegramEvent(event: any, accountId: string): Normalize
         : undefined;
 
   const chatType = inferTelegramChatType(msg, chatId);
+  // Not the raw field: a sender holding several handles (or a collectible one)
+  // keeps them in `usernames[]` and leaves `username` empty, so an allowFrom
+  // entry written as `@handle` would silently never match that person.
   const senderUsername =
-    typeof msg.sender?.username === "string"
-      ? msg.sender.username
-      : typeof msg._sender?.username === "string"
-        ? msg._sender.username
-        : undefined;
+    resolveActiveUsername(msg.sender) ?? resolveActiveUsername(msg._sender);
 
   const senderDisplay =
     typeof msg.sender?.firstName === "string"

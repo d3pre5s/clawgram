@@ -4,6 +4,7 @@ import {
   PARTICIPANTS_DEFAULT_LIMIT,
   PARTICIPANTS_MAX_LIMIT,
   parseListParticipantsParams,
+  normalizeParticipants,
 } from "../src/history";
 import { buildParticipantsQuery } from "../src/gramjs-client";
 
@@ -94,5 +95,71 @@ describe("buildParticipantsQuery", () => {
 
     assert.equal(query.limit, 200);
     assert.equal((query.filter as any)?.className, "ChannelParticipantsAdmins");
+  });
+});
+
+/**
+ * Telegram moved usernames into a `usernames[]` array once an account could
+ * hold more than one (multiple or collectible handles). For such an account the
+ * legacy `username` field arrives EMPTY, and reading only that field is how the
+ * owner of this deployment showed up in every generated table as "(без тэга)"
+ * next to a bare numeric id — the single participant without a handle in chats
+ * of 23, 9, 7 and 3 people.
+ */
+describe("normalizeParticipants", () => {
+  test("reads the plain username when the account has just one", () => {
+    const people = normalizeParticipants([
+      { id: 890975818, username: "Rus9jke", bot: false },
+    ], { includeNames: false });
+
+    assert.deepEqual(people, [ { userId: "890975818", username: "Rus9jke", isBot: false } ]);
+  });
+
+  test("finds the handle of a multi-username account, where the plain field is empty", () => {
+    const people = normalizeParticipants([
+      {
+        id: 116847835,
+        username: null,
+        usernames: [ { username: "top1ceo", active: true, editable: true } ],
+        bot: false,
+      },
+    ], { includeNames: false });
+
+    assert.equal(people[ 0 ].username, "top1ceo");
+  });
+
+  test("takes the active handle, not merely the first one listed", () => {
+    const people = normalizeParticipants([
+      {
+        id: 1,
+        usernames: [
+          { username: "retired_handle", active: false },
+          { username: "top1ceo", active: true },
+        ],
+      },
+    ], { includeNames: false });
+
+    assert.equal(people[ 0 ].username, "top1ceo");
+  });
+
+  test("an account with no handle at all stays without one", () => {
+    const people = normalizeParticipants([ { id: 42, usernames: [] } ], { includeNames: false });
+
+    assert.equal(people[ 0 ].username, undefined);
+    assert.equal(people[ 0 ].userId, "42");
+  });
+
+  test("names stay opt-in and bots stay marked", () => {
+    const raw = [ { id: 7, username: "helper", bot: true, firstName: "Хелпер", lastName: "Ботов" } ];
+
+    assert.equal(normalizeParticipants(raw, { includeNames: false })[ 0 ].firstName, undefined);
+    assert.equal(normalizeParticipants(raw, { includeNames: true })[ 0 ].firstName, "Хелпер");
+    assert.equal(normalizeParticipants(raw, { includeNames: true })[ 0 ].lastName, "Ботов");
+    assert.equal(normalizeParticipants(raw, { includeNames: false })[ 0 ].isBot, true);
+  });
+
+  test("skips entries without an id and tolerates junk", () => {
+    assert.deepEqual(normalizeParticipants([ undefined, null, {}, { username: "ghost" } ] as unknown[], { includeNames: false }), []);
+    assert.deepEqual(normalizeParticipants(undefined, { includeNames: false }), []);
   });
 });

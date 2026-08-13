@@ -14,6 +14,8 @@
  * `GramJsClientManager.getChatInfo`.
  */
 
+import { resolveActiveUsername } from "./helpers";
+
 export type ChatInfoType = "direct" | "group" | "supergroup" | "channel" | "unknown";
 
 export type ChatInfo = {
@@ -117,7 +119,9 @@ export function describeChat(entity: unknown, full: unknown): ChatInfo {
     chatId: readId(raw?.id),
     type,
     title: type === "direct" ? resolveUserTitle(raw) : readString(raw?.title),
-    username: readString(raw?.username),
+    // Not `raw.username`: an account or chat holding more than one handle keeps
+    // them in `usernames[]` and leaves the legacy field empty.
+    username: resolveActiveUsername(raw),
     about: readString(fullChat?.about),
     pinnedMessageId: readId(fullChat?.pinnedMsgId),
   };

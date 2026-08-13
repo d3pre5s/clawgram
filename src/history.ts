@@ -14,6 +14,7 @@ export const HISTORY_DEFAULT_LIMIT = 100;
 export const HISTORY_MAX_LIMIT = 500;
 
 import { describeMedia, type HistoryMedia } from "./media";
+import { resolveActiveUsername } from "./helpers";
 
 export type ListMessagesParams = {
   target: string;
@@ -181,6 +182,61 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
 
 export const PARTICIPANTS_DEFAULT_LIMIT = 200;
 export const PARTICIPANTS_MAX_LIMIT = 1000;
+
+export type Participant = {
+  userId: string;
+  username?: string;
+  isBot: boolean;
+  firstName?: string;
+  lastName?: string;
+};
+
+/**
+ * Membership as the caller sees it.
+ *
+ * The handle comes through `resolveActiveUsername`, not off the raw field:
+ * once an account holds more than one username — several handles, or a
+ * collectible one — Telegram moves them into `usernames[]` and leaves the
+ * legacy `username` EMPTY. Reading the raw field is why the owner of this
+ * deployment appeared in every generated table as "(без тэга)" beside a bare
+ * numeric id, the only person without a handle in chats of 23, 9, 7 and 3.
+ */
+export function normalizeParticipants(
+  raw: unknown,
+  options: { includeNames: boolean },
+): Participant[] {
+  if (!Array.isArray(raw)) return [];
+
+  const participants: Participant[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+
+    const candidate = entry as Record<string, unknown>;
+    const userId = toStringId(candidate.id);
+    if (!userId) continue;
+
+    const member: Participant = {
+      userId,
+      username: resolveActiveUsername(candidate),
+      isBot: candidate.bot === true,
+    };
+
+    // Display names are personal data, so they are opt-in: only the identity
+    // linking flow asks for them, and it discards them once a link is made.
+    if (options.includeNames) {
+      if (typeof candidate.firstName === "string" && candidate.firstName.length > 0) {
+        member.firstName = candidate.firstName;
+      }
+      if (typeof candidate.lastName === "string" && candidate.lastName.length > 0) {
+        member.lastName = candidate.lastName;
+      }
+    }
+
+    participants.push(member);
+  }
+
+  return participants;
+}
 
 export type ParticipantsFilter = "all" | "admins";
 

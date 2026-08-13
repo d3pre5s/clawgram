@@ -13,6 +13,7 @@ import {
   parseMessageId,
   parseTimeBoundary,
 } from "../src/history";
+import { normalizeTelegramEvent } from "../src/normalize";
 
 const HOUR = 3600;
 const BASE = 1_785_000_000; // arbitrary fixed point; nothing here depends on "now"
@@ -394,5 +395,38 @@ describe("history reads report attachments", () => {
     const normalized = normalizeHistoryMessage(message(1, { message: "просто текст" }));
 
     assert.equal(normalized?.media, undefined);
+  });
+});
+
+/**
+ * Inbound carries the sender the same way the participant list does, and hits
+ * the same trap: a sender with several handles keeps them in `usernames[]` and
+ * the legacy field is empty. Any allowFrom entry written as `@handle` would
+ * silently never match such a person.
+ */
+describe("inbound sender handles", () => {
+  test("reads the active handle of a multi-username sender", () => {
+    const normalized = normalizeTelegramEvent({
+      message: {
+        id: 1,
+        chatId: "-100123",
+        message: "привет",
+        senderId: 116847835,
+        sender: {
+          username: null,
+          usernames: [ { username: "old_one", active: false }, { username: "top1ceo", active: true } ],
+        },
+      },
+    }, "default");
+
+    assert.equal(normalized?.senderUsername, "top1ceo");
+  });
+
+  test("still reads a plain single handle", () => {
+    const normalized = normalizeTelegramEvent({
+      message: { id: 2, chatId: "-100123", message: "привет", senderId: 5, sender: { username: "vasya" } },
+    }, "default");
+
+    assert.equal(normalized?.senderUsername, "vasya");
   });
 });

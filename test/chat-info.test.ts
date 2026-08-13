@@ -207,3 +207,30 @@ describe("chatInfo action", () => {
     );
   });
 });
+
+/**
+ * Same trap as in the participant list: an account or chat holding more than
+ * one username keeps them in `usernames[]`, and the legacy field arrives empty.
+ */
+describe("describeChat and multi-username accounts", () => {
+  it("finds the handle in usernames[] when the plain field is empty", () => {
+    const info = describeChat({
+      className: "User",
+      id: 116847835,
+      username: null,
+      usernames: [
+        { username: "retired_handle", active: false },
+        { username: "top1ceo", active: true },
+      ],
+      firstName: "Константин",
+    }, undefined);
+
+    assert.equal(info.username, "top1ceo");
+  });
+
+  it("still reads a single plain username", () => {
+    const info = describeChat({ className: "Channel", id: 1, title: "Проект", username: "alfa_team" }, undefined);
+
+    assert.equal(info.username, "alfa_team");
+  });
+});

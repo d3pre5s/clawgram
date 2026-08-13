@@ -9,6 +9,27 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.16.1] — 2026-08-14
+
+### Fixed
+
+- **A person with more than one Telegram handle came back without any.**
+  Telegram moved handles into a `usernames[]` array once an account could hold
+  several — multiple handles, or a collectible one — and for such an account
+  the legacy `username` field arrives EMPTY. Three places read that raw field:
+  the participant list, `chatInfo`, and the inbound sender.
+
+  The visible damage was in generated tables: the owner of one deployment
+  appeared as "(без тэга)" beside a bare numeric id, in every chat, while
+  everyone else carried a handle — 1 of 23, 1 of 9, 1 of 7, 1 of 3. The quiet
+  damage is worse: an `allowFrom` entry written as `@handle` never matches such
+  a person, and no error says so.
+
+  All three now go through `resolveActiveUsername`, which prefers the plain
+  field and otherwise takes the active entry out of `usernames[]`. The helper
+  already existed and was used for exactly one thing — the account's own handle,
+  so that mention detection would work.
+
 ## [2.16.0] — 2026-08-14
 
 ### Added
