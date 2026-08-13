@@ -86,6 +86,8 @@ import {
 } from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
 import { describeChat, parseChatInfoParams } from "./chat-info";
+import { parseTopicsParams } from "./topics";
+import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
 import {
   applyAccountSecrets,
   collectAccountSecretRefs,
@@ -217,6 +219,11 @@ function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefi
  * `readChats`, an absent value already means "deny", so there is nothing to
  * tell apart here.
  */
+/** Chat discovery as configured; absent means "deny", like management scope. */
+function resolveAccountDiscoverChats(cfg: any, accountId: string): unknown {
+  return cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]?.discoverChats;
+}
+
 function resolveAccountManageChats(cfg: any, accountId: string): unknown {
   return cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]?.manageChats;
 }
@@ -446,6 +453,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
         "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
         "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
+        "Use the `topics` action to list a forum's topics by name (optional `query` narrows by title); that is where a `threadId` comes from when someone names a topic instead of quoting a message in it.",
+        "Pass that `threadId` to `read` as well: without it a forum read returns every topic interleaved rather than the one that was asked about.",
+        "Use the `dialogs` action to find out which group chats this account is actually in — including ones nobody has configured yet. It reports id, title and type only, never direct chats, and only when the account enables `discoverChats`.",
         "Use `createGroup` (title, optional about, optional users) to create a new Telegram supergroup; `addMembers`/`removeMember` change who is in a managed chat, `promoteAdmin`/`demoteAdmin` grant or revoke admin rights, `transferOwnership` hands the chat over, `inviteLink` issues an invite link for people Telegram refused to add directly.",
       ],
       messageToolCapabilities: () => [
@@ -454,6 +464,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "clawgram supports Telegram forum topics via the `threadId` parameter on group sends.",
         "clawgram can add and clear emoji reactions on messages. A plain Telegram account holds one reaction per message, so a new emoji replaces the previous one.",
         "clawgram can describe a chat via `chatInfo`: title, type (direct/group/supergroup/channel), member count, description, whether it is a forum, and the pinned message id.",
+        "clawgram can list the topics of a forum supergroup via `topics`: id, title, last message, and whether a topic is closed, hidden or pinned.",
+        "clawgram can list the group chats the account belongs to via `dialogs`, when the account sets discoverChats. Metadata only, no direct chats — it answers \"where am I\", not \"what was said\".",
         "clawgram can manage chats where the account's manageChats config allows it: create supergroups, add and remove members, promote and demote admins, transfer ownership, and export invite links.",
       ],
     },
@@ -1511,7 +1523,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // never sees a way to send the file, announces it in words, and the
           // file stays on disk. That is exactly what happened on 2026-08-07.
           actions: [
-            "send", "read", "participants", "joins", "react", "chatInfo", "upload-file",
+            "send", "read", "participants", "joins", "react", "chatInfo", "topics", "dialogs", "upload-file",
             // Chat management (2.12.0) — gated by the account's manageChats
             // scope; without it every one of these is refused.
             "createGroup", "addMembers", "removeMember",
@@ -1632,6 +1644,92 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             count: membership.participants.length,
             truncated: membership.truncated,
             participants: membership.participants,
+          });
+        }
+
+        // Topic names. A forum chat is addressed by topic id, and until now an
+        // id could only be lifted off an inbound message — so a topic nobody had
+        // written in yet was unreachable, and one named in words was unfindable.
+        // Titles say what a chat is working on, so the read scope gates them.
+        if (action === "topics" || action === "forumTopics") {
+          const topicsParams = parseTopicsParams(params);
+          const topicsAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!topicsAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          if (!isChatReadable(topicsParams.target, resolveAccountReadChats(cfg, topicsAccountId))) {
+            actionLog.warn("clawgram topics refused: chat outside read scope", {
+              accountId: topicsAccountId,
+              target: topicsParams.target,
+            });
+            throw new Error(`clawgram: not-allowed-chat ${topicsParams.target}`);
+          }
+
+          const topicsGram = runtimes.get(topicsAccountId);
+          if (!topicsGram) {
+            throw new Error(`clawgram: runtime not found for account ${topicsAccountId}`);
+          }
+
+          const forum = await topicsGram.listTopics(topicsParams);
+
+          actionLog.info("clawgram handleAction topics completed", {
+            accountId: topicsAccountId,
+            target: topicsParams.target,
+            limit: topicsParams.limit,
+            returned: forum.topics.length,
+            truncated: forum.truncated,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: topicsAccountId,
+            chatId: forum.chatId ?? topicsParams.target,
+            count: forum.topics.length,
+            truncated: forum.truncated,
+            topics: forum.topics,
+          });
+        }
+
+        // Which chats this account is in. Not gated by `readChats` — the whole
+        // point is to find chats that are not in it yet — so it has a gate of
+        // its own, is metadata only, and never reports direct chats.
+        if (action === "dialogs" || action === "chats") {
+          const dialogsParams = parseDialogsParams(params);
+          const dialogsAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!dialogsAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          if (!isChatDiscoveryEnabled(resolveAccountDiscoverChats(cfg, dialogsAccountId))) {
+            actionLog.warn("clawgram dialogs refused: chat-discovery is not enabled", {
+              accountId: dialogsAccountId,
+            });
+            throw new Error("clawgram: chat-discovery is not enabled");
+          }
+
+          const dialogsGram = runtimes.get(dialogsAccountId);
+          if (!dialogsGram) {
+            throw new Error(`clawgram: runtime not found for account ${dialogsAccountId}`);
+          }
+
+          const found = await dialogsGram.listDialogs(dialogsParams);
+
+          // Counts only: which chats a person's account sits in is exactly the
+          // kind of thing that should not be sitting in a log.
+          actionLog.info("clawgram handleAction dialogs completed", {
+            accountId: dialogsAccountId,
+            limit: dialogsParams.limit,
+            returned: found.dialogs.length,
+            truncated: found.truncated,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: dialogsAccountId,
+            count: found.dialogs.length,
+            truncated: found.truncated,
+            dialogs: found.dialogs,
           });
         }
 

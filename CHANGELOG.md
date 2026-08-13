@@ -9,6 +9,48 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.16.0] — 2026-08-14
+
+### Added
+
+- **`dialogs` — which chats this account is actually in.** On 2026-08-13 the
+  owner added the account to two chats a minute apart. The 7-person basic group
+  was picked up; the 1039-member forum supergroup was not, and nothing anywhere
+  recorded that the account had joined it. Every message from it was dropped as
+  `skipping group not present in groups config` while the onboarding pipeline —
+  join service message → journal → roster → allowlists — waited for a service
+  message Telegram never sent, because large supergroups do not emit one.
+
+  Membership is now answerable directly instead of being inferred from an event
+  that may not arrive. The action reports id, title, type and `isForum` for
+  group chats only: direct conversations are dropped before the caller sees the
+  list, and no message content is read. It is the one read that deliberately
+  reaches past `readChats` — its job is to find chats that are not in it yet —
+  so it has its own switch, `discoverChats`, and stays off until an account
+  sets it.
+
+- **`topics` — a forum's topics by name.** `chatInfo` could say a chat *was* a
+  forum and stop there. A topic id could only be lifted off an inbound message,
+  so a topic nobody had posted in yet was unreachable, and one named in words
+  ("the Визитка topic") could not be turned into an id at all. The action lists
+  id, title, last message and the closed/hidden/pinned flags, with an optional
+  `query` narrowing by title. Gated by `readChats`: a topic list describes what
+  a chat is working on.
+
+- **`participants` takes `filter: "admins"`** (also `admins: true`), asking
+  Telegram with `ChannelParticipantsAdmins`. "Answer only the admins of this
+  chat" is a standing rule, and a rule needs a list that can be re-read rather
+  than one copied out by hand once.
+
+### Fixed
+
+- **`read` ignored the forum topic it was given.** `chatId:topic:N` was parsed
+  off the target and a `threadId` parameter was accepted, then both were
+  dropped before the query was built: every read of a forum returned the whole
+  chat with all topics interleaved, which looks like a correct answer to the
+  wrong question. The topic now reaches Telegram as `replyTo`, and `read`
+  accepts it as `threadId` / `topicId` / `messageThreadId` beside the target.
+
 ## [2.15.0] — 2026-08-12
 
 ### Fixed

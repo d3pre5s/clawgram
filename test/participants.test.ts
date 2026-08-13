@@ -5,6 +5,7 @@ import {
   PARTICIPANTS_MAX_LIMIT,
   parseListParticipantsParams,
 } from "../src/history";
+import { buildParticipantsQuery } from "../src/gramjs-client";
 
 describe("parseListParticipantsParams", () => {
   test("requires a chat id", () => {
@@ -56,5 +57,42 @@ describe("parseListParticipantsParams", () => {
         `limit ${String(limit)} should be rejected`,
       );
     }
+  });
+
+  // "Answer only the admins of this chat" is a standing instruction, so the
+  // list of admins has to be re-readable rather than copied out once by hand.
+  test("reads everyone unless the admins are asked for", () => {
+    assert.equal(parseListParticipantsParams({ chatId: "-1001" }).filter, "all");
+    assert.equal(parseListParticipantsParams({ chatId: "-1001", filter: "admins" }).filter, "admins");
+    assert.equal(parseListParticipantsParams({ chatId: "-1001", admins: true }).filter, "admins");
+    assert.equal(parseListParticipantsParams({ chatId: "-1001", filter: "all" }).filter, "all");
+  });
+
+  test("refuses a filter it does not implement instead of silently reading everyone", () => {
+    assert.throws(
+      () => parseListParticipantsParams({ chatId: "-1001", filter: "owners" }),
+      /participants filter must be/,
+    );
+  });
+});
+
+/**
+ * The filter has to reach Telegram as a TL object; a string named "admins"
+ * would be accepted by `getParticipants` and quietly ignored, returning the
+ * whole chat under a name that says otherwise.
+ */
+describe("buildParticipantsQuery", () => {
+  test("asks for everyone by default", () => {
+    const query = buildParticipantsQuery({ target: "-1001", limit: 200, includeNames: false, filter: "all" });
+
+    assert.deepEqual(Object.keys(query).sort(), [ "limit" ]);
+    assert.equal(query.limit, 200);
+  });
+
+  test("asks Telegram for admins with the constructor it expects", () => {
+    const query = buildParticipantsQuery({ target: "-1001", limit: 200, includeNames: false, filter: "admins" });
+
+    assert.equal(query.limit, 200);
+    assert.equal((query.filter as any)?.className, "ChannelParticipantsAdmins");
   });
 });

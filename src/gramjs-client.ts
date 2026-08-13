@@ -9,6 +9,8 @@ import { renderTelegramHtml } from "./html-render";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
 import { hasUnresolvedSecretRef } from "./secret-refs";
 import { buildHistoryQuery, collectHistoryWindow, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams } from "./history";
+import { normalizeForumTopics, type ForumTopic, type TopicsParams } from "./topics";
+import { normalizeDialogs, type DialogSummary, type DialogsParams } from "./dialogs";
 import {
   readInviteLink,
   resolveCreatedChannelId,
@@ -99,6 +101,23 @@ function parseTargetWithThread(rawTarget: string): {
     raw,
     chatId: raw,
   };
+}
+
+/**
+ * Membership query for `getParticipants`.
+ *
+ * The filter has to arrive as a TL constructor. `getParticipants` accepts an
+ * unknown `filter` value without complaining and falls back to everyone, so a
+ * plain `"admins"` string would return the whole chat under a name promising
+ * otherwise — and an allowFrom rebuilt from that list would open a 1000-person
+ * chat to all of it.
+ */
+export function buildParticipantsQuery(args: ListParticipantsParams): Record<string, unknown> {
+  const query: Record<string, unknown> = { limit: args.limit };
+  if (args.filter === "admins") {
+    query.filter = new Api.ChannelParticipantsAdmins();
+  }
+  return query;
 }
 
 /**
@@ -531,7 +550,13 @@ export class GramJsClientManager {
   }> {
     const resolved = await this.resolvePeer(args.target);
 
-    const query = buildHistoryQuery(args);
+    // A topic can be named two ways — `chatId:topic:N` in the target or a
+    // `threadId` parameter beside it. The explicit parameter wins; both used to
+    // be parsed and then dropped before the query was built.
+    const query = buildHistoryQuery({
+      ...args,
+      messageThreadId: args.messageThreadId ?? resolved.messageThreadId,
+    });
 
     const fetched = await this.client.getMessages(resolved.peer as any, query as any);
     const raw = Array.isArray(fetched) ? fetched : [];
@@ -560,9 +585,10 @@ export class GramJsClientManager {
   }> {
     const resolved = await this.resolvePeer(args.target);
 
-    const fetched = await this.client.getParticipants(resolved.peer as any, {
-      limit: args.limit,
-    } as any);
+    const fetched = await this.client.getParticipants(
+      resolved.peer as any,
+      buildParticipantsQuery(args) as any,
+    );
     const raw = Array.isArray(fetched) ? fetched : [];
 
     const participants: Array<{ userId: string; username?: string; isBot: boolean; firstName?: string; lastName?: string }> = [];
@@ -591,6 +617,60 @@ export class GramJsClientManager {
     return {
       chatId: resolved.chatId,
       participants,
+      truncated: raw.length >= args.limit,
+    };
+  }
+
+  /**
+   * The group chats this account belongs to.
+   *
+   * Deliberately thin: `getDialogs` also returns every private conversation,
+   * and `normalizeDialogs` drops them before anything else sees the list.
+   */
+  async listDialogs(args: DialogsParams): Promise<{
+    dialogs: DialogSummary[];
+    /** True when `limit` was reached, so the account may be in more chats. */
+    truncated: boolean;
+  }> {
+    const fetched = await this.client.getDialogs({ limit: args.limit } as any);
+    const raw = Array.isArray(fetched) ? fetched : [];
+
+    return {
+      dialogs: normalizeDialogs(raw, { query: args.query }),
+      truncated: raw.length >= args.limit,
+    };
+  }
+
+  /**
+   * Topics of a forum supergroup, by name.
+   *
+   * `q` is passed to Telegram when the caller narrows the list, and the same
+   * text is applied again to the result: the server-side search is not
+   * guaranteed to be there on every layer, and a filter that silently does
+   * nothing is worse than one that runs twice.
+   */
+  async listTopics(args: TopicsParams): Promise<{
+    chatId?: string;
+    topics: ForumTopic[];
+    /** True when `limit` was reached, so the forum may have more topics. */
+    truncated: boolean;
+  }> {
+    const resolved = await this.resolvePeer(args.target, { kind: "channel" });
+
+    const result: any = await this.client.invoke(new Api.channels.GetForumTopics({
+      channel: resolved.peer as any,
+      ...(args.query ? { q: args.query } : {}),
+      offsetDate: 0,
+      offsetId: 0,
+      offsetTopic: 0,
+      limit: args.limit,
+    }));
+
+    const raw = Array.isArray(result?.topics) ? result.topics : [];
+
+    return {
+      chatId: resolved.chatId,
+      topics: normalizeForumTopics(raw, { query: args.query }),
       truncated: raw.length >= args.limit,
     };
   }

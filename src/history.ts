@@ -26,6 +26,12 @@ export type ListMessagesParams = {
   minId?: number;
   /** Exclusive upper bound by message id — OpenClaw's `--before`. */
   maxId?: number;
+  /**
+   * Forum topic to read instead of the whole chat. Telegram numbers a topic by
+   * the id of the message that opened it, so this is a message id like any
+   * other — including the General topic, which is always 1.
+   */
+  messageThreadId?: number;
 };
 
 export type HistoryMessage = {
@@ -160,6 +166,8 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
     throw new Error("clawgram: since must not be later than until");
   }
 
+  const rawThreadId = params.threadId ?? params.topicId ?? params.messageThreadId ?? params.topic;
+
   return {
     target,
     limit: parseLimit(params.limit),
@@ -167,18 +175,37 @@ export function parseListMessagesParams(params: Record<string, unknown>): ListMe
     until,
     minId: parseMessageId(params.after, "after"),
     maxId: parseMessageId(params.before, "before"),
+    messageThreadId: parseMessageId(rawThreadId, "threadId"),
   };
 }
 
 export const PARTICIPANTS_DEFAULT_LIMIT = 200;
 export const PARTICIPANTS_MAX_LIMIT = 1000;
 
+export type ParticipantsFilter = "all" | "admins";
+
 export type ListParticipantsParams = {
   target: string;
   limit: number;
   /** Opt-in: display names are personal data and are only needed while linking identities. */
   includeNames: boolean;
+  /**
+   * Whose membership to read. `admins` exists because "answer only the admins
+   * of this chat" is a standing rule, and a rule needs a list that can be
+   * re-read rather than a list copied out by hand once.
+   */
+  filter: ParticipantsFilter;
 };
+
+function parseParticipantsFilter(params: Record<string, unknown>): ParticipantsFilter {
+  if (params.admins === true) return "admins";
+
+  const raw = params.filter;
+  if (raw === undefined || raw === null || raw === "") return "all";
+  if (raw === "all" || raw === "admins") return raw;
+
+  throw new Error('clawgram: participants filter must be "all" or "admins"');
+}
 
 /**
  * Membership is asked for by chat, so a target is required. `limit` is clamped
@@ -193,10 +220,11 @@ export function parseListParticipantsParams(params: Record<string, unknown>): Li
   }
 
   const includeNames = params.includeNames === true || params.includeNames === "true";
+  const filter = parseParticipantsFilter(params);
 
   const rawLimit = params.limit;
   if (rawLimit === undefined || rawLimit === null || rawLimit === "") {
-    return { target, limit: PARTICIPANTS_DEFAULT_LIMIT, includeNames };
+    return { target, limit: PARTICIPANTS_DEFAULT_LIMIT, includeNames, filter };
   }
 
   const parsed = Number(rawLimit);
@@ -204,7 +232,7 @@ export function parseListParticipantsParams(params: Record<string, unknown>): Li
     throw new Error("clawgram: participants limit must be a positive number");
   }
 
-  return { target, limit: Math.min(Math.floor(parsed), PARTICIPANTS_MAX_LIMIT), includeNames };
+  return { target, limit: Math.min(Math.floor(parsed), PARTICIPANTS_MAX_LIMIT), includeNames, filter };
 }
 
 /**
@@ -218,9 +246,14 @@ export function parseListParticipantsParams(params: Record<string, unknown>): Li
  * after the fact.
  */
 export function buildHistoryQuery(
-  args: { limit: number; until?: number; minId?: number; maxId?: number },
+  args: { limit: number; until?: number; minId?: number; maxId?: number; messageThreadId?: number },
 ): Record<string, unknown> {
   const query: Record<string, unknown> = { limit: args.limit };
+  // GramJS turns `replyTo` into messages.GetReplies, which is Telegram's way of
+  // asking for one forum topic rather than the whole chat.
+  if (args.messageThreadId !== undefined) {
+    query.replyTo = args.messageThreadId;
+  }
   if (args.until !== undefined) {
     query.offsetDate = args.until + 1;
   }

@@ -300,3 +300,23 @@ describe("openclaw.plugin.json twoFaPassword uiHints", () => {
     assert.equal(channelUiHints[ "accounts.*.twoFaPassword" ]?.sensitive, true);
   });
 });
+
+/**
+ * The account schema is `additionalProperties: false`, so a config key the
+ * manifest does not know about is not ignored — it fails validation and the
+ * account never starts. A new capability is therefore only half-added until
+ * its switch is in the schema.
+ */
+describe("chat discovery is a declared account switch", () => {
+  test("accepts discoverChats", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, discoverChats: true });
+
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("still refuses a key nobody declared", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, discoverEverything: true });
+
+    assert.equal(result.ok, false);
+  });
+});

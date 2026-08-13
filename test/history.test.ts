@@ -108,8 +108,33 @@ describe("parseListMessagesParams", () => {
       limit: 50,
     });
     assert.deepEqual(parsed, {
-      target: "-100123", limit: 50, since: BASE, until: BASE + HOUR, minId: undefined, maxId: undefined,
+      target: "-100123",
+      limit: 50,
+      since: BASE,
+      until: BASE + HOUR,
+      minId: undefined,
+      maxId: undefined,
+      messageThreadId: undefined,
     });
+  });
+
+  // Reading a forum without this returns the whole chat: every topic
+  // interleaved, which is not what "read the Визитка topic" means.
+  test("takes a forum topic under the names a caller reaches for", () => {
+    for (const key of [ "threadId", "topicId", "messageThreadId", "topic" ]) {
+      assert.equal(parseListMessagesParams({ chatId: "-100123", [ key ]: 15009 }).messageThreadId, 15009);
+      assert.equal(parseListMessagesParams({ chatId: "-100123", [ key ]: "15009" }).messageThreadId, 15009);
+    }
+    assert.equal(parseListMessagesParams({ chatId: "-100123" }).messageThreadId, undefined);
+  });
+
+  test("rejects a topic id that is not a message id", () => {
+    for (const value of [ 0, -1, 1.5, "general" ]) {
+      assert.throws(
+        () => parseListMessagesParams({ chatId: "-100123", threadId: value }),
+        /positive message id/,
+      );
+    }
   });
 
   test("rejects an inverted window", () => {
@@ -149,6 +174,20 @@ describe("buildHistoryQuery", () => {
 
   test("passes message id bounds straight through", () => {
     assert.deepEqual(buildHistoryQuery({ limit: 5, minId: 10, maxId: 20 }), { limit: 5, minId: 10, maxId: 20 });
+  });
+
+  // GramJS turns `replyTo` into messages.GetReplies, which is how Telegram
+  // scopes a read to one forum topic. Without it the topic id was parsed off
+  // the target, carried all the way down, and then quietly dropped.
+  test("scopes the read to a forum topic via replyTo", () => {
+    assert.deepEqual(
+      buildHistoryQuery({ limit: 25, messageThreadId: 15009 }),
+      { limit: 25, replyTo: 15009 },
+    );
+  });
+
+  test("leaves replyTo out when no topic was asked for", () => {
+    assert.equal(Object.hasOwn(buildHistoryQuery({ limit: 25 }), "replyTo"), false);
   });
 
   test("shifts offsetDate by a second because Telegram treats it as exclusive", () => {
