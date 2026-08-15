@@ -69,6 +69,69 @@
                       }
                     ]
                   }
+                },
+                "tools": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "allow": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "alsoAllow": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "deny": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "toolsBySender": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "allow": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "alsoAllow": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "deny": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "skills": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "systemPrompt": {
+                  "type": "string"
                 }
               }
             }
@@ -311,6 +374,69 @@
                             }
                           ]
                         }
+                      },
+                      "tools": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "allow": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "alsoAllow": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "deny": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "toolsBySender": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "allow": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "alsoAllow": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "deny": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "skills": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "systemPrompt": {
+                        "type": "string"
                       }
                     }
                   }
@@ -405,6 +531,26 @@
         "accounts.*.manageChats": {
           "label": "Managed Chats",
           "help": "Chat ids the assistant may manage (create groups, add/remove members, admins, ownership, invite links). Leave empty to keep chat management off; use * to allow every chat.",
+          "advanced": true
+        },
+        "accounts.*.groups.*.tools": {
+          "label": "Group Tool Policy",
+          "help": "Tool allow/alsoAllow/deny for this group. Applies to gateway tools (message, sessions_*, cron, memory_*, …). Under CLI backends such as claude-cli the native exec/read/write tools are not filtered per group — bind the group to a separate agent for that.",
+          "advanced": true
+        },
+        "accounts.*.groups.*.toolsBySender": {
+          "label": "Group Tool Policy by Sender",
+          "help": "Per-sender tool policy inside this group. Keys use core's typed grammar: id:<telegram id>, username:<handle>, name:<display name>, or * as the fallback.",
+          "advanced": true
+        },
+        "accounts.*.groups.*.skills": {
+          "label": "Group Skills",
+          "help": "Skill allowlist for this group. Omit to inherit the agent's skills; [] means no skills in this group.",
+          "advanced": true
+        },
+        "accounts.*.groups.*.systemPrompt": {
+          "label": "Group System Prompt",
+          "help": "Trusted prompt block appended for messages from this group — the place to state what this chat is about and what stays out of it.",
           "advanced": true
         },
         "accounts.*.twoFaPassword": {

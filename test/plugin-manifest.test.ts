@@ -320,3 +320,91 @@ describe("chat discovery is a declared account switch", () => {
     assert.equal(result.ok, false);
   });
 });
+
+describe("openclaw.plugin.json per-group scope keys", () => {
+  const TOOLS = { allow: [ "read" ], alsoAllow: [ "memory_search" ], deny: [ "exec", "browser" ] };
+  const SCOPED_GROUP = {
+    enabled: true,
+    groupPolicy: "mention",
+    allowFrom: [ "*" ],
+    tools: TOOLS,
+    toolsBySender: { "id:42": { deny: [ "message" ] }, "*": { allow: [ "read" ] } },
+    skills: [ "pm-standup", "pm-jira" ],
+    systemPrompt: "Ты в проекте BRO. Другие проекты здесь не обсуждаются.",
+  };
+
+  function validateChannel(value: Record<string, unknown>, cacheKey: string) {
+    return validateJsonSchemaValue({ schema: channelSchema, cacheKey, value });
+  }
+
+  test("accepts every new key on a per-account group", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, groups: { "-1001234567890": SCOPED_GROUP } });
+
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("accepts every new key on the * default group", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, groups: { "*": SCOPED_GROUP } });
+
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("accepts every new key on a top-level group", () => {
+    const result = validateChannel(
+      { accounts: { default: BASE_ACCOUNT }, groups: { "-1001234567890": SCOPED_GROUP } },
+      "clawgram:test:top-level-scoped-group",
+    );
+
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("a group without any new key still validates (opt-in, no defaults)", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, groups: { "*": { enabled: true } } });
+
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("skills may be an empty array — that means no skills, not unset", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, groups: { "*": { skills: [] } } });
+
+    assert.equal(result.ok, true, errorText(result));
+  });
+
+  test("rejects an unknown group key", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, groups: { "*": { project: "BRO" } } });
+
+    assert.equal(result.ok, false);
+  });
+
+  test("rejects an unknown key inside tools", () => {
+    const result = validateAccount({ ...BASE_ACCOUNT, groups: { "*": { tools: { foo: [ "read" ] } } } });
+
+    assert.equal(result.ok, false);
+  });
+
+  test("rejects wrong types", () => {
+    for (const group of [
+      { tools: [ "read" ] },
+      { tools: { deny: "exec" } },
+      { toolsBySender: { "id:42": [ "read" ] } },
+      { skills: "pm-standup" },
+      { systemPrompt: [ "text" ] },
+    ]) {
+      const result = validateAccount({ ...BASE_ACCOUNT, groups: { "*": group } });
+
+      assert.equal(result.ok, false, `expected rejection for ${JSON.stringify(group)}`);
+    }
+  });
+
+  test("documents the new keys in uiHints", () => {
+    for (const key of [
+      "accounts.*.groups.*.tools",
+      "accounts.*.groups.*.toolsBySender",
+      "accounts.*.groups.*.skills",
+      "accounts.*.groups.*.systemPrompt",
+    ]) {
+      assert.ok(channelUiHints[ key ]?.label, `missing uiHint for ${key}`);
+      assert.ok(channelUiHints[ key ]?.help, `missing help for ${key}`);
+    }
+  });
+});
