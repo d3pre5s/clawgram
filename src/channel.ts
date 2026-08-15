@@ -435,6 +435,15 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
     capabilities: CHANNEL_CAPABILITIES,
 
+    // Core plans config hot reloads from these prefixes. Without the
+    // declaration a changed `channels.clawgram.*` path matches no rule and
+    // core restarts the whole Gateway (SIGUSR1, all runs aborted) — measured
+    // 2026-08-13. With it, the same edit restarts only this channel. No
+    // `noopPrefixes`: `groups`/`allowFrom`/`readChats` are read from the cfg
+    // captured in `startAccount`, so a channel restart is exactly what an
+    // edit needs to take effect.
+    reload: { configPrefixes: [ "channels.clawgram" ] },
+
     agentPrompt: {
       // Nothing here steers reactions, and that is deliberate. 2.8.0 added a
       // `reactionGuidance` hook and 2.9.0 moved the same text onto these
