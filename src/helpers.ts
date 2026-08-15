@@ -67,6 +67,25 @@ function buildScopedGroupPeerId(accountId: string | undefined, chatId: string): 
   return `${scopedAccountId}:${chatId}`;
 }
 
+/**
+ * Inverse of `buildScopedGroupPeerId`. Core derives group ids from the session
+ * key, so a channel hook receives `<accountId>:<chatId>` while `groups` in the
+ * config is keyed by the bare chat id. Only this account's prefix is stripped;
+ * anything else passes through untouched.
+ */
+function stripAccountScopedGroupId(
+  groupId: string | null | undefined,
+  accountId: string | null | undefined,
+): string | undefined {
+  const raw = typeof groupId === "string" ? groupId.trim() : "";
+  if (!raw) {
+    return undefined;
+  }
+
+  const prefix = `${(accountId ?? "default").trim() || "default"}:`;
+  return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+}
+
 function stripReplyDirectiveTags(text: string): string {
   return text
     .replace(/\[\[\s*reply_to_current\s*\]\]/gi, " ")
@@ -809,6 +828,7 @@ export {
   routeKindFromChatType,
   buildConversationTarget,
   buildScopedGroupPeerId,
+  stripAccountScopedGroupId,
   stripReplyDirectiveTags,
   readLatestAssistantFallbackFromTranscript,
   resolveActionTarget,

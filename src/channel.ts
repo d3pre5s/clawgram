@@ -88,6 +88,7 @@ import { reactToSilentMention } from "./silent-reaction";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { parseTopicsParams } from "./topics";
 import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
+import { resolveClawgramGroupToolPolicy } from "./group-tool-policy";
 import {
   applyAccountSecrets,
   collectAccountSecretRefs,
@@ -443,6 +444,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
     // captured in `startAccount`, so a channel restart is exactly what an
     // edit needs to take effect.
     reload: { configPrefixes: [ "channels.clawgram" ] },
+
+    // Per-group `tools` / `toolsBySender` from the config. Core asks the
+    // channel first because only the channel knows that its group ids carry
+    // an account prefix; see src/group-tool-policy.ts.
+    groups: {
+      resolveToolPolicy: resolveClawgramGroupToolPolicy,
+    },
 
     agentPrompt: {
       // Nothing here steers reactions, and that is deliberate. 2.8.0 added a
