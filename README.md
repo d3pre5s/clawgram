@@ -183,6 +183,12 @@ openclaw gateway restart
 openclaw gateway restart
 ```
 
+One restart after installation is enough. From 2.17.0 the plugin declares
+`channels.clawgram` as a hot-reloadable prefix, so later edits under it —
+`allowFrom`, `groups`, `readChats`, proxy — are picked up by the Gateway's
+config watcher and restart only this channel (a few seconds of MTProto
+reconnect), not the whole Gateway.
+
 
 ## Configuration Reference
 
@@ -238,6 +244,65 @@ Group config fields:
 | `enabled` | boolean | `true` | Enables or disables replies in the group |
 | `groupPolicy` | `"open"` \| `"mention"` | `"mention"` | `open` replies to any group message, `mention` only on @mention or reply-to-self |
 | `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames inside that group |
+| `tools` | object | unset | `{ allow?, alsoAllow?, deny? }` — tool policy for this group; see [Per-group tools, skills and system prompt](#per-group-tools-skills-and-system-prompt) |
+| `toolsBySender` | object | unset | Per-sender tool policy inside this group, keys `id:<id>`, `username:<handle>`, `name:<display>` or `*` |
+| `skills` | string[] | unset | Skill allowlist for this group; `[]` = no skills here, unset = the agent's skills |
+| `systemPrompt` | string | unset | Trusted prompt block appended for messages from this group |
+
+### Per-group tools, skills and system prompt
+
+Since 2.17.0 a group entry can narrow what the assistant does *in that chat*
+without touching the agent as a whole. The keys mirror the bundled Telegram
+channel's group config, and `*` works as the default group for them too.
+
+```json
+"groups": {
+  "-1001234567890": {
+    "groupPolicy": "mention",
+    "systemPrompt": "This chat is project BRO. Other projects are out of scope here.",
+    "skills": ["pm-standup", "pm-jira"],
+    "tools": { "deny": ["browser", "cron"] },
+    "toolsBySender": { "id:123456789": { "alsoAllow": ["cron"] } }
+  }
+}
+```
+
+| Key | Effect |
+|---|---|
+| `systemPrompt` | Appended to the system prompt as a trusted block for turns from this group — the place to say what the chat is about and what stays out of it. |
+| `skills` | Skill allowlist for turns from this group. Omit to inherit the agent's skills; `[]` means no skills in this chat. |
+| `tools` / `toolsBySender` | Tool policy resolved by OpenClaw core for this group (`toolsBySender` wins for a matching sender). Keys use core's typed grammar: `id:`, `username:`, `name:`, `channel:clawgram:<id>` or `*`. |
+
+**Limits — read before relying on `tools`.** The policy governs OpenClaw's
+gateway tools (`message`, `sessions_*`, `cron`, `memory_*`, …). Under CLI
+backends such as `claude-cli` those reach the model through the loopback MCP
+tool list and are filtered per group; the backend's own native tools —
+`exec`, `read`, `write`, `edit`, `apply_patch`, `process` — are governed by
+the agent's exec policy, not by the group. If a chat must not have a shell at
+all, bind it to a separate agent without one; the routing is core's, and the
+peer id carries the account prefix this channel uses:
+
+```json
+"agents": {
+  "list": [
+    { "id": "main", "default": true, "workspace": "~/.openclaw/workspace" },
+    {
+      "id": "without-hands",
+      "workspace": "~/.openclaw/workspace-without-hands",
+      "model": "anthropic/claude-sonnet-5",
+      "tools": {
+        "deny": ["exec", "read", "write", "edit", "apply_patch", "process", "browser", "cron"],
+        "message": { "actions": { "allow": ["send"] }, "crossContext": { "allowWithinProvider": false } }
+      }
+    }
+  ]
+},
+"bindings": [
+  { "agentId": "without-hands", "match": { "channel": "clawgram", "peer": { "kind": "group", "id": "default:-1001234567890" } } }
+]
+```
+
+Nothing above changes for a group that does not set these keys.
 
 ### Message formatting
 

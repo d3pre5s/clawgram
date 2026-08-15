@@ -9,6 +9,36 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.17.0] — 2026-08-15
+
+### Added
+
+- **Per-group `tools`, `toolsBySender`, `skills` and `systemPrompt`.** A
+  chat's scope could only be held by the agent's prompt: the config knew
+  which groups the assistant answers in, not what it may do in each. The four
+  keys are the bundled Telegram channel's group vocabulary and are opt-in — a
+  group without them behaves exactly as before. `systemPrompt` reaches core as
+  a trusted block, `skills` as the turn's skill allowlist (`[]` = no skills
+  here), `tools`/`toolsBySender` are resolved by core through a new
+  `groups.resolveToolPolicy` hook.
+
+  The hook exists for one reason: core derives group ids from the session key
+  and hands the channel the scoped peer id `<accountId>:<chatId>`, while
+  `groups` is keyed by the bare chat id — without the translation the policy
+  would look up `groups["default:-100…"]` and silently never apply. Under CLI
+  backends the policy filters gateway tools (loopback MCP), not the backend's
+  own exec/read/write; the README says so and shows the bindings recipe for a
+  chat that must not have a shell.
+
+### Changed
+
+- **Config edits under `channels.clawgram` no longer restart the whole
+  Gateway.** Core plans hot reloads from `plugin.reload.configPrefixes`; a
+  changed path that matches no rule restarts the Gateway (SIGUSR1, all runs
+  aborted). Measured on 2026-08-13 21:50:52 UTC: one write to
+  `channels.clawgram.accounts.default.groups` did exactly that. The plugin
+  now declares the prefix, so the same edit restarts only this channel.
+
 ## [2.16.1] — 2026-08-14
 
 ### Fixed
