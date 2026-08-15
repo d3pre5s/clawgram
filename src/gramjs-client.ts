@@ -285,9 +285,24 @@ export class GramJsClientManager {
     this.started = true;
   }
 
+  /**
+   * Tears the client down for good.
+   *
+   * `destroy()`, not `disconnect()`. GramJS runs its update loop as
+   * `while (!client._destroyed)` (telegram/client/updates.js), and only
+   * `destroy()` sets that flag — `disconnect()` drops the connection and
+   * leaves the loop spinning, retrying and logging `Error: TIMEOUT` forever.
+   * The manager is thrown away on stop, so losing the event handlers that
+   * `destroy()` clears is exactly what we want.
+   *
+   * This leak was invisible while a config write restarted the whole Gateway.
+   * 2.17.0 made channel restarts routine, and the rate then grew by one loop
+   * per restart — measured on the owner's server 2026-08-15: ~3 timeouts/min
+   * before a restart, ~4.5/min after one.
+   */
   async stop(): Promise<void> {
     if (!this.started) return;
-    await this.client.disconnect();
+    await this.client.destroy();
     this.started = false;
   }
 

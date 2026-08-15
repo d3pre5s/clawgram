@@ -9,6 +9,25 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.17.1] — 2026-08-15
+
+### Fixed
+
+- **Every channel restart leaked a GramJS update loop.** `stop()` called
+  `client.disconnect()`, which drops the connection but leaves the update loop
+  running: GramJS spins it as `while (!client._destroyed)` and only `destroy()`
+  sets that flag. Each leaked loop keeps retrying and printing `Error: TIMEOUT`
+  for the lifetime of the process.
+
+  The leak is older than this release, but it was nearly unreachable: a write
+  under `channels.clawgram` used to restart the whole Gateway, which took the
+  loops with it. 2.17.0 declared the prefix hot-reloadable, so a routine
+  roster/allowlist write now restarts only the channel — and the leak became a
+  per-write cost. Measured on a live server on 2026-08-15: zero timeouts on the
+  two preceding days, ~3/min after two channel restarts, ~4.5/min after a third.
+  `stop()` now calls `destroy()`; losing the event handlers it clears is
+  correct, because the manager is discarded on stop.
+
 ## [2.17.0] — 2026-08-15
 
 ### Added
