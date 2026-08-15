@@ -934,6 +934,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                 ReplyToIsQuote: normalized.replyIsQuote,
                 MessageThreadId: normalized.messageThreadId,
                 NativeChannelId: normalized.chatId,
+                // Trusted per-group prompt block from `groups.<id>.systemPrompt`.
+                // Core normalizes it (`normalizeTrustedTextField`) and appends
+                // it to the system prompt for this turn. Undefined = no block.
+                GroupSystemPrompt: groupConfig.systemPrompt,
                 OriginatingChannel: "clawgram",
                 OriginatingTo: conversationRouteTarget,
               });
@@ -1056,6 +1060,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                   },
                   replyOptions: {
                     onModelSelected,
+                    // `groups.<id>.skills` → core's per-turn skill allowlist.
+                    // Undefined = inherit the agent's skills; [] = none here.
+                    skillFilter: groupConfig.skillFilter,
                   },
                 });
 
