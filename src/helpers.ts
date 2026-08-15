@@ -279,11 +279,44 @@ function resolveGroupPolicy(value: unknown): "open" | "mention" {
   return value === "open" ? "open" : "mention";
 }
 
-function resolveGroups(value: unknown): Record<string, {
+type GroupPromptSettings = {
+  skillFilter?: string[];
+  systemPrompt?: string;
+};
+
+type ResolvedGroupConfig = {
   enabled: boolean;
   groupPolicy: "open" | "mention";
   allowFrom: string[];
-}> {
+} & GroupPromptSettings;
+
+/**
+ * Per-group `skills` → core `replyOptions.skillFilter`, `systemPrompt` →
+ * `GroupSystemPrompt`. An empty `skills` array is kept as `[]` — "no skills
+ * in this chat" is an answer, the same one core gives `agents.list[].skills: []`
+ * — while a blank `systemPrompt` is unset rather than an empty trusted block.
+ */
+function resolveGroupPromptSettings(groupConfig: Record<string, unknown> | undefined): GroupPromptSettings {
+  const settings: GroupPromptSettings = {};
+  if (!groupConfig) {
+    return settings;
+  }
+
+  if (Array.isArray(groupConfig.skills)) {
+    settings.skillFilter = groupConfig.skills
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof groupConfig.systemPrompt === "string" && groupConfig.systemPrompt.trim()) {
+    settings.systemPrompt = groupConfig.systemPrompt.trim();
+  }
+
+  return settings;
+}
+
+function resolveGroups(value: unknown): Record<string, ResolvedGroupConfig> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
@@ -300,20 +333,16 @@ function resolveGroups(value: unknown): Record<string, {
         enabled: groupConfig.enabled !== false,
         groupPolicy: resolveGroupPolicy(groupConfig.groupPolicy),
         allowFrom: resolveAllowFrom(groupConfig.allowFrom),
+        ...resolveGroupPromptSettings(groupConfig),
       },
     ];
   }).filter(([ groupId ]) => Boolean(groupId)));
 }
 
-function resolveGroupConfig(groups: Record<string, {
-  enabled: boolean;
-  groupPolicy: "open" | "mention";
-  allowFrom: string[];
-}>, chatId: string): {
-  enabled: boolean;
-  groupPolicy: "open" | "mention";
-  allowFrom: string[];
-} | undefined {
+function resolveGroupConfig(
+  groups: Record<string, ResolvedGroupConfig>,
+  chatId: string,
+): ResolvedGroupConfig | undefined {
   return groups[ chatId ] ?? groups[ "*" ];
 }
 
@@ -791,6 +820,7 @@ export {
   resolveGroupPolicy,
   resolveGroups,
   resolveGroupConfig,
+  resolveGroupPromptSettings,
   resolveActiveUsername,
   normalizeAllowEntry,
   isSenderAllowed,
@@ -811,3 +841,5 @@ export {
   resolveOutboundParseMode,
   resolveDryRun,
 };
+
+export type { GroupPromptSettings, ResolvedGroupConfig };
