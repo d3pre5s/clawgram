@@ -294,8 +294,15 @@ function resolveAllowFrom(value: unknown): string[] {
   return entries.length > 0 ? entries : [ "*" ];
 }
 
-function resolveGroupPolicy(value: unknown): "open" | "mention" {
-  return value === "open" ? "open" : "mention";
+/**
+ * Three rungs, widest first: `open` wakes on every message, `mention` on the
+ * name or an `@`, `tag` on the `@` alone. Anything unrecognised lands on
+ * `mention`, the rung this channel has always defaulted to.
+ */
+function resolveGroupPolicy(value: unknown): "open" | "mention" | "tag" {
+  if (value === "open") return "open";
+  if (value === "tag") return "tag";
+  return "mention";
 }
 
 type GroupPromptSettings = {
@@ -305,7 +312,7 @@ type GroupPromptSettings = {
 
 type ResolvedGroupConfig = {
   enabled: boolean;
-  groupPolicy: "open" | "mention";
+  groupPolicy: "open" | "mention" | "tag";
   allowFrom: string[];
 } & GroupPromptSettings;
 
@@ -400,6 +407,51 @@ function isSenderAllowed(input: {
   return input.allowFrom.map(normalizeAllowEntry).some((entry) => senderIds.includes(entry));
 }
 
+/**
+ * Whether the message tags this account with `@username` — nothing else.
+ *
+ * The name the agent answers to (`Тина`, and whatever else core's mention
+ * regexes carry) is deliberately NOT consulted. In a thousand-person chat the
+ * name occurs in conversation constantly and almost never as an address; the
+ * `@` is the one form that is unambiguously aimed at her. This is the whole of
+ * `groupPolicy: "tag"`.
+ *
+ * `message.mentioned` is Telegram's own flag and stays in: the client sets it
+ * for an @-mention and for a reply to her, and both are addresses.
+ */
+function hasExplicitTelegramMention(input: {
+  selfUsername?: string;
+  text: string;
+  message?: any;
+}): boolean {
+  const normalizedText = input.text.trim();
+  const message = input.message;
+  const selfUsername = input.selfUsername?.replace(/^@/, "").trim();
+  if (!selfUsername) {
+    return false;
+  }
+
+  const entities = Array.isArray(message?.entities) ? message.entities : [];
+  const entityExplicitMention = entities.some((entity: any) => {
+    const kind = typeof entity?.className === "string" ? entity.className : entity?.type;
+    if (kind !== "MessageEntityMention" && kind !== "mention") {
+      return false;
+    }
+
+    const offset = typeof entity?.offset === "number" ? entity.offset : -1;
+    const length = typeof entity?.length === "number" ? entity.length : 0;
+    if (offset < 0 || length <= 0) {
+      return false;
+    }
+
+    return normalizedText.slice(offset, offset + length).replace(/^@/, "").trim().toLowerCase() === selfUsername.toLowerCase();
+  });
+
+  return message?.mentioned === true ||
+    entityExplicitMention ||
+    new RegExp(`(^|\\s)@${selfUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(normalizedText);
+}
+
 function hasTelegramMention(input: {
   cfg: any;
   agentId?: string;
@@ -418,26 +470,11 @@ function hasTelegramMention(input: {
       return kind === "MessageEntityMention" || kind === "mention" || kind === "MessageEntityMentionName" || kind === "InputMessageEntityMentionName";
     }) ||
     /(^|\s)@[a-zA-Z0-9_]{5,}\b/.test(normalizedText);
-  const entityExplicitMention = Boolean(selfUsername) && entities.some((entity: any) => {
-    const kind = typeof entity?.className === "string" ? entity.className : entity?.type;
-    if (kind !== "MessageEntityMention" && kind !== "mention") {
-      return false;
-    }
-
-    const offset = typeof entity?.offset === "number" ? entity.offset : -1;
-    const length = typeof entity?.length === "number" ? entity.length : 0;
-    if (offset < 0 || length <= 0) {
-      return false;
-    }
-
-    return normalizedText.slice(offset, offset + length).replace(/^@/, "").trim().toLowerCase() === selfUsername.toLowerCase();
+  const explicitlyMentioned = hasExplicitTelegramMention({
+    selfUsername: input.selfUsername,
+    text: input.text,
+    message,
   });
-  const explicitlyMentioned = Boolean(selfUsername) &&
-    (
-      message?.mentioned === true ||
-      entityExplicitMention ||
-      new RegExp(`(^|\\s)@${selfUsername?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(normalizedText)
-    );
 
   return matchesMentionWithExplicit({
     text: normalizedText,
@@ -845,6 +882,7 @@ export {
   normalizeAllowEntry,
   isSenderAllowed,
   hasTelegramMention,
+  hasExplicitTelegramMention,
   toDisplayName,
   withTimeout,
   SILENT_REPLY_TOKEN,

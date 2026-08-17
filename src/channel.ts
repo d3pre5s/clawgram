@@ -122,6 +122,7 @@ import {
   resolveActiveUsername,
   isSenderAllowed,
   hasTelegramMention,
+  hasExplicitTelegramMention,
   toDisplayName,
   prefixReplyTextToAddress,
   stripSilentReplyToken,
@@ -148,6 +149,24 @@ function readAccountReactionLevel(cfg: any, accountId?: string | null): unknown 
   }
 
   return cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]?.reactionLevel;
+}
+
+/**
+ * Model ref for the emoji pick, when the account names one.
+ *
+ * Picking one emoji out of a fixed list of 68 is the cheapest judgement this
+ * channel makes and the only model call it makes on its own; running it on the
+ * agent's own head spends the expensive quota on a decision a small model
+ * makes just as well.
+ */
+function readAccountReactionModel(cfg: any, accountId?: string | null): string | undefined {
+  const resolvedAccountId = resolveConfiguredAccountId(cfg, accountId);
+  if (!resolvedAccountId) {
+    return undefined;
+  }
+
+  const raw = cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]?.reactionModel;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }
 
 /**
@@ -179,6 +198,7 @@ async function reactToSilentMentionForAccount(params: {
 
   await reactToSilentMention({
     appetite: resolveAgentReactionGuidance(readAccountReactionLevel(params.cfg, params.accountId)),
+    model: readAccountReactionModel(params.cfg, params.accountId),
     wasMentioned: params.wasMentioned,
     chatId: params.chatId,
     messageId: params.messageId,
@@ -849,13 +869,19 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
               // channelRuntime comes from the untyped ctx, so the generic route type falls
               // back to the minimal RouteLike. The runtime value is a ResolvedAgentRoute.
               const route = inboundRoute as ResolvedAgentRoute;
-              const wasMentioned = hasTelegramMention({
-                cfg,
-                agentId: route.agentId,
-                selfUsername,
-                text,
-                message: rawMessage,
-              });
+              // Under `tag` the name is not an address: in a chat of a thousand
+              // people it occurs in conversation constantly and is aimed at her
+              // almost never. Only the `@` counts, and it is the same fact the
+              // stricter rung of the ladder is named after.
+              const wasMentioned = groupConfig.groupPolicy === "tag"
+                ? hasExplicitTelegramMention({ selfUsername, text, message: rawMessage })
+                : hasTelegramMention({
+                  cfg,
+                  agentId: route.agentId,
+                  selfUsername,
+                  text,
+                  message: rawMessage,
+                });
               const wasReplyToSelf = await isReplyToSelfMessage(rawMessage, selfId);
               const mentionDecision = resolveInboundMentionDecision({
                 facts: {
@@ -865,7 +891,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                 },
                 policy: {
                   isGroup: true,
-                  requireMention: groupConfig.groupPolicy === "mention",
+                  requireMention: groupConfig.groupPolicy !== "open",
                   allowTextCommands: false,
                   hasControlCommand: false,
                   commandAuthorized: true,
@@ -877,6 +903,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                 chatId: normalized.chatId,
                 messageId: normalized.messageId,
                 selfUsername,
+                groupPolicy: groupConfig.groupPolicy,
                 mentionedFlag: rawMessage?.mentioned === true,
                 hasEntities: Array.isArray(rawMessage?.entities) ? rawMessage.entities.length : 0,
                 wasMentioned,
@@ -885,7 +912,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                 text,
               });
 
-              if (groupConfig.groupPolicy === "mention" && mentionDecision.shouldSkip && !wasReplyToSelf) {
+              if (groupConfig.groupPolicy !== "open" && mentionDecision.shouldSkip && !wasReplyToSelf) {
                 log?.info?.("clawgram skipping group message without mention", {
                   accountId,
                   chatId: normalized.chatId,
@@ -1159,6 +1186,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
               }, {
                 readMessageId: Number(normalized.messageId),
                 messageThreadId,
+                // The indicator is a promise of an answer, and it is owed only
+                // to someone who addressed her. Under `open` the turn runs on
+                // every message in the chat, so without this the whole room
+                // watches her "type" through conversations she is only reading.
+                typing: mentionDecision.effectiveWasMentioned || wasReplyToSelf,
               });
 
               log?.info?.("clawgram group inbound handled", {

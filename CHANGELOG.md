@@ -9,6 +9,38 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.18.0] — 2026-08-17
+
+### Added
+
+- **`groupPolicy: "tag"`.** A third rung below `mention`: only an explicit
+  `@username` or a reply wakes the agent, never the name it answers to. It
+  exists for chats where the name is conversation rather than address —
+  measured in the owner's 1041-person community chat over 15–17.08.2026,
+  exactly one message tagged the account while the name itself turned up
+  routinely. `mention` remains the default and anything unrecognised falls back
+  to it: a typo must not silently change what a chat costs.
+
+- **`accounts.<id>.reactionModel`.** The emoji pick on a silent mention is the
+  only model call this channel makes on its own, and it ran on the agent's own
+  head. It can now be pointed at a small model. Core refuses a plugin's model
+  override unless `plugins.entries.clawgram.llm.allowModelOverride` is set, and
+  the refusal is a throw this feature swallows — so a refused override retries
+  on the default model and logs `modelFellBack`, rather than turning the
+  reaction into silence nobody can explain.
+
+### Fixed
+
+- **The typing indicator no longer promises an answer that is not coming.**
+  It is now shown only for messages that actually addressed the agent. Under
+  `groupPolicy: "open"` every message starts a turn and most of them end in
+  silence: on 2026-08-17 the owner's management chat watched «Тина печатает…»
+  for 20–26 seconds on four consecutive messages that were never addressed to
+  her, each followed by nothing. The read receipt is unchanged — reading is
+  what she did, typing was a promise she did not owe. Chats on `mention` and
+  `tag` are unaffected, since there a turn only starts when addressed.
+
+
 ## [2.17.1] — 2026-08-15
 
 ### Fixed

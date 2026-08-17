@@ -4,7 +4,7 @@ import type { SecretRefLike } from './secret-refs';
 
 export type RuntimeMap = Map<string, GramJsClientManager>;
 
-export type GroupPolicy = "open" | "mention";
+export type GroupPolicy = "open" | "mention" | "tag";
 
 export type GroupConfig = {
   enabled: boolean;

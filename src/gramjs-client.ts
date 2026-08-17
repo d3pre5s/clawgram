@@ -689,10 +689,34 @@ export class GramJsClientManager {
     await this.client.markAsRead(resolved.peer as any, messageId).catch(() => undefined);
   }
 
+  /**
+   * Runs `fn` while the chat shows "typing", and marks the message read.
+   *
+   * `typing: false` keeps the read receipt and drops the indicator. The two
+   * are separable because they promise different things: reading is what the
+   * agent did, typing is a promise that words are coming. Under
+   * `groupPolicy: "open"` every message starts a turn, and most of those turns
+   * end in silence — on 2026-08-17 the management chat watched «Тина
+   * печатает…» for 20–26 seconds on each of four messages that were never
+   * addressed to her, and nothing followed. An indicator that is not owed to
+   * anyone is worse than no indicator.
+   */
   async withTyping<T>(target: unknown, fn: () => Promise<T>, options?: {
     readMessageId?: number;
     messageThreadId?: number;
+    typing?: boolean;
   }): Promise<T> {
+    if (options?.typing === false) {
+      // Still a read receipt: she did read it, and the chat may show that.
+      const resolvedPeer = await this.resolvePeer(target).then((r) => r.peer).catch(() => undefined);
+      if (resolvedPeer) {
+        await this.markRead(resolvedPeer, options?.readMessageId, {
+          messageThreadId: options?.messageThreadId,
+        }).catch(() => undefined);
+      }
+      return await fn();
+    }
+
     let peer: unknown;
     let readMarked = false;
     let stopped = false;

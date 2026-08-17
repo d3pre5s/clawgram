@@ -236,18 +236,41 @@ reconnect), not the whole Gateway.
 | `manageChats` | string[] | unset | Chats the assistant may **manage** — see [Chat management](#chat-management). Absent or empty = management off; `["*"]` = every chat |
 | `replyParseMode` | `"html"` \| `"markdown"` \| `"none"` | unset | Outbound format for replies, core-delivered text, captions and `send` calls that omit `parseMode` — see [Message formatting](#message-formatting) |
 | `twoFaPassword` | string \| SecretRef | unset | The account's Telegram 2FA password; read only by `transferOwnership` |
+| `reactionModel` | string | unset | Model ref or alias for the emoji pick on a silent mention. Unset = the agent's own model. Needs `plugins.entries.clawgram.llm.allowModelOverride: true` in the gateway config; without it the override is refused and the pick quietly falls back to the default model |
 
 Group config fields:
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | boolean | `true` | Enables or disables replies in the group |
-| `groupPolicy` | `"open"` \| `"mention"` | `"mention"` | `open` replies to any group message, `mention` only on @mention or reply-to-self |
+| `groupPolicy` | `"open"` \| `"mention"` \| `"tag"` | `"mention"` | What wakes the agent here — see [What wakes the agent in a group](#what-wakes-the-agent-in-a-group) |
 | `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames inside that group |
 | `tools` | object | unset | `{ allow?, alsoAllow?, deny? }` — tool policy for this group; see [Per-group tools, skills and system prompt](#per-group-tools-skills-and-system-prompt) |
 | `toolsBySender` | object | unset | Per-sender tool policy inside this group, keys `id:<id>`, `username:<handle>`, `name:<display>` or `*` |
 | `skills` | string[] | unset | Skill allowlist for this group; `[]` = no skills here, unset = the agent's skills |
 | `systemPrompt` | string | unset | Trusted prompt block appended for messages from this group |
+
+### What wakes the agent in a group
+
+`groupPolicy` decides which messages start a turn at all. It is a ladder, widest
+first, and the rung is chosen per group:
+
+| Rung | Wakes on | Use it when |
+|---|---|---|
+| `open` | every message in the chat | the agent works as a member of the team and an address may carry no name at all |
+| `mention` | the name it answers to, an `@username`, or a reply to it | the default: the agent is a participant, not a fixture |
+| `tag` | an `@username` or a reply to it — **never the name** | the name occurs in conversation constantly, as it does in a large community |
+
+Two things are worth knowing before reaching for `open`:
+
+- it spends a **full turn on every message**, chatter included. Whether words
+  are owed is then the agent's decision, and most of the time the answer is no;
+- the typing indicator is shown only for messages that actually addressed the
+  agent. Under `open` the room would otherwise watch it "type" through
+  conversations it is merely reading, with nothing following.
+
+Emoji reactions are unaffected by the rung: the channel leaves one only where
+the agent was genuinely addressed, so background reading stays unmarked.
 
 ### Per-group tools, skills and system prompt
 

@@ -176,6 +176,7 @@ export type SilentReactionDeps = {
     systemPrompt: string;
     maxTokens: number;
     purpose: string;
+    model?: string;
   }) => Promise<{ text?: string } | undefined>;
   sendReaction: (args: { target: unknown; messageId: number; emoji: string; remove: boolean }) => Promise<void>;
   /**
@@ -195,8 +196,44 @@ export type SilentReactionDeps = {
     chose: "emoji" | "none";
     emoji?: string;
     allowedCount?: number;
+    model?: string;
+    modelFellBack?: true;
   }) => void;
 };
+
+/**
+ * Asks for the emoji on the configured model, falling back to the default one.
+ *
+ * The fallback is not defensive habit. Core refuses a plugin's model override
+ * unless `plugins.entries.clawgram.llm.allowModelOverride` is set, and the
+ * refusal is a throw — which this feature swallows by design. Without the
+ * retry, pointing `reactionModel` at a cheap model in a config that never
+ * granted the permission would not make reactions cheaper, it would make them
+ * disappear, and the log would say nothing about why.
+ */
+async function completeEmoji(params: {
+  deps: SilentReactionDeps;
+  model: string | undefined;
+  systemPrompt: string;
+  content: string;
+}): Promise<{ answer?: { text?: string }; fellBack: boolean }> {
+  const request = {
+    messages: [ { role: "user", content: params.content } ],
+    systemPrompt: params.systemPrompt,
+    maxTokens: 8,
+    purpose: "clawgram: emoji reaction for a silent mention",
+  };
+
+  if (!params.model) {
+    return { answer: await params.deps.complete(request), fellBack: false };
+  }
+
+  try {
+    return { answer: await params.deps.complete({ ...request, model: params.model }), fellBack: false };
+  } catch {
+    return { answer: await params.deps.complete(request), fellBack: true };
+  }
+}
 
 /**
  * Leaves an emoji on a message the agent was named in but chose not to answer.
@@ -216,6 +253,8 @@ export async function reactToSilentMention(params: {
   chatId: unknown;
   messageId: unknown;
   messageText: string | undefined;
+  /** Model ref or alias for the emoji pick; absent = the agent's own model. */
+  model?: string;
 }): Promise<string | undefined> {
   const { appetite } = params;
   if (!appetite || !shouldReactToSilentTurn({
@@ -245,11 +284,11 @@ export async function reactToSilentMention(params: {
     return undefined;
   }
 
-  const answer = await params.deps.complete({
-    messages: [ { role: "user", content: String(params.messageText ?? "").slice(0, MAX_JUDGED_CHARS) } ],
+  const { answer, fellBack } = await completeEmoji({
+    deps: params.deps,
+    model: params.model,
     systemPrompt: buildEmojiSystemPrompt(appetite, allowed),
-    maxTokens: 8,
-    purpose: "clawgram: emoji reaction for a silent mention",
+    content: String(params.messageText ?? "").slice(0, MAX_JUDGED_CHARS),
   });
 
   const emoji = parseEmojiChoice(answer?.text, allowed);
@@ -259,6 +298,8 @@ export async function reactToSilentMention(params: {
     chose: emoji ? "emoji" : "none",
     emoji,
     allowedCount: allowed?.length,
+    ...params.model ? { model: params.model } : {},
+    ...fellBack ? { modelFellBack: true as const } : {},
   });
   if (!emoji) {
     return undefined;

@@ -2,7 +2,7 @@
   "id": "clawgram",
   "name": "Clawgram",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
-  "version": "2.17.1",
+  "version": "2.18.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -53,9 +53,11 @@
                   "type": "string",
                   "enum": [
                     "open",
-                    "mention"
+                    "mention",
+                    "tag"
                   ],
-                  "default": "mention"
+                  "default": "mention",
+                  "description": "What wakes the agent in this chat (2.18.0). `mention` \u2014 the name, an @mention or a reply to it; `open` \u2014 every message, the agent decides for itself whether words are owed; `tag` \u2014 only an explicit @username or a reply, for chats where the name occurs in conversation constantly."
                 },
                 "allowFrom": {
                   "type": "array",
@@ -358,9 +360,11 @@
                         "type": "string",
                         "enum": [
                           "open",
-                          "mention"
+                          "mention",
+                          "tag"
                         ],
-                        "default": "mention"
+                        "default": "mention",
+                        "description": "What wakes the agent in this chat (2.18.0). `mention` \u2014 the name, an @mention or a reply to it; `open` \u2014 every message; `tag` \u2014 only an explicit @username or a reply."
                       },
                       "allowFrom": {
                         "type": "array",
@@ -506,6 +510,10 @@
                     "extensive"
                   ],
                   "description": "How freely the agent may leave emoji reactions (2.8.0). Core injects its `## Reactions` prompt section only for `minimal` and `extensive`; `off` and `ack` leave the prompt silent about reactions, and the agent then effectively never reacts on its own. Absent means `minimal`. Mirrors the bundled Telegram channel's reactionLevel."
+                },
+                "reactionModel": {
+                  "type": "string",
+                  "description": "Model ref or alias for the emoji pick on a silent mention (2.18.0). Absent = the agent's own model, which is what every version before this used. Requires `plugins.entries.clawgram.llm.allowModelOverride: true` in the gateway config; without it core refuses the override and the pick falls back to the default model rather than losing the reaction."
                 },
                 "replyParseMode": {
                   "type": "string",

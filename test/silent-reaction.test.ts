@@ -176,6 +176,49 @@ describe("reacting to a silent mention end to end", () => {
     } ]);
   });
 
+  it("asks the configured model when the account names one", async () => {
+    const h = harness("🔥");
+    await call(h.deps, { model: "haiku" });
+
+    assert.equal(h.asked.length, 1);
+    assert.equal(h.asked[ 0 ].model, "haiku");
+    assert.equal(h.decisions[ 0 ].model, "haiku");
+    assert.equal(h.decisions[ 0 ].modelFellBack, undefined);
+  });
+
+  it("asks the agent's own model when no model is configured", async () => {
+    const h = harness("🔥");
+    await call(h.deps);
+
+    // Not `model: undefined` — the key must be absent, so core cannot read it
+    // as an override request and refuse the call outright.
+    assert.equal("model" in h.asked[ 0 ], false);
+  });
+
+  // Core refuses a plugin model override unless the gateway config grants it,
+  // and the refusal is a throw this feature swallows. Without the retry a
+  // misconfigured `reactionModel` would silently end reactions altogether.
+  it("falls back to the default model when the override is refused", async () => {
+    const sent: Sent[] = [];
+    const asked: Array<Record<string, unknown>> = [];
+    const decisions: Array<Record<string, unknown>> = [];
+    const deps = {
+      complete: async (args: any) => {
+        asked.push(args);
+        if (args.model) throw new Error("Plugin LLM completion cannot override the target model.");
+        return { text: "❤" };
+      },
+      sendReaction: async (args: Sent) => { sent.push(args); },
+      onDecision: (info: Record<string, unknown>) => { decisions.push(info); },
+    };
+
+    assert.equal(await call(deps, { model: "haiku" }), "❤");
+    assert.equal(asked.length, 2);
+    assert.equal(asked[ 1 ].model, undefined);
+    assert.equal(sent[ 0 ].emoji, "❤");
+    assert.equal(decisions[ 0 ].modelFellBack, true);
+  });
+
   it("adds a reaction rather than clearing one", async () => {
     // `remove: true` would wipe the reaction instead of leaving it, and a
     // plain account holds only one reaction per message.
