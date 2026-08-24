@@ -334,7 +334,7 @@ describe("the fetch-media action", () => {
   });
 
   it("answers to the names a caller is likely to guess", async () => {
-    for (const action of [ "fetchMedia", "download-media", "downloadMedia", "getMedia" ]) {
+    for (const action of [ "fetchMedia", "download-media", "downloadMedia", "getMedia", "download-file" ]) {
       const result = parse(await withRuntime().actions.handleAction({
         action,
         params: { chatId: "-1001234", messageId: 42, mode: "read" },
@@ -408,5 +408,39 @@ describe("a read-mode fetch does not delete an earlier fetch of the same message
       "the read-mode fetch deleted a path an earlier fetch had already handed out",
     );
     rmSync(kept.filePath, { force: true });
+  });
+});
+
+describe("core's target policy lets the call through", () => {
+  // Core keys its target policy by its own action vocabulary. An action it
+  // does not know is simultaneously "requires a target" (the lookup returns
+  // undefined, which is !== "none") and "does not accept a target" (the same
+  // lookup defaults to "none" when a target is passed) — so on 2026-08-24 the
+  // agent got `Action fetch-media requires a target.` without one and
+  // `Action fetch-media does not accept a target.` with one, and had no way
+  // through. Two things fix it, and both have to stay.
+  const channel = createChannelPlugin(new Map() as RuntimeMap) as any;
+
+  it("uses core's own name for the action as well", () => {
+    const described = channel.actions.describeMessageTool({
+      cfg: { channels: { clawgram: { accounts: { default: {} } } } },
+      accountId: "default",
+    });
+
+    assert.ok(
+      described.actions.includes("download-file"),
+      "download-file is in CHANNEL_MESSAGE_ACTION_NAMES and maps to target mode \"none\" — without it the contradiction above is unavoidable",
+    );
+  });
+
+  it("tells core that chatId names the destination", () => {
+    const aliases = channel.actions.messageActionTargetAliases;
+
+    for (const action of [ "fetch-media", "download-file" ]) {
+      assert.ok(
+        aliases?.[ action ]?.aliases?.includes("chatId"),
+        `${action} does not declare chatId — core will refuse the call as targetless`,
+      );
+    }
   });
 });

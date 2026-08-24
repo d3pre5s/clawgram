@@ -536,7 +536,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
         "Use the `topics` action to list a forum's topics by name (optional `query` narrows by title); that is where a `threadId` comes from when someone names a topic instead of quoting a message in it.",
         "Pass that `threadId` to `read` as well: without it a forum read returns every topic interleaved rather than the one that was asked about.",
-        "Use the `fetch-media` action (chatId + messageId) to fetch the attachment on a message `read` reported: `mode: \"read\"` returns a description of an image or a transcript of a voice note, `\"file\"` returns a path to reuse, `\"both\"` (default) returns both. `read` only says an attachment exists; this is what brings it.",
+        "Use the `download-file` action (or its alias `fetch-media`) to fetch the attachment on a message `read` reported. Name the chat with `chatId` and the message with `messageId`; do not pass `target` — core refuses it for this action: `mode: \"read\"` returns a description of an image or a transcript of a voice note, `\"file\"` returns a path to reuse, `\"both\"` (default) returns both. `read` only says an attachment exists; this is what brings it.",
         "Use the `dialogs` action to find out which group chats this account is actually in — including ones nobody has configured yet. It reports id, title and type only, never direct chats, and only when the account enables `discoverChats`.",
         "Use `createGroup` (title, optional about, optional users) to create a new Telegram supergroup; `addMembers`/`removeMember` change who is in a managed chat, `promoteAdmin`/`demoteAdmin` grant or revoke admin rights, `transferOwnership` hands the chat over, `inviteLink` issues an invite link for people Telegram refused to add directly.",
       ],
@@ -1629,7 +1629,20 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             // Reading an attachment that is already in a chat. `read` reports
             // that a photo exists; this is what turns it into something the
             // agent can look at or pass on.
-            "fetch-media",
+            //
+            // Two names on purpose. `download-file` is core's own vocabulary
+            // (`CHANNEL_MESSAGE_ACTION_NAMES`), and core's target policy is
+            // keyed by that vocabulary: an action it does not know is both
+            // "requires a target" (`MESSAGE_ACTION_TARGET_MODE[action] !==
+            // "none"` is true for `undefined`) and "does not accept a target"
+            // (the same lookup defaults to `"none"` when a target is passed).
+            // That contradiction is unresolvable from the caller's side —
+            // measured on 2026-08-24, when the agent tried every combination
+            // and got one of the two errors each time. `download-file` is
+            // mapped to `"none"`, so it has no such contradiction;
+            // `fetch-media` stays as the descriptive name and is made usable
+            // by the alias declaration below.
+            "fetch-media", "download-file",
             // Chat management (2.12.0) — gated by the account's manageChats
             // scope; without it every one of these is refused.
             "createGroup", "addMembers", "removeMember",
@@ -1641,6 +1654,17 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           },
         };
       },
+
+      // Core asks the channel which params name a destination when the action
+      // is not one of its own. Without this, `chatId` is invisible to
+      // `actionHasTarget` and the call is refused as targetless before it ever
+      // reaches `handleAction`. The chat is named by `chatId` rather than
+      // `target` because core reserves `target` for actions in its own
+      // vocabulary and throws on it for everything else.
+      messageActionTargetAliases: {
+        "fetch-media": { aliases: [ "chatId" ] },
+        "download-file": { aliases: [ "chatId" ] },
+      } as any,
 
       extractToolSend: ({ args }: { args: Record<string, unknown> }) => extractToolSend(args, "sendMessage"),
 
@@ -1720,7 +1744,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         if (
           action === "fetch-media" || action === "fetchMedia" ||
           action === "download-media" || action === "downloadMedia" ||
-          action === "getMedia"
+          action === "getMedia" || action === "download-file"
         ) {
           const fetchParams = parseFetchMediaParams(params);
           const fetchAccountId = resolveRuntimeAccountId(cfg, accountId);

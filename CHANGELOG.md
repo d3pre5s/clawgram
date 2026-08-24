@@ -9,6 +9,31 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.19.1] — 2026-08-24
+
+### Fixed
+
+- **`fetch-media` was unreachable from the agent tool.** 2.19.0 advertised the
+  action and implemented it; core refused every call before it arrived. Core
+  keys its target policy by its own action vocabulary, and an action outside
+  that vocabulary is simultaneously "requires a target"
+  (`MESSAGE_ACTION_TARGET_MODE[action] !== "none"` is true for `undefined`) and
+  "does not accept a target" (the same lookup defaults to `"none"` when a
+  target is passed). Measured on a live server on 2026-08-24: the agent tried
+  `chatId`, `target`, `channelId` and every combination, and got `Action
+  fetch-media requires a target.` without one and `Action fetch-media does not
+  accept a target.` with one.
+
+  Two changes, both needed. The action now also answers to `download-file` —
+  core's own name for exactly this, mapped to target mode `"none"`, so the
+  contradiction does not arise. And the channel declares `chatId` as the
+  destination param for both names through `messageActionTargetAliases`, the
+  hook core consults for actions it does not know, so a call that names the
+  chat is no longer refused as targetless.
+
+  The chat is named by `chatId`, never `target`: core throws on `target` for
+  any action outside its vocabulary. The tool hint now says so.
+
 ## [2.19.0] — 2026-08-24
 
 ### Added

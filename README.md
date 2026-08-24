@@ -748,11 +748,12 @@ attachment *metadata* — kind, file name, size, duration — and fetch nothing.
 out: an image posted in a chat before the agent was addressed, and any reuse of an image at all,
 because the file the inbound path read is deleted the moment the reading ends.
 
-`fetch-media` covers both. It takes one message and returns what is attached to it.
+`fetch-media` covers both. It takes one message and returns what is attached to it. The action
+also answers to **`download-file`**, core's own name for it — see the note on naming below.
 
 | Parameter | Aliases | Notes |
 |---|---|---|
-| `chatId` | `target`, `to`, `chat` | Same targets as everywhere else: `@username`, numeric id, `me` |
+| `chatId` | `chat` | The chat: `@username`, numeric id, `me`. **Not `target`** — core reserves that for actions in its own vocabulary and refuses it here |
 | `messageId` | `id`, `message`, `msgId` | The id `read` reported for the message |
 | `mode` | — | `both` (default), `read`, `file` |
 
@@ -767,6 +768,15 @@ Modes differ in what happens to the bytes:
 The action is confined by `readChats`, the same scope that gates history and membership: a chat the
 account may not read history from cannot be a source of bytes either. The action name also answers
 to `fetchMedia`, `download-media`, `downloadMedia` and `getMedia`.
+
+**On the two names.** Core keys its target policy by its own action vocabulary
+(`CHANNEL_MESSAGE_ACTION_NAMES`), and an action outside it is treated as both *requiring* a target
+and *not accepting* one — the same lookup returns `undefined` for the first check and defaults to
+`"none"` for the second. A caller then gets `Action fetch-media requires a target.` without a
+target and `Action fetch-media does not accept a target.` with one, whatever it tries.
+`download-file` is in that vocabulary and maps to `"none"`, so the contradiction does not arise;
+`fetch-media` is made usable by declaring `chatId` as its destination param
+(`messageActionTargetAliases`). Both names run the same code.
 
 What comes back is `ok: true` with `media` (the same metadata `read` reports), `understanding`
 (`description` or `transcript`), and `text` and/or `filePath` per the mode. A fetch that yields
