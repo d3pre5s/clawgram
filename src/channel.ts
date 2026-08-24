@@ -11,6 +11,15 @@ import { existsSync } from "node:fs";
  *  a different conversation from a spoken line or a screenshot, and the
  *  transfer is not free. */
 const INBOUND_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+/**
+ * How long a file fetched by `fetch-media` stays on disk.
+ *
+ * Long enough for the turn that asked for it and the next one — forwarding a
+ * screenshot happens minutes after reading it, not days — and short enough
+ * that a chat full of images does not silently become a copy of itself in the
+ * temp directory.
+ */
+const FETCHED_MEDIA_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * What this channel promises the Gateway.
@@ -42,7 +51,13 @@ const CHANNEL_CAPABILITIES: ChannelCapabilities = {
     },
   },
 };
-import { downloadInboundMediaToTempFile } from "./media";
+import {
+  describeMedia,
+  downloadInboundMediaToTempFile,
+  downloadMessageMediaToFile,
+  pruneFetchedMedia,
+} from "./media";
+import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
 import { extractToolSend } from "openclaw/plugin-sdk/tool-send";
@@ -336,6 +351,41 @@ function resolveAgentDirForMedia(cfg: any): string | undefined {
   return existsSync(dir) ? dir : undefined;
 }
 
+/**
+ * Turns a downloaded attachment into text.
+ *
+ * Shared by the inbound path and by `fetch-media`: the backend choice lives in
+ * `runtime.mediaUnderstanding`, and both callers have to make exactly the same
+ * call — an image read on arrival and the same image read on request must not
+ * become two different readings because two call sites drifted.
+ */
+async function understandAttachmentFile(params: {
+  runtime?: PluginRuntime;
+  cfg: any;
+  filePath: string;
+  mimeType?: string;
+  understanding: "transcript" | "description";
+}): Promise<string | undefined> {
+  const media = params.runtime?.mediaUnderstanding;
+  if (!media) return undefined;
+
+  const result = params.understanding === "transcript"
+    ? await media.transcribeAudioFile({
+      filePath: params.filePath,
+      cfg: params.cfg,
+      mime: params.mimeType,
+    })
+    : await media.describeImageFile({
+      filePath: params.filePath,
+      cfg: params.cfg,
+      mime: params.mimeType,
+      agentDir: resolveAgentDirForMedia(params.cfg),
+    });
+
+  const text = typeof result?.text === "string" ? result.text.trim() : "";
+  return text || undefined;
+}
+
 async function readInboundAttachment(params: {
   gram: any;
   event: any;
@@ -375,19 +425,13 @@ async function readInboundAttachment(params: {
   }
 
   try {
-    const result = downloaded.understanding === "transcript"
-      ? await media.transcribeAudioFile({
-        filePath: downloaded.path,
-        cfg: params.cfg,
-        mime: downloaded.mimeType,
-      })
-      : await media.describeImageFile({
-        filePath: downloaded.path,
-        cfg: params.cfg,
-        mime: downloaded.mimeType,
-        agentDir: resolveAgentDirForMedia(params.cfg),
-      });
-    const read = typeof result?.text === "string" ? result.text.trim() : "";
+    const read = await understandAttachmentFile({
+      runtime: params.runtime,
+      cfg: params.cfg,
+      filePath: downloaded.path,
+      mimeType: downloaded.mimeType,
+      understanding: downloaded.understanding,
+    });
     if (!read) {
       params.log?.info?.("clawgram attachment read empty", {
         accountId: params.accountId,
@@ -1580,6 +1624,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // file stays on disk. That is exactly what happened on 2026-08-07.
           actions: [
             "send", "read", "participants", "joins", "react", "chatInfo", "topics", "dialogs", "upload-file",
+            // Reading an attachment that is already in a chat. `read` reports
+            // that a photo exists; this is what turns it into something the
+            // agent can look at or pass on.
+            "fetch-media",
             // Chat management (2.12.0) — gated by the account's manageChats
             // scope; without it every one of these is refused.
             "createGroup", "addMembers", "removeMember",
@@ -1655,6 +1703,168 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             count: history.messages.length,
             truncated: history.truncated,
             messages: history.messages,
+          });
+        }
+
+        // The attachment on a message that is already in a chat.
+        //
+        // `read` says a photo exists; it does not fetch it, and the inbound
+        // path only ever reads what arrives while the agent is being addressed.
+        // Everything else — a screenshot posted an hour ago, a diagram in a
+        // chat the agent reads but was not tagged in — was visible to the
+        // channel and unreachable to the agent. Same `readChats` scope as
+        // history: this must not become a way to pull bytes out of a chat the
+        // account was never allowed to read.
+        if (
+          action === "fetch-media" || action === "fetchMedia" ||
+          action === "download-media" || action === "downloadMedia" ||
+          action === "getMedia"
+        ) {
+          const fetchParams = parseFetchMediaParams(params);
+          const fetchAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!fetchAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          if (!isChatReadable(fetchParams.target, resolveAccountReadChats(cfg, fetchAccountId))) {
+            actionLog.warn("clawgram fetch-media refused: chat outside read scope", {
+              accountId: fetchAccountId,
+              target: fetchParams.target,
+            });
+            throw new Error(`clawgram: not-allowed-chat ${fetchParams.target}`);
+          }
+
+          const fetchGram = runtimes.get(fetchAccountId);
+          if (!fetchGram) {
+            throw new Error(`clawgram: runtime not found for account ${fetchAccountId}`);
+          }
+
+          // Fetching is a read: a dry run answers for real, the same way `read`
+          // does. Nothing leaves the machine — the file lands in a temp
+          // directory this channel prunes — so a rehearsal that reported
+          // "would fetch" would only teach the agent to ask twice.
+          const found = await fetchGram.getMessageById(fetchParams.target, fetchParams.messageId);
+          const fetchChatId = found.chatId ?? fetchParams.target;
+          if (!found.message) {
+            actionLog.info("clawgram fetch-media found no message", {
+              accountId: fetchAccountId,
+              chatId: fetchChatId,
+              messageId: fetchParams.messageId,
+            });
+            return jsonResult({
+              ok: false,
+              accountId: fetchAccountId,
+              chatId: fetchChatId,
+              messageId: String(fetchParams.messageId),
+              error: "message-not-found",
+            });
+          }
+
+          const fetchDir = path.join(os.tmpdir(), "clawgram-fetched");
+          await pruneFetchedMedia(fetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
+
+          const downloaded = await downloadMessageMediaToFile({
+            client: fetchGram.getClient() as any,
+            message: found.message,
+            maxBytes: INBOUND_MEDIA_MAX_BYTES,
+            dir: fetchDir,
+            fileNameFor: ({ media, extension }) => fetchedMediaFileName({
+              chatId: fetchChatId,
+              messageId: fetchParams.messageId,
+              extension,
+              fileName: media.fileName,
+            }),
+          });
+
+          if (!downloaded) {
+            // Three different nothings, and the agent has to be able to tell
+            // them apart: a message with no attachment, an attachment this
+            // channel does not read (a video, a spreadsheet), and one too
+            // large to be worth the transfer. Saying "could not fetch" to all
+            // three is how "she ignored the picture" starts.
+            const described = describeMedia((found.message as any)?.media);
+            const tooLarge = typeof described?.size === "number" && described.size > INBOUND_MEDIA_MAX_BYTES;
+            const error = !described
+              ? "no-media"
+              : tooLarge
+                ? "media-too-large"
+                : "unsupported-media";
+
+            actionLog.info("clawgram fetch-media returned nothing", {
+              accountId: fetchAccountId,
+              chatId: fetchChatId,
+              messageId: fetchParams.messageId,
+              kind: described?.kind ?? null,
+              error,
+            });
+
+            return jsonResult({
+              ok: false,
+              accountId: fetchAccountId,
+              chatId: fetchChatId,
+              messageId: String(fetchParams.messageId),
+              media: described ?? null,
+              error,
+            });
+          }
+
+          let read: string | undefined;
+          let readError: string | undefined;
+          if (fetchParams.mode !== "file") {
+            try {
+              read = await understandAttachmentFile({
+                runtime: pluginRuntime,
+                cfg,
+                filePath: downloaded.path,
+                mimeType: downloaded.mimeType,
+                understanding: downloaded.understanding,
+              });
+              if (!read) {
+                readError = "read-empty";
+              }
+            } catch (err) {
+              // The bytes are already here. A failed reading is worth
+              // reporting, but it does not undo a successful fetch: the file
+              // still exists and can still be forwarded.
+              readError = String(err);
+            }
+          }
+
+          // `read` mode is the inbound contract — the words, not the file — so
+          // the bytes go away with the answer. Any other mode keeps them:
+          // that is the whole point of asking for a path.
+          if (fetchParams.mode === "read") {
+            try {
+              const { rm } = await import("node:fs/promises");
+              await rm(downloaded.path, { force: true });
+            } catch {
+              // A file left behind is pruned within a day; failing the call
+              // over it would throw away a reading that already succeeded.
+            }
+          }
+
+          actionLog.info("clawgram fetch-media completed", {
+            accountId: fetchAccountId,
+            chatId: fetchChatId,
+            messageId: fetchParams.messageId,
+            mode: fetchParams.mode,
+            kind: downloaded.media.kind,
+            understanding: downloaded.understanding,
+            characters: read?.length ?? 0,
+            readError: readError ?? null,
+          });
+
+          return jsonResult({
+            ok: true,
+            accountId: fetchAccountId,
+            chatId: fetchChatId,
+            messageId: String(fetchParams.messageId),
+            mode: fetchParams.mode,
+            media: downloaded.media,
+            understanding: downloaded.understanding,
+            filePath: fetchParams.mode === "read" ? undefined : downloaded.path,
+            text: read,
+            readError,
           });
         }
 

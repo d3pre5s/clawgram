@@ -9,6 +9,38 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Added
+
+- **`fetch-media` — the attachment on a message, on demand.** Inbound
+  attachments are read as they arrive and the bytes are then dropped; history
+  reads report that a photo exists and fetch nothing. Two things fell between
+  those: an image posted before the agent was addressed (in a chat it reads,
+  by a policy that only wakes it on a mention, which is most work chats), and
+  any reuse at all — the file the inbound path read is deleted the moment the
+  reading ends, so an image could be described once and never forwarded,
+  attached, or looked at again.
+
+  The action takes a chat and a message id and returns what is attached:
+  `mode: "read"` gives the reading and deletes the file (the inbound
+  contract), `"file"` keeps the file and skips the model call, `"both"` — the
+  default — returns the reading and the path from one download. Images are
+  described and voice notes transcribed through the same
+  `runtime.mediaUnderstanding` call the inbound path makes, now shared rather
+  than duplicated, so an image read on arrival and the same image read on
+  request cannot drift apart.
+
+  Confined by `readChats`, like history and membership: a chat whose history
+  the account may not read cannot become a source of bytes either. A fetch
+  that yields nothing says which nothing it was — `message-not-found`,
+  `no-media`, `unsupported-media`, `media-too-large` — because answering
+  "could not fetch" to all four is how "she ignored the picture" starts. A
+  reading that fails after a successful download still returns the path with
+  `readError` beside it: the bytes are already here.
+
+  Fetched files live in `clawgram-fetched/` under the system temp directory,
+  named after the chat and message they came from, and are pruned after 24
+  hours by the next fetch — nothing else would ever remove them.
+
 ## [2.18.0] — 2026-08-17
 
 ### Added

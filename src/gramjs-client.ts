@@ -588,6 +588,28 @@ export class GramJsClientManager {
   }
 
   /**
+   * One message by id, for the sake of the attachment on it.
+   *
+   * `listMessages` reads a window and reports metadata; this reads a single
+   * message and hands the raw GramJS object back, because `downloadMedia`
+   * needs the message itself, not a summary of it. Telegram answers a missing
+   * or deleted id with a hole in the array rather than an error, so the caller
+   * gets `undefined` and says "no such message" instead of throwing something
+   * that reads like a transport failure.
+   */
+  async getMessageById(target: string, messageId: number): Promise<{
+    chatId?: string;
+    message?: unknown;
+  }> {
+    const resolved = await this.resolvePeer(target);
+    const fetched = await this.client.getMessages(resolved.peer as any, { ids: [ messageId ] } as any);
+    const raw = Array.isArray(fetched) ? fetched : [];
+    const message = raw.find((entry: any) => entry && entry.className !== "MessageEmpty");
+
+    return { chatId: resolved.chatId, message };
+  }
+
+  /**
    * Chat membership, ids only. The caller needs to answer "do we share a group
    * with this person" — an id answers that and a full profile does not, so
    * names and phone numbers are deliberately left out.

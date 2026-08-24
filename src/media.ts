@@ -187,6 +187,49 @@ export async function downloadInboundMediaToTempFile(params: {
   maxBytes: number;
   tmpDir: string;
 }): Promise<{ path: string; mimeType?: string; understanding: InboundMediaUnderstanding } | undefined> {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+
+  const described = describeMedia((params.message as any)?.media);
+  const understanding = inboundMediaUnderstanding(described);
+  if (!described || !understanding) {
+    return undefined;
+  }
+
+  // Both gates run before `mkdtemp`: a directory created for an attachment
+  // that is never fetched is litter nobody comes back to remove, and the
+  // caller only deletes what it was handed.
+  if (typeof described.size === "number" && described.size > params.maxBytes) {
+    return undefined;
+  }
+
+  const dir = await mkdtemp(join(params.tmpDir, "clawgram-media-"));
+  return downloadMessageMediaToFile({
+    client: params.client,
+    message: params.message,
+    maxBytes: params.maxBytes,
+    dir,
+    fileNameFor: ({ extension }) => `attachment.${extension}`,
+  });
+}
+
+/**
+ * Downloads an attachment into a directory the caller names and owns.
+ *
+ * Split out of the inbound path for `fetch-media`, where the file is the
+ * point: it has to outlive the read so the agent can forward it or attach it
+ * somewhere. The inbound path keeps deleting its temp directory — nothing
+ * about that changed.
+ */
+export async function downloadMessageMediaToFile(params: {
+  client: { downloadMedia: (message: unknown, options?: unknown) => Promise<unknown> };
+  message: unknown;
+  maxBytes: number;
+  dir: string;
+  fileNameFor: (info: { media: HistoryMedia; extension: string }) => string;
+}): Promise<
+  { path: string; mimeType?: string; understanding: InboundMediaUnderstanding; media: HistoryMedia } | undefined
+> {
   const described = describeMedia((params.message as any)?.media);
   const understanding = inboundMediaUnderstanding(described);
   if (!described || !understanding) {
@@ -195,7 +238,8 @@ export async function downloadInboundMediaToTempFile(params: {
 
   // A cap belongs here rather than in the caller: an oversized attachment
   // should be reported as such, not fetched and then discarded after the
-  // transfer cost.
+  // transfer cost. Telegram reports no size for a compressed photo, so this
+  // guards documents in practice — which is where the large files are.
   if (typeof described.size === "number" && described.size > params.maxBytes) {
     return undefined;
   }
@@ -205,13 +249,50 @@ export async function downloadInboundMediaToTempFile(params: {
     return undefined;
   }
 
-  const extension = extensionFor(described, understanding);
-  const { mkdtemp, writeFile } = await import("node:fs/promises");
+  const { mkdir, writeFile } = await import("node:fs/promises");
   const { join } = await import("node:path");
-  const dir = await mkdtemp(join(params.tmpDir, "clawgram-media-"));
-  const path = join(dir, `attachment.${extension}`);
+  await mkdir(params.dir, { recursive: true });
+  const extension = extensionFor(described, understanding);
+  const path = join(params.dir, params.fileNameFor({ media: described, extension }));
   await writeFile(path, buffer);
-  return { path, mimeType: described.mimeType, understanding };
+  return { path, mimeType: described.mimeType, understanding, media: described };
+}
+
+/**
+ * Removes fetched files older than `maxAgeMs` from `dir`.
+ *
+ * `fetch-media` writes files that deliberately outlive the call, and nothing
+ * else would ever delete them: a chat full of screenshots would accumulate in
+ * the temp directory until the box was rebooted. Pruning on the way in keeps
+ * the sweep in the one place that knows the directory exists, and failure is
+ * ignored — a stale file is not a reason to fail a fetch the agent is waiting
+ * for.
+ */
+export async function pruneFetchedMedia(dir: string, maxAgeMs: number, now: number): Promise<number> {
+  const { readdir, stat, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    const path = join(dir, entry);
+    try {
+      const info = await stat(path);
+      if (now - info.mtimeMs > maxAgeMs) {
+        await rm(path, { recursive: true, force: true });
+        removed += 1;
+      }
+    } catch {
+      // A file that vanished between readdir and stat is already pruned.
+    }
+  }
+  return removed;
 }
 
 function extensionFor(media: HistoryMedia, understanding: InboundMediaUnderstanding): string {

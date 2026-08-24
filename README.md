@@ -32,6 +32,7 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 - **Read receipts** — mark messages as read
 - **Emoji reactions** — acknowledge a message with a reaction instead of a reply (`react` action)
 - **Chat metadata** — title, type, member count, description, forum flag and pinned message (`chatInfo` action)
+- **Attachments on demand** — fetch the photo or voice note on any message in read scope, as a reading, a file, or both (`fetch-media` action)
 - **Chat management** — create supergroups, add/remove members, promote/demote admins, transfer ownership, export invite links (`createGroup`, `addMembers`, `removeMember`, `promoteAdmin`, `demoteAdmin`, `transferOwnership`, `inviteLink`) — off until `manageChats` allows it
 - **User allowlist** — control which user has access to send messages for direct
 - **Chat allowlist** — control which chats the assistant can access
@@ -739,6 +740,53 @@ first. These errors are surfaced as-is rather than retried.
 }
 ```
 
+## Fetching attachments
+
+Inbound attachments are read as they arrive: a photo or a voice note sent while the agent is being
+addressed becomes text in the message body, and the bytes are dropped. History reads (`read`) carry
+attachment *metadata* — kind, file name, size, duration — and fetch nothing. That leaves two things
+out: an image posted in a chat before the agent was addressed, and any reuse of an image at all,
+because the file the inbound path read is deleted the moment the reading ends.
+
+`fetch-media` covers both. It takes one message and returns what is attached to it.
+
+| Parameter | Aliases | Notes |
+|---|---|---|
+| `chatId` | `target`, `to`, `chat` | Same targets as everywhere else: `@username`, numeric id, `me` |
+| `messageId` | `id`, `message`, `msgId` | The id `read` reported for the message |
+| `mode` | — | `both` (default), `read`, `file` |
+
+Modes differ in what happens to the bytes:
+
+- **`read`** — the attachment is turned into text (an image described, a voice note transcribed) and
+  the file is deleted, exactly the inbound contract. No path is returned.
+- **`file`** — the file is kept and its path returned, and no understanding model is called. This is
+  what forwarding through `upload-file` or attaching to a ticket needs.
+- **`both`** — the default: the reading *and* the path, from a single download.
+
+The action is confined by `readChats`, the same scope that gates history and membership: a chat the
+account may not read history from cannot be a source of bytes either. The action name also answers
+to `fetchMedia`, `download-media`, `downloadMedia` and `getMedia`.
+
+What comes back is `ok: true` with `media` (the same metadata `read` reports), `understanding`
+(`description` or `transcript`), and `text` and/or `filePath` per the mode. A fetch that yields
+nothing is not an error — it says which nothing it was:
+
+| `error` | Meaning |
+|---|---|
+| `message-not-found` | No such message, or it was deleted |
+| `no-media` | The message is text only |
+| `unsupported-media` | An attachment this channel does not read — video, a spreadsheet, a sticker |
+| `media-too-large` | Over the 25 MB inbound cap. Telegram reports no size for a compressed photo, so this is a document limit in practice |
+
+A reading that fails while the download succeeded still returns `ok: true`, with `readError` beside
+the path: the bytes are already there and can still be forwarded.
+
+**Fetched files live in the system temp directory** (`clawgram-fetched/`), named after the chat and
+message they came from, and are pruned after 24 hours by the next fetch. Nothing else removes them,
+and nothing sends them anywhere — putting a fetched file in a chat is an ordinary `upload-file`,
+with whatever confirmation the deployment requires for that.
+
 ## Security and privacy
 
 This plugin holds credentials for a real Telegram account and handles private correspondence. What
@@ -749,7 +797,7 @@ that means in practice, and what the code does about it:
 | `apiHash`, `sessionString` | `openclaw.json`, or a secret store | Written there by `--auth`. Never logged. Since 2.1.0 the session string is not printed after login either — only shown, behind an explicit warning, if you decline the automatic config write. Since 2.2.0 both accept a **SecretRef** instead of a literal, so the credential need not sit in the config file at all |
 | Proxy password | `accounts.*.proxy.password`, or a secret store | Also accepts a SecretRef since 2.2.0. Marked `sensitive` in `uiHints`; diagnostics say `socks4`/`socks5` and nothing more. An invalid proxy fails the account rather than falling back to a direct connection, which would leak the host IP to Telegram |
 | Message bodies | channel logs | **Not logged.** Outbound sends record recipient, ids and `textLength`. Until 2.1.0 the full outbound text was written to the channel log — if you ran 2.0.x, treat those journal entries as containing private correspondence |
-| Read scope | `accounts.*.readChats` | History and membership reads are confined to the listed chats. Absent means no restriction; an empty array denies everything |
+| Read scope | `accounts.*.readChats` | History, membership and attachment fetches are confined to the listed chats. Absent means no restriction; an empty array denies everything |
 | Manage scope | `accounts.*.manageChats` | Creating groups, changing membership, admin rights, ownership and invite links are confined to the listed chats — and **off entirely** when the key is absent or empty (opposite default to `readChats`, because these actions change chats rather than read them) |
 | 2FA password | `accounts.*.twoFaPassword`, or a secret store | Read only by `transferOwnership`, exchanged for an SRP proof in-process. Accepts a SecretRef since 2.12.0; `sensitive` in `uiHints`; on the forbidden-log-keys list the static tests enforce |
 | Who may talk to it | `allowFrom`, `groups.*.groupPolicy` | Direct-message senders and group behaviour are allowlisted; `mention` limits group replies to explicit mentions |
