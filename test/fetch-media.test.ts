@@ -346,3 +346,67 @@ describe("the fetch-media action", () => {
     }
   });
 });
+
+describe("fetch-media is discoverable by an agent that has no other documentation", () => {
+  const channel = createChannelPlugin(new Map() as RuntimeMap) as any;
+
+  it("is named in the tool hints and capabilities", () => {
+    assert.ok(
+      channel.agentPrompt.messageToolHints().some((hint: string) => hint.includes("`fetch-media`")),
+      "an action nobody is told about is an action nobody uses",
+    );
+    assert.ok(
+      channel.agentPrompt.messageToolCapabilities().some((line: string) => line.includes("fetch-media")),
+    );
+  });
+});
+
+describe("a read-mode fetch does not delete an earlier fetch of the same message", () => {
+  // The shared directory is keyed by chat and message on purpose — fetching
+  // one screenshot twice must not leave two copies. That makes the path
+  // predictable, which is exactly why `read` must not delete it: an earlier
+  // `both` handed that path to the caller.
+  const cfg = { channels: { clawgram: { accounts: { default: {} } } } };
+
+  const parse = (result: unknown) => JSON.parse(
+    typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
+  );
+
+  it("keeps the file the earlier fetch returned", async () => {
+    const runtimes = new Map([ [ "default", {
+      getMessageById: async () => ({
+        chatId: "-1005555",
+        message: { className: "Message", media: { className: "MessageMediaPhoto" } },
+      }),
+      getClient: () => ({ downloadMedia: async () => Buffer.from("pixels") }),
+    } ] ]) as unknown as RuntimeMap;
+
+    const channel = createChannelPlugin(runtimes, {
+      mediaUnderstanding: {
+        describeImageFile: async () => ({ text: "диаграмма" }),
+        transcribeAudioFile: async () => ({ text: "words" }),
+      },
+    } as any) as any;
+
+    const call = async (mode: string) => parse(await channel.actions.handleAction({
+      action: "fetch-media",
+      params: { chatId: "-1005555", messageId: 9, mode },
+      cfg,
+      accountId: "default",
+    }));
+
+    const kept = await call("both");
+    assert.ok(kept.filePath);
+
+    const glanced = await call("read");
+    assert.equal(glanced.ok, true);
+    assert.equal(glanced.filePath, undefined);
+
+    assert.equal(
+      existsSync(kept.filePath),
+      true,
+      "the read-mode fetch deleted a path an earlier fetch had already handed out",
+    );
+    rmSync(kept.filePath, { force: true });
+  });
+});

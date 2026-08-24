@@ -536,6 +536,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
         "Use the `topics` action to list a forum's topics by name (optional `query` narrows by title); that is where a `threadId` comes from when someone names a topic instead of quoting a message in it.",
         "Pass that `threadId` to `read` as well: without it a forum read returns every topic interleaved rather than the one that was asked about.",
+        "Use the `fetch-media` action (chatId + messageId) to fetch the attachment on a message `read` reported: `mode: \"read\"` returns a description of an image or a transcript of a voice note, `\"file\"` returns a path to reuse, `\"both\"` (default) returns both. `read` only says an attachment exists; this is what brings it.",
         "Use the `dialogs` action to find out which group chats this account is actually in — including ones nobody has configured yet. It reports id, title and type only, never direct chats, and only when the account enables `discoverChats`.",
         "Use `createGroup` (title, optional about, optional users) to create a new Telegram supergroup; `addMembers`/`removeMember` change who is in a managed chat, `promoteAdmin`/`demoteAdmin` grant or revoke admin rights, `transferOwnership` hands the chat over, `inviteLink` issues an invite link for people Telegram refused to add directly.",
       ],
@@ -546,6 +547,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "clawgram can add and clear emoji reactions on messages. A plain Telegram account holds one reaction per message, so a new emoji replaces the previous one.",
         "clawgram can describe a chat via `chatInfo`: title, type (direct/group/supergroup/channel), member count, description, whether it is a forum, and the pinned message id.",
         "clawgram can list the topics of a forum supergroup via `topics`: id, title, last message, and whether a topic is closed, hidden or pinned.",
+        "clawgram can fetch the attachment on any message inside its read scope via `fetch-media`: images come back described, voice notes transcribed, and either can be returned as a file path for reuse.",
         "clawgram can list the group chats the account belongs to via `dialogs`, when the account sets discoverChats. Metadata only, no direct chats — it answers \"where am I\", not \"what was said\".",
         "clawgram can manage chats where the account's manageChats config allows it: create supergroups, add and remove members, promote and demote admins, transfer ownership, and export invite links.",
       ],
@@ -1760,8 +1762,18 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             });
           }
 
-          const fetchDir = path.join(os.tmpdir(), "clawgram-fetched");
-          await pruneFetchedMedia(fetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
+          // `read` throws the file away, so it gets a directory of its own —
+          // the shared directory is keyed by chat and message, and deleting
+          // that path would pull the file out from under an earlier `both`
+          // fetch of the same message that handed the caller a path.
+          const sharedFetchDir = path.join(os.tmpdir(), "clawgram-fetched");
+          let fetchDir = sharedFetchDir;
+          if (fetchParams.mode === "read") {
+            const { mkdtemp } = await import("node:fs/promises");
+            fetchDir = await mkdtemp(path.join(os.tmpdir(), "clawgram-media-"));
+          } else {
+            await pruneFetchedMedia(sharedFetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
+          }
 
           const downloaded = await downloadMessageMediaToFile({
             client: fetchGram.getClient() as any,
@@ -1836,7 +1848,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           if (fetchParams.mode === "read") {
             try {
               const { rm } = await import("node:fs/promises");
-              await rm(downloaded.path, { force: true });
+              await rm(fetchDir, { recursive: true, force: true });
             } catch {
               // A file left behind is pruned within a day; failing the call
               // over it would throw away a reading that already succeeded.

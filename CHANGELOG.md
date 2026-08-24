@@ -39,7 +39,10 @@ recorded in `git log` only.
 
   Fetched files live in `clawgram-fetched/` under the system temp directory,
   named after the chat and message they came from, and are pruned after 24
-  hours by the next fetch — nothing else would ever remove them.
+  hours by the next fetch — nothing else would ever remove them. `read` mode
+  downloads into a directory of its own instead: the shared name is keyed by
+  chat and message, so deleting it would pull the file out from under an
+  earlier `both` fetch that had already handed the path to the caller.
 
 ## [2.18.0] — 2026-08-17
 
