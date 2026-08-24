@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.19.0] — 2026-08-24
+
 ### Added
 
 - **`fetch-media` — the attachment on a message, on demand.** Inbound
