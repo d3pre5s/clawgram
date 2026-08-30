@@ -9,6 +9,27 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.19.3] — 2026-08-30
+
+### Fixed
+
+- **`topics`, `dialogs`, `chatInfo` and `participants` were unreachable from the
+  agent's `message` tool.** 2.19.2 tried to fix this by declaring `chatId`
+  through `messageActionTargetAliases`, and that does nothing: core resolves a
+  channel with `getBootstrapChannelPlugin`, which only ever returns a bundled
+  channel, so a plugin channel's declaration is never read. What actually
+  carried `fetch-media` through in 2.19.1 was its second name, `download-file`
+  — a name core already has, mapped to target mode `"none"`.
+
+  Each of the four now answers to a core name too: `thread-list` for `topics`,
+  `channel-list` for `dialogs`, `channel-info` for `chatInfo`, `member-info` for
+  `participants`. Measured on the live server on 2026-08-30 — `thread-list`
+  reached `handleAction` from the same caller that `topics` could not.
+
+  `joins` has no core equivalent and stays reachable only through the gateway
+  RPC, which skips the target policy altogether. The native spellings keep
+  working there too, so existing skills and cron prompts are unaffected.
+
 ## [2.19.2] — 2026-08-30
 
 ### Fixed

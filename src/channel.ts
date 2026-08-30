@@ -272,6 +272,31 @@ function readAccountManageChats(account: any): string[] | undefined {
   return entries.map((entry) => String(entry).trim()).filter(Boolean);
 }
 
+/**
+ * Core's own name for a clawgram action, and the only thing that makes the
+ * action reachable from the agent's `message` tool.
+ *
+ * Core keys its target policy by `CHANNEL_MESSAGE_ACTION_NAMES`, and an action
+ * outside that vocabulary is simultaneously "requires a target" and "does not
+ * accept a target" — there is no call that satisfies both. Declaring `chatId`
+ * through `messageActionTargetAliases` looks like the fix and is not: core
+ * resolves the channel with `getBootstrapChannelPlugin`, which only knows
+ * bundled channels, so a plugin channel's declaration is never read. Measured
+ * on 2026-08-30 — `thread-list` reached `handleAction` and `topics` did not,
+ * from the same caller, on the same chat.
+ *
+ * Every name on the right maps to core target mode `"none"` except
+ * `channel-info`, which is `"to"` and therefore arrives with the chat in
+ * `params.to` — a spelling all of these parsers already accept.
+ */
+export const CORE_ACTION_SYNONYMS: Record<string, string> = {
+  "thread-list": "topics",
+  "channel-list": "dialogs",
+  "channel-info": "chatInfo",
+  "member-info": "participants",
+  "download-file": "fetch-media",
+};
+
 /** Canonical management action for every accepted spelling. */
 const MANAGE_ACTION_ALIASES: Record<string, string> = {
   createGroup: "createGroup",
@@ -533,11 +558,12 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
         "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
-        "Use the `chatInfo` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
-        "Use the `topics` action to list a forum's topics by name (optional `query` narrows by title); that is where a `threadId` comes from when someone names a topic instead of quoting a message in it.",
+        "Use the `channel-info` action (clawgram also answers to `chatInfo`) to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
+        "Use the `thread-list` action to list a forum's topics by name (optional `query` narrows by title); that is where a `threadId` comes from when someone names a topic instead of quoting a message in it. Name the chat with `chatId` and do not pass `target` — core refuses it for this action. `topics` is the same call under a name core does not know, and is only reachable through the gateway RPC.",
         "Pass that `threadId` to `read` as well: without it a forum read returns every topic interleaved rather than the one that was asked about.",
         "Use the `download-file` action (or its alias `fetch-media`) to fetch the attachment on a message `read` reported. Name the chat with `chatId` and the message with `messageId`; do not pass `target` — core refuses it for this action: `mode: \"read\"` returns a description of an image or a transcript of a voice note, `\"file\"` returns a path to reuse, `\"both\"` (default) returns both. `read` only says an attachment exists; this is what brings it.",
-        "Use the `dialogs` action to find out which group chats this account is actually in — including ones nobody has configured yet. It reports id, title and type only, never direct chats, and only when the account enables `discoverChats`.",
+        "Use the `channel-list` action (clawgram also answers to `dialogs`) to find out which group chats this account is actually in — including ones nobody has configured yet. It reports id, title and type only, never direct chats, and only when the account enables `discoverChats`.",
+        "Use `member-info` with a `chatId` to list who is in a chat; `joins` has no name in core's vocabulary and is reachable only through the gateway RPC.",
         "Use `createGroup` (title, optional about, optional users) to create a new Telegram supergroup; `addMembers`/`removeMember` change who is in a managed chat, `promoteAdmin`/`demoteAdmin` grant or revoke admin rights, `transferOwnership` hands the chat over, `inviteLink` issues an invite link for people Telegram refused to add directly.",
       ],
       messageToolCapabilities: () => [
@@ -1626,6 +1652,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // file stays on disk. That is exactly what happened on 2026-08-07.
           actions: [
             "send", "read", "participants", "joins", "react", "chatInfo", "topics", "dialogs", "upload-file",
+            // Core's own names for four of the above. Without them the
+            // action is advertised and unreachable — see CORE_ACTION_SYNONYMS.
+            "thread-list", "channel-list", "channel-info", "member-info",
             // Reading an attachment that is already in a chat. `read` reports
             // that a photo exists; this is what turns it into something the
             // agent can look at or pass on.
@@ -1662,29 +1691,19 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
       // `target` because core reserves `target` for actions in its own
       // vocabulary and throws on it for everything else.
       //
-      // Every clawgram action outside core's vocabulary needs a line here, not
-      // just `fetch-media`: `topics` was measured unreachable on 2026-08-30 —
-      // the agent tried `target`, `chatId`, `groupId` and the prefixed form and
-      // got one half of the contradiction each time, then gave up on the whole
-      // job. The list below is every action whose handler already reads
-      // `params.chatId`; `dialogs` and `joins` take no chat at all and stay
-      // unreachable from the tool, because core has no way for a channel to
-      // declare an action targetless.
+      // This declaration alone does not rescue an action, and 2.19.1 read too
+      // much into it. Core resolves the channel through
+      // `getBootstrapChannelPlugin`, which only ever returns a *bundled*
+      // channel; for a plugin channel the lookup misses and the declaration is
+      // never consulted. Measured on the live server on 2026-08-30: `topics`
+      // was refused for `target`, `chatId`, `groupId` and the prefixed form
+      // alike even with `chatId` declared here. What actually carried
+      // `fetch-media` through was its second name, `download-file` — see
+      // CORE_ACTION_SYNONYMS. This stays because it costs nothing and is
+      // correct the day core consults plugin channels too.
       messageActionTargetAliases: {
         "fetch-media": { aliases: [ "chatId" ] },
         "download-file": { aliases: [ "chatId" ] },
-        topics: { aliases: [ "chatId" ] },
-        forumTopics: { aliases: [ "chatId" ] },
-        participants: { aliases: [ "chatId" ] },
-        members: { aliases: [ "chatId" ] },
-        chatInfo: { aliases: [ "chatId" ] },
-        getChatInfo: { aliases: [ "chatId" ] },
-        addMembers: { aliases: [ "chatId" ] },
-        removeMember: { aliases: [ "chatId" ] },
-        promoteAdmin: { aliases: [ "chatId" ] },
-        demoteAdmin: { aliases: [ "chatId" ] },
-        transferOwnership: { aliases: [ "chatId" ] },
-        inviteLink: { aliases: [ "chatId" ] },
       } as any,
 
       extractToolSend: ({ args }: { args: Record<string, unknown> }) => extractToolSend(args, "sendMessage"),
@@ -1928,7 +1947,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // Membership is a read, so the same `readChats` scope that gates history
         // gates it too: this cannot become a way to enumerate chats the account
         // was never allowed to read.
-        if (action === "participants" || action === "members") {
+        if (action === "participants" || action === "members" || action === "member-info") {
           const participantsParams = parseListParticipantsParams(params);
           const participantsAccountId = resolveRuntimeAccountId(cfg, accountId);
           if (!participantsAccountId) {
@@ -1974,7 +1993,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // id could only be lifted off an inbound message — so a topic nobody had
         // written in yet was unreachable, and one named in words was unfindable.
         // Titles say what a chat is working on, so the read scope gates them.
-        if (action === "topics" || action === "forumTopics") {
+        if (action === "topics" || action === "forumTopics" || action === "thread-list") {
           const topicsParams = parseTopicsParams(params);
           const topicsAccountId = resolveRuntimeAccountId(cfg, accountId);
           if (!topicsAccountId) {
@@ -2017,7 +2036,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // Which chats this account is in. Not gated by `readChats` — the whole
         // point is to find chats that are not in it yet — so it has a gate of
         // its own, is metadata only, and never reports direct chats.
-        if (action === "dialogs" || action === "chats") {
+        if (action === "dialogs" || action === "chats" || action === "channel-list") {
           const dialogsParams = parseDialogsParams(params);
           const dialogsAccountId = resolveRuntimeAccountId(cfg, accountId);
           if (!dialogsAccountId) {
@@ -2091,7 +2110,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // history gates it too — this must not become a way to learn the title
         // and size of a chat the account was never allowed to read.
         if (
-          action === "chatInfo" || action === "getChatInfo"
+          action === "chatInfo" || action === "getChatInfo" || action === "channel-info"
           || action === "chatMetadata" || action === "getChatMetadata"
         ) {
           const chatInfoParams = parseChatInfoParams(params, toolContext);
