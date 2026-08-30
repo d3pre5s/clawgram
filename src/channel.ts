@@ -1661,9 +1661,30 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
       // reaches `handleAction`. The chat is named by `chatId` rather than
       // `target` because core reserves `target` for actions in its own
       // vocabulary and throws on it for everything else.
+      //
+      // Every clawgram action outside core's vocabulary needs a line here, not
+      // just `fetch-media`: `topics` was measured unreachable on 2026-08-30 —
+      // the agent tried `target`, `chatId`, `groupId` and the prefixed form and
+      // got one half of the contradiction each time, then gave up on the whole
+      // job. The list below is every action whose handler already reads
+      // `params.chatId`; `dialogs` and `joins` take no chat at all and stay
+      // unreachable from the tool, because core has no way for a channel to
+      // declare an action targetless.
       messageActionTargetAliases: {
         "fetch-media": { aliases: [ "chatId" ] },
         "download-file": { aliases: [ "chatId" ] },
+        topics: { aliases: [ "chatId" ] },
+        forumTopics: { aliases: [ "chatId" ] },
+        participants: { aliases: [ "chatId" ] },
+        members: { aliases: [ "chatId" ] },
+        chatInfo: { aliases: [ "chatId" ] },
+        getChatInfo: { aliases: [ "chatId" ] },
+        addMembers: { aliases: [ "chatId" ] },
+        removeMember: { aliases: [ "chatId" ] },
+        promoteAdmin: { aliases: [ "chatId" ] },
+        demoteAdmin: { aliases: [ "chatId" ] },
+        transferOwnership: { aliases: [ "chatId" ] },
+        inviteLink: { aliases: [ "chatId" ] },
       } as any,
 
       extractToolSend: ({ args }: { args: Record<string, unknown> }) => extractToolSend(args, "sendMessage"),

@@ -9,6 +9,29 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.19.2] — 2026-08-30
+
+### Fixed
+
+- **`topics` was unreachable from the agent tool, and so was every other
+  chat-scoped action outside core's vocabulary.** 2.19.1 fixed this for
+  `fetch-media` and stopped there. The same contradiction — "requires a target"
+  without one, "does not accept a target" with one — still swallowed `topics`,
+  `participants`, `chatInfo` and the chat-management actions, because core keys
+  its target policy by `CHANNEL_MESSAGE_ACTION_NAMES` and none of those names
+  are in it.
+
+  Measured on the live server on 2026-08-30: the `bro-feedback-watch` cron job
+  is built on `topics`, and the agent tried `target`, `chatId`, `groupId` and
+  the `clawgram:`-prefixed form, got one half of the contradiction each time,
+  and abandoned the run — every fifteen minutes.
+
+  `messageActionTargetAliases` now declares `chatId` for every action whose
+  handler already reads it, not just the two media ones, and a test asserts the
+  list stays in step with the actions the tool advertises. `dialogs` and `joins`
+  take no chat at all and remain unreachable: core gives a channel no way to
+  declare an action targetless, so an unknown action always requires a target.
+
 ## [2.19.1] — 2026-08-24
 
 ### Fixed
