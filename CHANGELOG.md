@@ -9,6 +9,30 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.20.0] — 2026-09-01
+
+### Changed
+
+- **Core's operational chatter no longer reaches group chats.** Three days in
+  a row the owner's work group received the assistant's internal telemetry as
+  ordinary messages: `⚠️ 🛠️ Bash failed: …` with a full shell command
+  including secret-store paths (2026-08-30), a bare `⚠️ ✉️ Message failed`
+  (08-31), `⚠️ 🛠️ Exec failed: …` appended after a perfectly good reply
+  (08-31), plus `↪️ Model Fallback: …` notices during the auth outage. Each
+  had a different root cause; the shared defect is that operator telemetry was
+  delivered to an audience it was never for.
+
+  `sendText` now classifies core's notices by their exact machine-built
+  prefixes and drops them for group and channel targets, logging the class and
+  length — never the text. DMs keep the telemetry: there the reader is the
+  person running the agent. Detection is prefix-exact, so the assistant
+  discussing a failure in its own words is untouched.
+
+  Trade-off, stated plainly: a group turn that dies now dies silently for the
+  room. The failure stays in the run diagnostics, the cron job's `lastError`
+  and the gateway log — where the operator reads it — but the person who asked
+  sees nothing rather than a broken-looking status line.
+
 ## [2.19.4] — 2026-08-31
 
 ### Fixed

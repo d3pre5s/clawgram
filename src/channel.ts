@@ -100,6 +100,7 @@ import {
   parseTransferOwnershipParams,
 } from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
+import { shouldSuppressGroupSystemNotice } from "./system-notice";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { parseTopicsParams } from "./topics";
 import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
@@ -2803,6 +2804,26 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           });
 
           return { skipped: "silent" as const };
+        }
+
+        // Core's operational chatter (tool-error warnings, fallback notices)
+        // stays out of group chats: it is telemetry for the operator, not a
+        // reply to the room, and it has already been seen carrying shell
+        // commands with secret-store paths. DMs keep it. The text itself is
+        // never logged — see system-notice.ts for why.
+        const suppressedNotice = shouldSuppressGroupSystemNotice({
+          targetKind: inferOutboundTargetKind(ctx.to),
+          text: ctx.text,
+        });
+        if (suppressedNotice) {
+          actionLog.warn("clawgram suppressing system notice in group", {
+            accountId: ctx.accountId,
+            rawTo: ctx.to,
+            noticeKind: suppressedNotice,
+            textLength: ctx.text.length,
+          });
+
+          return { skipped: "system-notice" as const };
         }
 
         const gram = runtimes.get(ctx.accountId);
