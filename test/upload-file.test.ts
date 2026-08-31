@@ -61,7 +61,10 @@ describe("upload-file carries a real file", () => {
   it("keeps the actions the channel already had", () => {
     const described = describeTool(createChannelPlugin(new Map() as RuntimeMap) as any);
 
-    for (const action of [ "send", "read", "participants", "joins", "react", "chatInfo" ]) {
+    // Under the spellings core knows. `joins` has no core name and is
+    // gateway-only; `participants` and `chatInfo` answer as `member-info`
+    // and `channel-info`.
+    for (const action of [ "send", "read", "member-info", "react", "channel-info" ]) {
       assert.ok(described.actions.includes(action), `lost the ${action} action`);
     }
   });

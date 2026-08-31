@@ -325,11 +325,19 @@ describe("action discovery", () => {
 
     const described = channel.actions.describeMessageTool({ cfg, accountId: "default" });
 
+    // Core's spellings: the descriptive ones are outside
+    // CHANNEL_MESSAGE_ACTION_NAMES, so advertising them offered the agent a
+    // capability it could never actually invoke.
     for (const action of [
-      "createGroup", "addMembers", "removeMember",
-      "promoteAdmin", "demoteAdmin", "transferOwnership", "inviteLink",
+      "channel-create", "addParticipant", "kick", "role-add", "role-remove",
     ]) {
       assert.ok(described.actions.includes(action), `missing action ${action}`);
+    }
+
+    // No core counterpart yet — reachable over gateway RPC only, and offering
+    // them here would be the trap again.
+    for (const action of [ "transferOwnership", "inviteLink" ]) {
+      assert.ok(!described.actions.includes(action), `${action} is not callable from the tool`);
     }
   });
 });

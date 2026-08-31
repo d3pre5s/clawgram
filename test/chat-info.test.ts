@@ -163,7 +163,10 @@ describe("chatInfo action", () => {
   it("is offered by the message tool", () => {
     const described = channel.actions.describeMessageTool({ cfg: cfg(), accountId: "default" });
 
-    assert.ok(described.actions.includes("chatInfo"));
+    // Under core's own name: `chatInfo` is outside its vocabulary and cannot
+    // be called from the tool at all, so offering it only breaks the turn.
+    assert.ok(described.actions.includes("channel-info"));
+    assert.ok(!described.actions.includes("chatInfo"));
   });
 
   // Learning a chat's title and size is learning about its contents, so the

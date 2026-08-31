@@ -9,6 +9,42 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.19.4] — 2026-08-31
+
+### Fixed
+
+- **The tool advertised actions the agent could not call, and one of them
+  broke a live reply.** 2.19.3 gave `topics`, `dialogs`, `chatInfo` and
+  `participants` names core knows, but kept offering the descriptive spellings
+  beside them — and a hint even said clawgram "also answers to `chatInfo`".
+  From the agent's `message` tool it does not: an action outside
+  `CHANNEL_MESSAGE_ACTION_NAMES` is both "requires a target" and "does not
+  accept a target", and no call satisfies both.
+
+  On 2026-08-31 the `meeting-watch` job took the offer, called `chatInfo`, got
+  both halves of the contradiction, and the turn ended as `✉️ Message failed`
+  in the owner's chat.
+
+  The tool now offers only names core can dispatch. The descriptive spellings
+  still work in `handleAction`, so gateway RPC and existing skills are
+  unaffected — RPC never consults the advertised list. Hints and capability
+  lines name the callable spelling only.
+
+### Added
+
+- **Chat management is callable from the tool for the first time.**
+  `createGroup`, `addMembers`, `promoteAdmin` and `demoteAdmin` had been
+  advertised since 2.12.0 under names core does not know, so every attempt
+  failed the same way; they now answer to `channel-create`, `addParticipant`,
+  `role-add` and `role-remove`. `removeMember` already had `kick`.
+  `transferOwnership`, `inviteLink` and `joins` have no counterpart in core's
+  vocabulary and stay gateway-only rather than being offered as traps.
+
+- A test that reads `CHANNEL_MESSAGE_ACTION_NAMES` out of the installed core
+  and asserts every advertised action appears in it. The rule this repo kept
+  relearning — advertised implies reachable — is now checked against core
+  itself rather than a copy that can drift.
+
 ## [2.19.3] — 2026-08-30
 
 ### Fixed

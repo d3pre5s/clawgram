@@ -229,10 +229,15 @@ describe("the fetch-media action", () => {
       accountId: "default",
     });
 
+    // Under `download-file`, core's own name for it. The descriptive
+    // `fetch-media` is outside core's vocabulary, so advertising it taught the
+    // agent a spelling that always fails — the same trap `chatInfo` sprang in a
+    // live chat on 2026-08-31.
     assert.ok(
-      described.actions.includes("fetch-media"),
-      `fetch-media missing; tool offers only: ${described.actions.join(", ")}`,
+      described.actions.includes("download-file"),
+      `download-file missing; tool offers only: ${described.actions.join(", ")}`,
     );
+    assert.ok(!described.actions.includes("fetch-media"));
   });
 
   it("returns both the reading and a file that outlives the call", async () => {
@@ -347,16 +352,23 @@ describe("the fetch-media action", () => {
   });
 });
 
-describe("fetch-media is discoverable by an agent that has no other documentation", () => {
+describe("fetching an attachment is discoverable by an agent that has no other documentation", () => {
   const channel = createChannelPlugin(new Map() as RuntimeMap) as any;
 
-  it("is named in the tool hints and capabilities", () => {
+  // Named as `download-file` throughout. Naming the descriptive spelling in a
+  // hint is worse than silence: it reads as an offer and fails on every call,
+  // which is how `chatInfo` broke a live reply on 2026-08-31.
+  it("is named in the tool hints and capabilities, under the callable name", () => {
     assert.ok(
-      channel.agentPrompt.messageToolHints().some((hint: string) => hint.includes("`fetch-media`")),
+      channel.agentPrompt.messageToolHints().some((hint: string) => hint.includes("`download-file`")),
       "an action nobody is told about is an action nobody uses",
     );
     assert.ok(
-      channel.agentPrompt.messageToolCapabilities().some((line: string) => line.includes("fetch-media")),
+      channel.agentPrompt.messageToolCapabilities().some((line: string) => line.includes("download-file")),
+    );
+    assert.ok(
+      !channel.agentPrompt.messageToolHints().some((hint: string) => hint.includes("`fetch-media`")),
+      "a hint that names an uncallable spelling invites the agent to fail",
     );
   });
 });

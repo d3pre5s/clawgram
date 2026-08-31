@@ -134,7 +134,10 @@ describe("the dialogs action", () => {
       accountId: "default",
     });
 
-    assert.ok(described.actions.includes("dialogs"));
+    // `channel-list` is the callable spelling; `dialogs` answers only over
+    // gateway RPC, which does not read this list.
+    assert.ok(described.actions.includes("channel-list"));
+    assert.ok(!described.actions.includes("dialogs"));
   });
 
   // Listing the chats an account sits in is a capability the read scope
@@ -163,7 +166,10 @@ describe("the dialogs action", () => {
   test("is announced in the hints and capabilities", () => {
     const { channel } = makeChannel(makeGram(), {});
 
-    assert.ok(channel.agentPrompt.messageToolHints().some((hint: string) => hint.includes("`dialogs`")));
-    assert.ok(channel.agentPrompt.messageToolCapabilities().some((line: string) => line.includes("dialogs")));
+    // Under `channel-list`: naming `dialogs` to the agent offers a spelling
+    // core cannot dispatch, and every attempt ends as a failed message.
+    assert.ok(channel.agentPrompt.messageToolHints().some((hint: string) => hint.includes("`channel-list`")));
+    assert.ok(channel.agentPrompt.messageToolCapabilities().some((line: string) => line.includes("channel-list")));
+    assert.ok(!channel.agentPrompt.messageToolHints().some((hint: string) => hint.includes("`dialogs`")));
   });
 });

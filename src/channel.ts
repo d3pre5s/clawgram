@@ -295,10 +295,26 @@ export const CORE_ACTION_SYNONYMS: Record<string, string> = {
   "channel-info": "chatInfo",
   "member-info": "participants",
   "download-file": "fetch-media",
+  // Chat management. `kick` was already accepted; the rest were advertised
+  // under names core does not know and were therefore never callable from the
+  // tool at all — 2.19.4 gives them core's nearest name. `transferOwnership`
+  // and `inviteLink` have no counterpart in that vocabulary and stay
+  // gateway-only, as does `joins`.
+  "channel-create": "createGroup",
+  addParticipant: "addMembers",
+  kick: "removeMember",
+  "role-add": "promoteAdmin",
+  "role-remove": "demoteAdmin",
 };
 
 /** Canonical management action for every accepted spelling. */
 const MANAGE_ACTION_ALIASES: Record<string, string> = {
+  // Core's spellings first — these are the only ones the agent's tool can
+  // reach; see CORE_ACTION_SYNONYMS.
+  "channel-create": "createGroup",
+  addParticipant: "addMembers",
+  "role-add": "promoteAdmin",
+  "role-remove": "demoteAdmin",
   createGroup: "createGroup",
   createChat: "createGroup",
   "create-group": "createGroup",
@@ -558,12 +574,12 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
         "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
-        "Use the `channel-info` action (clawgram also answers to `chatInfo`) to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id.",
+        "Use the `channel-info` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id. Name the chat with `chatId` and do not pass `target`: core refuses it for this action, and the descriptive spelling `chatInfo` is not callable from this tool at all.",
         "Use the `thread-list` action to list a forum's topics by name (optional `query` narrows by title); that is where a `threadId` comes from when someone names a topic instead of quoting a message in it. Name the chat with `chatId` and do not pass `target` — core refuses it for this action. `topics` is the same call under a name core does not know, and is only reachable through the gateway RPC.",
         "Pass that `threadId` to `read` as well: without it a forum read returns every topic interleaved rather than the one that was asked about.",
-        "Use the `download-file` action (or its alias `fetch-media`) to fetch the attachment on a message `read` reported. Name the chat with `chatId` and the message with `messageId`; do not pass `target` — core refuses it for this action: `mode: \"read\"` returns a description of an image or a transcript of a voice note, `\"file\"` returns a path to reuse, `\"both\"` (default) returns both. `read` only says an attachment exists; this is what brings it.",
-        "Use the `channel-list` action (clawgram also answers to `dialogs`) to find out which group chats this account is actually in — including ones nobody has configured yet. It reports id, title and type only, never direct chats, and only when the account enables `discoverChats`.",
-        "Use `member-info` with a `chatId` to list who is in a chat; `joins` has no name in core's vocabulary and is reachable only through the gateway RPC.",
+        "Use the `download-file` action to fetch the attachment on a message `read` reported. Name the chat with `chatId` and the message with `messageId`; do not pass `target` — core refuses it for this action: `mode: \"read\"` returns a description of an image or a transcript of a voice note, `\"file\"` returns a path to reuse, `\"both\"` (default) returns both. `read` only says an attachment exists; this is what brings it.",
+        "Use the `channel-list` action to find out which group chats this account is actually in — including ones nobody has configured yet. It reports id, title and type only, never direct chats, and only when the account enables `discoverChats`.",
+        "Use `member-info` with a `chatId` to list who is in a chat, and `kick` with a `chatId` and `userId` to remove someone from a managed chat. The rest of the chat-management family and `joins` have no name core knows, so they are reachable only through the gateway RPC, not from this tool.",
         "Use `createGroup` (title, optional about, optional users) to create a new Telegram supergroup; `addMembers`/`removeMember` change who is in a managed chat, `promoteAdmin`/`demoteAdmin` grant or revoke admin rights, `transferOwnership` hands the chat over, `inviteLink` issues an invite link for people Telegram refused to add directly.",
       ],
       messageToolCapabilities: () => [
@@ -571,10 +587,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         "clawgram can send text messages to direct chats and groups from the connected personal account.",
         "clawgram supports Telegram forum topics via the `threadId` parameter on group sends.",
         "clawgram can add and clear emoji reactions on messages. A plain Telegram account holds one reaction per message, so a new emoji replaces the previous one.",
-        "clawgram can describe a chat via `chatInfo`: title, type (direct/group/supergroup/channel), member count, description, whether it is a forum, and the pinned message id.",
-        "clawgram can list the topics of a forum supergroup via `topics`: id, title, last message, and whether a topic is closed, hidden or pinned.",
-        "clawgram can fetch the attachment on any message inside its read scope via `fetch-media`: images come back described, voice notes transcribed, and either can be returned as a file path for reuse.",
-        "clawgram can list the group chats the account belongs to via `dialogs`, when the account sets discoverChats. Metadata only, no direct chats — it answers \"where am I\", not \"what was said\".",
+        "clawgram can describe a chat via `channel-info`: title, type (direct/group/supergroup/channel), member count, description, whether it is a forum, and the pinned message id.",
+        "clawgram can list the topics of a forum supergroup via `thread-list`: id, title, last message, and whether a topic is closed, hidden or pinned.",
+        "clawgram can fetch the attachment on any message inside its read scope via `download-file`: images come back described, voice notes transcribed, and either can be returned as a file path for reuse.",
+        "clawgram can list the group chats the account belongs to via `channel-list`, when the account sets discoverChats. Metadata only, no direct chats — it answers \"where am I\", not \"what was said\".",
         "clawgram can manage chats where the account's manageChats config allows it: create supergroups, add and remove members, promote and demote admins, transfer ownership, and export invite links.",
       ],
     },
@@ -1650,32 +1666,40 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // Leaving it out does not degrade to a text send: the agent simply
           // never sees a way to send the file, announces it in words, and the
           // file stays on disk. That is exactly what happened on 2026-08-07.
+          // Only names core already knows. An action outside
+          // `CHANNEL_MESSAGE_ACTION_NAMES` cannot be called from the agent's
+          // `message` tool at all — it is simultaneously "requires a target"
+          // and "does not accept a target" — so advertising one is handing the
+          // agent a trap. It cost a broken reply in a live chat on 2026-08-31:
+          // the agent picked the descriptive `chatInfo`, got both halves of
+          // the contradiction, and the turn ended in `✉️ Message failed`.
+          //
+          // The descriptive spellings (`topics`, `dialogs`, `chatInfo`,
+          // `participants`, `joins`, `fetch-media`, the manage family) still
+          // work in `handleAction`, so gateway RPC and existing skills keep
+          // calling them — RPC does not consult this list. They are simply not
+          // offered to the agent, which has no way to use them.
+          //
+          // `upload-file` is what core dispatches when an agent has an
+          // attachment to deliver — a generated image is the common case.
+          // Leaving it out does not degrade to a text send: the agent simply
+          // never sees a way to send the file, announces it in words, and the
+          // file stays on disk. That is exactly what happened on 2026-08-07.
+          //
+          // `kick` is core's name for `removeMember`; the rest of the manage
+          // family has no core equivalent and stays gateway-only until it gets
+          // one. `joins` likewise.
           actions: [
-            "send", "read", "participants", "joins", "react", "chatInfo", "topics", "dialogs", "upload-file",
-            // Core's own names for four of the above. Without them the
-            // action is advertised and unreachable — see CORE_ACTION_SYNONYMS.
-            "thread-list", "channel-list", "channel-info", "member-info",
+            "send", "read", "react", "upload-file",
             // Reading an attachment that is already in a chat. `read` reports
             // that a photo exists; this is what turns it into something the
             // agent can look at or pass on.
-            //
-            // Two names on purpose. `download-file` is core's own vocabulary
-            // (`CHANNEL_MESSAGE_ACTION_NAMES`), and core's target policy is
-            // keyed by that vocabulary: an action it does not know is both
-            // "requires a target" (`MESSAGE_ACTION_TARGET_MODE[action] !==
-            // "none"` is true for `undefined`) and "does not accept a target"
-            // (the same lookup defaults to `"none"` when a target is passed).
-            // That contradiction is unresolvable from the caller's side —
-            // measured on 2026-08-24, when the agent tried every combination
-            // and got one of the two errors each time. `download-file` is
-            // mapped to `"none"`, so it has no such contradiction;
-            // `fetch-media` stays as the descriptive name and is made usable
-            // by the alias declaration below.
-            "fetch-media", "download-file",
+            "download-file",
+            // Core's names for the chat-shaped reads — see CORE_ACTION_SYNONYMS.
+            "thread-list", "channel-list", "channel-info", "member-info",
             // Chat management (2.12.0) — gated by the account's manageChats
             // scope; without it every one of these is refused.
-            "createGroup", "addMembers", "removeMember",
-            "promoteAdmin", "demoteAdmin", "transferOwnership", "inviteLink",
+            "channel-create", "addParticipant", "kick", "role-add", "role-remove",
           ],
           capabilities: [],
           mediaSourceParams: {

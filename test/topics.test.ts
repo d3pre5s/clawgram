@@ -172,7 +172,10 @@ describe("the topics action", () => {
       accountId: "default",
     });
 
-    assert.ok(described.actions.includes("topics"));
+    // `thread-list` is the callable spelling; `topics` answers only over
+    // gateway RPC, which does not read this list.
+    assert.ok(described.actions.includes("thread-list"));
+    assert.ok(!described.actions.includes("topics"));
   });
 
   // An action the agent is never told about is an action it never takes: the

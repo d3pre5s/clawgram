@@ -39,7 +39,9 @@ describe("reaction capability matches the implementation", () => {
   it("keeps the actions the channel already had", () => {
     const described = describeTool();
 
-    for (const action of [ "send", "read", "participants", "joins" ]) {
+    // `member-info` is core's name for `participants`; `joins` has none and
+    // is gateway-only, so the tool must not offer it.
+    for (const action of [ "send", "read", "member-info" ]) {
       assert.ok(described.actions.includes(action), `lost the ${action} action`);
     }
   });
