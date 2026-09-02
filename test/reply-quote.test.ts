@@ -126,11 +126,23 @@ describe("inbound context wiring", () => {
     assert.equal(count("ReplyToIsQuote: normalized.replyIsQuote"), sites);
   });
 
+  test("every site that passes the parent id also passes the parent body and sender", () => {
+    // A highlight is the exception; most replies point at a whole message.
+    // Core falls back from ReplyToQuoteText to ReplyToBody, so a site that
+    // wires only the highlight hands the agent a bare id for every plain
+    // reply — which is what happened in DMs until 2.20.1.
+    const sites = count("ReplyToId: normalized.replyToMessageId");
+    assert.equal(count("ReplyToBody: replyParent.body"), sites);
+    assert.equal(count("ReplyToSender: replyParent.sender"), sites);
+  });
+
   test("the key names are the ones core reads", () => {
     // Core renders `[Replying to: …]` off ReplyToQuoteText and gates the
     // untrusted reply block on ReplyToIsQuote. A renamed key here would be
     // accepted by the payload type and quietly ignored downstream.
     assert.ok(source.includes("ReplyToQuoteText:"));
     assert.ok(source.includes("ReplyToIsQuote:"));
+    assert.ok(source.includes("ReplyToBody:"));
+    assert.ok(source.includes("ReplyToSender:"));
   });
 });

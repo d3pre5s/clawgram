@@ -9,6 +9,27 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A plain reply reached the agent as a bare parent id.** Telegram does not
+  put the parent's text into a reply; only a highlighted fragment
+  (`quoteText`) travels with it, and most replies have none. The channel
+  forwarded the highlight (2.4.0) and nothing else, while core renders
+  `[Replying to: …]` from `ReplyToQuoteText` *or* `ReplyToBody` — so every
+  reply without a highlight arrived as "reply to #1011" with nothing behind
+  it. The case that exposed it (2026-09-02): the owner answered, in a DM, the
+  agent's own notice about an unknown sender; the notice had been sent from
+  another session and DMs are outside `readChats`, so the agent could not
+  recover the text by any route and asked the owner what he meant.
+
+  Both inbound sites now fetch the parent once (`getReplyMessage`, which the
+  group path was already calling for the reply-to-self gate and discarding)
+  and pass `ReplyToBody` and `ReplyToSender`. The agent's own parent is
+  labelled with her own name, other senders by display name, `@username`,
+  then id. A parent that cannot be fetched degrades to today's behaviour —
+  no context — never to a dropped message. Highlights keep precedence in
+  core, so quoted replies are unchanged.
+
 ## [2.20.0] — 2026-09-01
 
 ### Changed

@@ -146,7 +146,7 @@ import {
   isSilentReplyText,
   resolveReplyTarget,
   resolveChatTarget,
-  isReplyToSelfMessage,
+  resolveReplyParent,
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
   resolveOutboundParseMode,
@@ -971,7 +971,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                   text,
                   message: rawMessage,
                 });
-              const wasReplyToSelf = await isReplyToSelfMessage(rawMessage, selfId);
+              // One fetch serves two needs: the reply-to-self gate below and
+              // the parent's text for the agent (ReplyToBody), which a plain
+              // reply does not carry on its own.
+              const replyParent = await resolveReplyParent(rawMessage, { selfId, selfLabel });
+              const wasReplyToSelf = replyParent.isSelf;
               const mentionDecision = resolveInboundMentionDecision({
                 facts: {
                   canDetectMention: true,
@@ -1048,6 +1052,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                 // bare text, and the fragment the person pointed at is lost.
                 ReplyToQuoteText: normalized.replyQuoteText,
                 ReplyToIsQuote: normalized.replyIsQuote,
+                // A plain reply has no highlight; core then falls back to the
+                // parent's body, which only exists if the channel fetched it.
+                ReplyToBody: replyParent.body,
+                ReplyToSender: replyParent.sender,
                 MessageThreadId: normalized.messageThreadId,
                 NativeChannelId: normalized.chatId,
                 // Trusted per-group prompt block from `groups.<id>.systemPrompt`.
@@ -1369,6 +1377,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
               return;
             }
 
+            // Same fetch as the group path. In a DM the parent is as often
+            // the agent's own message as the person's — the owner answers a
+            // notice she sent — and neither text is available any other way.
+            const replyParent = await resolveReplyParent(rawMessage, { selfId, selfLabel });
+
             await gram.withTyping(conversationTarget, async () => {
               await dispatchInboundDirectDmWithRuntime({
                 cfg,
@@ -1400,6 +1413,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                   // direct messages too, and the fragment is not part of the text.
                   ReplyToQuoteText: normalized.replyQuoteText,
                   ReplyToIsQuote: normalized.replyIsQuote,
+                  ReplyToBody: replyParent.body,
+                  ReplyToSender: replyParent.sender,
                   NativeChannelId: normalized.chatId,
                 },
                 deliver: async (payload) => {

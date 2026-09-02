@@ -653,14 +653,38 @@ async function resolveChatTarget(message: any): Promise<unknown> {
   return message?.inputChat ?? message?._inputChat ?? message?.chat ?? message?._chat ?? message?.peerId;
 }
 
-async function isReplyToSelfMessage(message: any, selfId?: string): Promise<boolean> {
-  if (!selfId) {
-    return false;
-  }
+type ReplyParentContext = {
+  /** The parent was written by this account (`out`, or sender id equals self). */
+  isSelf: boolean;
+  /** Text of the parent message; absent for media-only parents. */
+  body?: string;
+  /** Who wrote the parent, as a label: self label, display name, `@username`, or id. */
+  sender?: string;
+};
 
+/**
+ * The message a reply points at, fetched once.
+ *
+ * Telegram does not put the parent's text into the reply; a highlight
+ * (`quoteText`) is the only fragment that travels with it, and most replies
+ * have none. Core renders `[Replying to: …]` from the highlight or, failing
+ * that, from `ReplyToBody` — so without this fetch a plain reply reaches the
+ * agent as a bare parent id. The case that exposed it: the owner answered, in
+ * a DM, the agent's own notice about an unknown sender; the notice had been
+ * sent from another session, DMs are outside `readChats`, and the agent had
+ * no way to learn what "reply to #1011" referred to.
+ *
+ * Failure degrades to "no context" on purpose: a parent that cannot be
+ * fetched (deleted, flood-waited, transport hiccup) must not cost the
+ * message itself.
+ */
+async function resolveReplyParent(message: any, input: {
+  selfId?: string;
+  selfLabel?: string;
+}): Promise<ReplyParentContext> {
   const replyToMessageId = message?.replyTo?.replyToMsgId ?? message?.replyToMsgId;
   if (!replyToMessageId) {
-    return false;
+    return { isSelf: false };
   }
 
   const replied =
@@ -668,18 +692,41 @@ async function isReplyToSelfMessage(message: any, selfId?: string): Promise<bool
       ? await message.getReplyMessage().catch(() => undefined)
       : undefined;
   if (!replied) {
-    return false;
-  }
-
-  if (replied.out === true) {
-    return true;
+    return { isSelf: false };
   }
 
   const replySenderId =
     replied.senderId ??
     replied.fromId?.userId ??
     replied.fromId?.channelId;
-  return replySenderId !== undefined && String(replySenderId) === selfId;
+  const isSelf =
+    replied.out === true ||
+    (input.selfId !== undefined && replySenderId !== undefined && String(replySenderId) === input.selfId);
+
+  const rawText =
+    typeof replied.message === "string" ? replied.message :
+    typeof replied.text === "string" ? replied.text :
+    "";
+  const body = rawText.trim() ? rawText : undefined;
+
+  const source = replied.sender ?? replied._sender;
+  const sender = isSelf
+    ? (input.selfLabel ?? (input.selfId !== undefined ? input.selfId : undefined))
+    : toDisplayName({
+      firstName: typeof source?.firstName === "string" ? source.firstName : undefined,
+      lastName: typeof source?.lastName === "string" ? source.lastName : undefined,
+      username: undefined,
+      fallback: resolveActiveUsername(source) ? `@${resolveActiveUsername(source)}` : (replySenderId !== undefined ? String(replySenderId) : undefined),
+    });
+
+  return { isSelf, body, sender: sender || undefined };
+}
+
+async function isReplyToSelfMessage(message: any, selfId?: string): Promise<boolean> {
+  if (!selfId) {
+    return false;
+  }
+  return (await resolveReplyParent(message, { selfId })).isSelf;
 }
 
 async function resolveSenderProfile(message: any, input?: {
@@ -892,6 +939,7 @@ export {
   resolveReplyTarget,
   resolveChatTarget,
   isReplyToSelfMessage,
+  resolveReplyParent,
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
   normalizeParseMode,
