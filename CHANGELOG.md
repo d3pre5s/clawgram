@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.20.1] — 2026-09-02
+
 ### Fixed
 
 - **A plain reply reached the agent as a bare parent id.** Telegram does not
@@ -24,11 +26,13 @@ recorded in `git log` only.
 
   Both inbound sites now fetch the parent once (`getReplyMessage`, which the
   group path was already calling for the reply-to-self gate and discarding)
-  and pass `ReplyToBody` and `ReplyToSender`. The agent's own parent is
-  labelled with her own name, other senders by display name, `@username`,
-  then id. A parent that cannot be fetched degrades to today's behaviour —
-  no context — never to a dropped message. Highlights keep precedence in
-  core, so quoted replies are unchanged.
+  and pass `ReplyToBody` and `ReplyToSender`. Core renders the body inline
+  as `[Replying to: "…"]`; the sender label (the agent's own name for her
+  own messages, otherwise display name, `@username`, then id) is passed for
+  the consumers that read it, but the inline Telegram rendering in core
+  2026.7.1 does not show it. A parent that cannot be fetched degrades to
+  today's behaviour — no context — never to a dropped message. Highlights
+  keep precedence in core, so quoted replies are unchanged.
 
 ## [2.20.0] — 2026-09-01
 
