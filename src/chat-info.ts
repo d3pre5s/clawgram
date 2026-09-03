@@ -14,7 +14,7 @@
  * `GramJsClientManager.getChatInfo`.
  */
 
-import { resolveActiveUsername } from "./helpers";
+import { resolveActiveUsername, readChatTargetParam } from "./helpers";
 
 export type ChatInfoType = "direct" | "group" | "supergroup" | "channel" | "unknown";
 
@@ -47,7 +47,7 @@ export function parseChatInfoParams(
   params: Record<string, unknown>,
   toolContext: ChatInfoToolContext,
 ): ChatInfoParams {
-  const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat ?? toolContext?.currentChannelId;
+  const rawTarget = readChatTargetParam(params, toolContext);
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
     throw new Error("clawgram: chatInfo requires a chatId");

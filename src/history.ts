@@ -14,7 +14,7 @@ export const HISTORY_DEFAULT_LIMIT = 100;
 export const HISTORY_MAX_LIMIT = 500;
 
 import { describeMedia, type HistoryMedia } from "./media";
-import { resolveActiveUsername } from "./helpers";
+import { resolveActiveUsername, readChatTargetParam } from "./helpers";
 import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 
 export type ListMessagesParams = {
@@ -151,7 +151,7 @@ export function parseMessageId(value: unknown, field: string): number | undefine
 }
 
 export function parseListMessagesParams(params: Record<string, unknown>): ListMessagesParams {
-  const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
+  const rawTarget = readChatTargetParam(params);
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
     throw new Error("clawgram: list requires a chatId");
@@ -270,7 +270,7 @@ function parseParticipantsFilter(params: Record<string, unknown>): ParticipantsF
  * not silently turn into an unbounded response.
  */
 export function parseListParticipantsParams(params: Record<string, unknown>): ListParticipantsParams {
-  const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
+  const rawTarget = readChatTargetParam(params);
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
     throw new Error("clawgram: participants requires a chatId");

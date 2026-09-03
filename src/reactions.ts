@@ -10,6 +10,8 @@
  * tested without a Telegram connection.
  */
 
+import { readChatTargetParam } from "./helpers";
+
 export type ReactionParams = {
   target: string;
   messageId: number;
@@ -89,7 +91,7 @@ export function parseReactionParams(
   params: Record<string, unknown>,
   toolContext: ReactionToolContext,
 ): ReactionParams {
-  const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat ?? toolContext?.currentChannelId;
+  const rawTarget = readChatTargetParam(params, toolContext);
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
     throw new Error("clawgram: react requires a chatId");

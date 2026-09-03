@@ -197,17 +197,64 @@ function readLatestAssistantFallbackFromTranscript(sessionKey: string, storePath
   return undefined;
 }
 
+/**
+ * The chat named by a call, in the spellings this channel accepts.
+ *
+ * Five parsers spelled this chain out separately and none of them read
+ * `channelId` — which is the key core fills for its `channelId`-mode actions
+ * (`channel-info`, the name `chatInfo` answers to). A call that named another
+ * chat that way fell through to the current one and was answered about the
+ * wrong chat, silently. One list, one order, every caller.
+ */
+export const CHAT_TARGET_PARAM_KEYS = [ "chatId", "channelId", "target", "to", "chat" ] as const;
+
+export function readChatTargetParam(
+  params: Record<string, unknown>,
+  toolContext?: { currentChannelId?: string },
+): string {
+  // Strings only, exactly like the SDK's `readStringParam` and like every
+  // parser here before the chain was shared: a numeric `chatId` is refused
+  // rather than coerced, because `-1001234567890` loses precision as a JSON
+  // number long before it reaches Telegram.
+  const named: string[] = [];
+  for (const key of CHAT_TARGET_PARAM_KEYS) {
+    const value = params?.[ key ];
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    if (trimmed && !named.includes(trimmed)) {
+      named.push(trimmed);
+    }
+  }
+
+  // Two keys naming two different chats is a caller error, and picking one by
+  // key order would send a message to a chat nobody asked for — the failure
+  // this whole resolver exists to prevent. Say so instead of guessing.
+  if (named.length > 1) {
+    throw new Error(`clawgram: conflicting chat targets (${named.join(", ")})`);
+  }
+
+  return named[ 0 ] ?? toolContext?.currentChannelId?.trim() ?? "";
+}
+
+/**
+ * Which chat an outbound action is for.
+ *
+ * `chatId` and `channelId` are read alongside `to`/`target` because the read
+ * actions accept them and this plugin's own tool hints tell the agent to name
+ * a chat that way. Until 2.21.0 the send path ignored them: a `send` carrying
+ * `chatId` fell through to the current chat, so a message meant for another
+ * chat was delivered to the one the turn came from — the wrong audience, with
+ * no error anywhere.
+ *
+ * A named chat always wins over the context. The context fallback exists for
+ * a send that names nothing, which is the ordinary "answer where you were
+ * asked" case.
+ */
 function resolveActionTarget(params: Record<string, unknown>, toolContext?: {
   currentChannelId?: string;
 }): string {
-  const explicitTo = readStringParam(params, "to") ?? readStringParam(params, "target");
-  if (explicitTo?.trim()) {
-    return explicitTo.trim();
-  }
-
-  const contextTarget = toolContext?.currentChannelId?.trim();
-  if (contextTarget) {
-    return contextTarget;
+  const target = readChatTargetParam(params, toolContext);
+  if (target) {
+    return target;
   }
 
   throw new Error("clawgram: message target is required");

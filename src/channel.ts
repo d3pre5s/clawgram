@@ -288,8 +288,10 @@ function readAccountManageChats(account: any): string[] | undefined {
  * from the same caller, on the same chat.
  *
  * Every name on the right maps to core target mode `"none"` except
- * `channel-info`, which is `"to"` and therefore arrives with the chat in
- * `params.to` — a spelling all of these parsers already accept.
+ * `channel-info`, which is `"channelId"`: the chat arrives in
+ * `params.channelId`, a spelling no parser here read until 2.21.0 — so the
+ * call fell through to the current chat and answered about the wrong one.
+ * `readChatTargetParam` is the single list of accepted spellings now.
  */
 export const CORE_ACTION_SYNONYMS: Record<string, string> = {
   "thread-list": "topics",

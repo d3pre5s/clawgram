@@ -18,6 +18,7 @@
  */
 
 import { normalizeChatKey } from "./history";
+import { readChatTargetParam } from "./helpers";
 
 export type ManageToolContext = {
   currentChannelId?: string;
@@ -42,7 +43,7 @@ function readUserRef(value: unknown): string | undefined {
 }
 
 function readTarget(params: Record<string, unknown>, toolContext: ManageToolContext, action: string): string {
-  const raw = params.chatId ?? params.target ?? params.to ?? params.chat ?? toolContext?.currentChannelId;
+  const raw = readChatTargetParam(params, toolContext);
   const target = readString(raw);
   if (!target) {
     throw new Error(`clawgram: ${action} requires a chatId`);

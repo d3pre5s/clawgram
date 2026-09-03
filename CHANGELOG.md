@@ -78,6 +78,19 @@ recorded in `git log` only.
   Stopping a client that never connected still touches nothing, and stopping
   twice still destroys once.
 
+- **A `send` naming another chat with `chatId` went to the current chat.** The
+  send path read `to`/`target` only and then fell back to the chat the turn
+  came from, while the read actions — and this plugin's own tool hints — name a
+  chat with `chatId`. The same gap hit `chatInfo` from the other side: core
+  dispatches it as `channel-info` with target mode `channelId`, a key no parser
+  here read, so the call was answered about the current chat instead of the one
+  it named.
+
+  Every parser now goes through one resolver that accepts `chatId`,
+  `channelId`, `target`, `to` and `chat`, prefers a named chat over the current
+  one, and refuses outright when two keys name two different chats rather than
+  picking by key order. Numeric ids are still refused rather than coerced.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed

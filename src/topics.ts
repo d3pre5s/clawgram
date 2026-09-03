@@ -11,6 +11,7 @@
  * client; the transport lives in `GramJsClientManager.listTopics`.
  */
 import { toStringId } from "./normalize.js";
+import { readChatTargetParam } from "./helpers";
 
 export const TOPICS_DEFAULT_LIMIT = 100;
 export const TOPICS_MAX_LIMIT = 500;
@@ -33,7 +34,7 @@ export type TopicsParams = {
 };
 
 export function parseTopicsParams(params: Record<string, unknown>): TopicsParams {
-  const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
+  const rawTarget = readChatTargetParam(params);
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
     throw new Error("clawgram: topics requires a chatId");

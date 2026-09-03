@@ -16,6 +16,7 @@
  */
 
 import { parseMessageId } from "./history";
+import { readChatTargetParam } from "./helpers";
 
 /**
  * What the caller wants out of the fetch.
@@ -68,7 +69,7 @@ export function parseFetchMediaMode(value: unknown): FetchMediaMode {
 }
 
 export function parseFetchMediaParams(params: Record<string, unknown>): FetchMediaParams {
-  const rawTarget = params.chatId ?? params.target ?? params.to ?? params.chat;
+  const rawTarget = readChatTargetParam(params);
   const target = typeof rawTarget === "string" ? rawTarget.trim() : "";
   if (!target) {
     throw new Error("clawgram: fetch-media requires a chatId");
