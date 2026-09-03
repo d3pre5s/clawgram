@@ -118,7 +118,7 @@ describe("normalizeParticipants", () => {
   test("finds the handle of a multi-username account, where the plain field is empty", () => {
     const people = normalizeParticipants([
       {
-        id: 116847835,
+        id: 100200300,
         username: null,
         usernames: [ { username: "top1ceo", active: true, editable: true } ],
         bot: false,

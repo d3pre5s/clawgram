@@ -219,7 +219,7 @@ describe("describeChat and multi-username accounts", () => {
   it("finds the handle in usernames[] when the plain field is empty", () => {
     const info = describeChat({
       className: "User",
-      id: 116847835,
+      id: 100200300,
       username: null,
       usernames: [
         { username: "retired_handle", active: false },

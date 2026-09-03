@@ -9,7 +9,7 @@ import { stripTtsDirectives } from "../src/helpers";
  * the assistant's raw text straight out of the session file and sends that,
  * so on 2026-08-08 a group got the literal markup in the chat:
  *
- *   @top1ceo, [[tts:text]]Привет, Вася! …[[/tts:text]]
+ *   @example_owner, [[tts:text]]Привет, Вася! …[[/tts:text]]
  *
  * The fallback exists to rescue a reply that would otherwise vanish. It must
  * therefore rescue it as something a human can read: keep the spoken words,

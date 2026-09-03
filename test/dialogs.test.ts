@@ -38,7 +38,7 @@ describe("normalizeDialogs", () => {
     isUser: false,
     isGroup: true,
     isChannel: true,
-    id: -1004428871220,
+    id: -1000000000003,
     title: "Старший брат",
     entity: { className: "Channel", id: 4428871220, title: "Старший брат", megagroup: true, forum: true },
   };
@@ -54,14 +54,14 @@ describe("normalizeDialogs", () => {
     isUser: true,
     isGroup: false,
     isChannel: false,
-    id: 116847835,
+    id: 100200300,
     title: "Владелец",
-    entity: { className: "User", id: 116847835, firstName: "Владелец" },
+    entity: { className: "User", id: 100200300, firstName: "Владелец" },
   };
 
   test("reports a forum supergroup with the id the config is written in", () => {
     assert.deepEqual(normalizeDialogs([ supergroup ]), [
-      { chatId: "-1004428871220", title: "Старший брат", type: "supergroup", isForum: true },
+      { chatId: "-1000000000003", title: "Старший брат", type: "supergroup", isForum: true },
     ]);
   });
 
@@ -82,7 +82,7 @@ describe("normalizeDialogs", () => {
   test("filters by title when asked", () => {
     const all = [ supergroup, basicGroup ];
 
-    assert.deepEqual(normalizeDialogs(all, { query: "старший" }).map((d) => d.chatId), [ "-1004428871220" ]);
+    assert.deepEqual(normalizeDialogs(all, { query: "старший" }).map((d) => d.chatId), [ "-1000000000003" ]);
     assert.deepEqual(normalizeDialogs(all, { query: "нет такого" }), []);
   });
 
@@ -100,7 +100,7 @@ describe("the dialogs action", () => {
       listDialogs: (args: Record<string, unknown>) => {
         calls.push(args);
         return Promise.resolve({
-          dialogs: [ { chatId: "-1004428871220", title: "Старший брат", type: "supergroup", isForum: true } ],
+          dialogs: [ { chatId: "-1000000000003", title: "Старший брат", type: "supergroup", isForum: true } ],
           truncated: false,
         });
       },
@@ -159,7 +159,7 @@ describe("the dialogs action", () => {
     assert.deepEqual(gram.calls, [ { limit: 10, query: "Старший" } ]);
     assert.equal(payload.count, 1);
     assert.deepEqual(payload.dialogs, [
-      { chatId: "-1004428871220", title: "Старший брат", type: "supergroup", isForum: true },
+      { chatId: "-1000000000003", title: "Старший брат", type: "supergroup", isForum: true },
     ]);
   });
 

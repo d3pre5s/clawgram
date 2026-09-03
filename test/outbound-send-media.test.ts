@@ -9,7 +9,7 @@ import type { RuntimeMap } from "../src/types";
  * reply. It sat unused until voice replies existed, and carried two defects
  * that only a group could expose — 2026-08-08, message 2185:
  *
- *   [clawgram] outbound sendMedia   to: "clawgram:-1001503965698"
+ *   [clawgram] outbound sendMedia   to: "clawgram:-1000000000001"
  *   (no "sendMedia completed" line ever followed)
  *
  * 1. The target went to peer resolution with the channel prefix still on it.
@@ -38,7 +38,7 @@ describe("outbound.sendMedia delivers a voice reply", () => {
 
   const send = async (channel: any, ctx: Record<string, unknown>) => channel.outbound.sendMedia({
     accountId: "default",
-    to: "clawgram:-1001503965698",
+    to: "clawgram:-1000000000001",
     mediaUrl: "/tmp/voice.ogg",
     ...ctx,
   });
@@ -51,7 +51,7 @@ describe("outbound.sendMedia delivers a voice reply", () => {
     assert.equal(calls.length, 1);
     assert.equal(
       calls[ 0 ].target,
-      "-1001503965698",
+      "-1000000000001",
       "peer resolution never sees a clawgram: prefix from any other path",
     );
   });

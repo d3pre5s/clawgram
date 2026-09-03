@@ -137,7 +137,7 @@ describe("the topics action", () => {
       listTopics: (args: Record<string, unknown>) => {
         calls.push(args);
         return Promise.resolve({
-          chatId: "-1004428871220",
+          chatId: "-1000000000003",
           topics: [ { topicId: "15009", title: "Визитка - представление" } ],
           truncated: false,
         });
@@ -199,17 +199,17 @@ describe("the topics action", () => {
     const gram = makeGram();
     const { act } = makeChannel(gram, { readChats: [ "-100123" ] });
 
-    await assert.rejects(() => act({ chatId: "-1004428871220" }), /not-allowed-chat/);
+    await assert.rejects(() => act({ chatId: "-1000000000003" }), /not-allowed-chat/);
     assert.equal(gram.calls.length, 0);
   });
 
   test("passes the parsed target, limit and query to the client", async () => {
     const gram = makeGram();
-    const { act } = makeChannel(gram, { readChats: [ "-1004428871220" ] });
+    const { act } = makeChannel(gram, { readChats: [ "-1000000000003" ] });
 
-    const payload = parse(await act({ chatId: "-1004428871220", query: "Визитка", limit: 10 }));
+    const payload = parse(await act({ chatId: "-1000000000003", query: "Визитка", limit: 10 }));
 
-    assert.deepEqual(gram.calls, [ { target: "-1004428871220", limit: 10, query: "Визитка" } ]);
+    assert.deepEqual(gram.calls, [ { target: "-1000000000003", limit: 10, query: "Визитка" } ]);
     assert.equal(payload.count, 1);
     assert.deepEqual(payload.topics, [ { topicId: "15009", title: "Визитка - представление" } ]);
   });

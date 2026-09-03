@@ -429,7 +429,7 @@ describe("inbound sender handles", () => {
         id: 1,
         chatId: "-100123",
         message: "привет",
-        senderId: 116847835,
+        senderId: 100200300,
         sender: {
           username: null,
           usernames: [ { username: "old_one", active: false }, { username: "top1ceo", active: true } ],

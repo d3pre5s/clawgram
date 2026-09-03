@@ -94,7 +94,7 @@ Follow the steps in the console
 ```bash
 Starting Clawgram authorization...
 Please enter your apiId: 12345678
-Please enter your apiHash: c4b9c0fde16342afe52907847df27596
+Please enter your apiHash: EXAMPLE0123456789abcdef01234567
 [2026-05-10T16:01:24.570] [INFO] - [Running gramJS version 2.26.21]
 [2026-05-10T16:01:24.578] [INFO] - [Connecting to x.x.x.x:80/TCPFull...]
 [2026-05-10T16:01:25.804] [INFO] - [Connection to x.x.x.x:80/TCPFull complete!]

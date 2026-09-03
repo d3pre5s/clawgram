@@ -104,7 +104,7 @@ describe("the outbound path suppresses core notices for groups", () => {
 
     const result = await channel.outbound.sendText({
       accountId: "default",
-      to: "116847835",
+      to: "100200300",
       text: "⚠️ ✉️ Message failed",
     });
 

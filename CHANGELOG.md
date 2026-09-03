@@ -847,7 +847,7 @@ recorded in `git log` only.
   assistant's raw text out of the session file. Core strips `[[tts:…]]` markup
   before a channel sees it, but only on the normal reply path — so the
   fallback shipped it verbatim, and a group chat received
-  `@top1ceo, [[tts:text]]Привет, Вася! …[[/tts:text]]`.
+  `@example_owner, [[tts:text]]Привет, Вася! …[[/tts:text]]`.
 
   The fallback now strips directives the same way it already stripped the
   silent-reply token. `[[tts:text]]…[[/tts:text]]` is **unwrapped** rather than

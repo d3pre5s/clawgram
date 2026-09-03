@@ -52,9 +52,9 @@ describe("outbound.resolveTarget contract with core", () => {
   test("a session-route chat id passes through unchanged", () => {
     // The announce path feeds back the id the session key carries; changing it
     // would break the route match.
-    const r = plugin().outbound.resolveTarget({ accountId: "default", to: "-1001503965698" });
+    const r = plugin().outbound.resolveTarget({ accountId: "default", to: "-1000000000001" });
     assert.equal(r.ok, true);
-    assert.equal(r.to, "-1001503965698");
+    assert.equal(r.to, "-1000000000001");
   });
 
   test("channel-prefixed targets are normalized", () => {

@@ -23,8 +23,8 @@ function event(overrides: Record<string, unknown> = {}) {
   return {
     message: {
       id: 42,
-      chatId: -1001503965698,
-      senderId: 116847835,
+      chatId: -1000000000001,
+      senderId: 100200300,
       message: "это сима и рина, они художницы. найдешь так?",
       date: BASE,
       out: false,
@@ -95,7 +95,7 @@ describe("normalizeHistoryMessage: reply quote", () => {
         message: "именно этих двоих",
         replyTo: { replyToMsgId: 41, quote: true, quoteText: QUOTE },
       },
-      "-1001503965698",
+      "-1000000000001",
     );
     assert.equal(normalized?.replyQuoteText, QUOTE);
     assert.equal(normalized?.replyToMessageId, "41");
@@ -104,7 +104,7 @@ describe("normalizeHistoryMessage: reply quote", () => {
   test("history without a highlight leaves the field absent", () => {
     const normalized = normalizeHistoryMessage(
       { id: 42, date: BASE, message: "ок", replyTo: { replyToMsgId: 41 } },
-      "-1001503965698",
+      "-1000000000001",
     );
     assert.equal(normalized?.replyQuoteText, undefined);
   });
