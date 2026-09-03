@@ -46,3 +46,16 @@ node_modules
 # Playwright
 playwright-report/
 test-results/
+
+# Local-only working notes. Both files say "never commit it" in their first
+# line, and until now that was enforced only by .git/info/exclude — a file
+# that lives in one working copy and travels with no clone. A fresh checkout
+# on another machine would have committed them.
+AGENTS.md
+CLAUDE.md
+.claude/
+
+# Built tarballs from `npm pack`. dist/ is ignored, the tarball that wraps it
+# was not, so a stray clawgram-<version>.tgz sat untracked in the root asking
+# to be committed by an `git add -A` somewhere.
+*.tgz
