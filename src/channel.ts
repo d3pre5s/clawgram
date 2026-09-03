@@ -55,8 +55,7 @@ import {
   describeMedia,
   downloadInboundMediaToTempFile,
   downloadMessageMediaToFile,
-  pruneFetchedMedia,
-} from "./media";
+  pruneFetchedMedia, assertLocalMediaWithinRoots } from "./media";
 import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
@@ -1773,7 +1772,20 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
       extractToolSend: ({ args }: { args: Record<string, unknown> }) => extractToolSend(args, "sendMessage"),
 
-      handleAction: async ({ action, params, cfg, accountId, dryRun: dryRunFlag, toolContext }: {
+      handleAction: async ({
+        action,
+        params,
+        cfg,
+        accountId,
+        dryRun: dryRunFlag,
+        toolContext,
+        // Core scopes every action to the media roots the agent may read, and
+        // bundled channels enforce them. This one used to take `filePath`
+        // verbatim, so a path naming the secret store or the config holding
+        // `sessionString` was uploaded like any attachment.
+        mediaLocalRoots,
+        mediaAccess,
+      }: {
         action: string;
         params: Record<string, unknown>;
         cfg: any;
@@ -1783,7 +1795,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           currentChannelId?: string;
           currentMessageId?: string | number;
         };
+        mediaLocalRoots?: readonly string[];
+        mediaAccess?: { localRoots?: readonly string[] };
       }) => {
+        const allowedMediaRoots = mediaLocalRoots ?? mediaAccess?.localRoots;
         // Core passes the flag beside `params`; callers write it inside.
         // Both count, because a rehearsal flag that is silently ignored puts
         // a real message in a real chat — twice, so far (2.13.1).
@@ -2545,6 +2560,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             throw new Error("clawgram: upload-file requires filePath, path, media, or mediaUrl");
           }
 
+          // Before anything else about the message is considered: an
+          // out-of-scope path is refused, not sent and then regretted.
+          assertLocalMediaWithinRoots(file, allowedMediaRoots);
+
           const captionText = readMessageText(params) || (readStringParam(params, "caption") ?? "");
           // A caption is optional, but the silent-reply sentinel must never
           // reach Telegram as one — same reasoning as the `send` path below.
@@ -2944,11 +2963,20 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         threadId?: string | number | null;
         /** Core's signal that this file is a voice note, not an audio document. */
         audioAsVoice?: boolean;
+        /** The roots the agent may read from, when core scoped this call. */
+        mediaLocalRoots?: readonly string[];
+        mediaAccess?: { localRoots?: readonly string[] };
       }) {
         const gram = runtimes.get(ctx.accountId);
         if (!gram) {
           throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
         }
+
+        // Same rule as the action path: a local file outside the declared
+        // roots is refused before anything is uploaded.
+        const outboundRoots = ctx.mediaLocalRoots ?? ctx.mediaAccess?.localRoots;
+        assertLocalMediaWithinRoots(ctx.filePath, outboundRoots);
+        assertLocalMediaWithinRoots(ctx.mediaUrl, outboundRoots);
 
         actionLog.info("clawgram outbound sendMedia", {
           accountId: ctx.accountId,

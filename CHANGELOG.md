@@ -120,6 +120,16 @@ recorded in `git log` only.
   rather than falling back to a direct connection. The scheme is printed,
   nothing else.
 
+- **An outbound file was never checked against the agent's media roots.** Core
+  scopes every action to the roots the agent may read and bundled channels
+  enforce them, but this channel took `filePath`, `path`, `media` or `mediaUrl`
+  verbatim and handed it to GramJS `sendFile`. An agent talked into naming the
+  secret store, or the config holding `sessionString`, uploaded it to whatever
+  peer it chose. `upload-file`, `send --media` and `outbound.sendMedia` now
+  refuse a local path outside the declared roots, resolving symlinks first. A
+  call core did not scope — the gateway RPC, the voice contour — is unchanged,
+  because refusing those would break sending rather than narrow it.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed

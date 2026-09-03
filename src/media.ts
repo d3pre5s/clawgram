@@ -11,6 +11,9 @@
  * attachment in a window would be a different feature with different costs.
  */
 
+import { realpathSync } from "node:fs";
+import path from "node:path";
+
 export type HistoryMediaKind =
   | "photo"
   | "video"
@@ -304,4 +307,61 @@ function extensionFor(media: HistoryMedia, understanding: InboundMediaUnderstand
   if (media.mimeType === "audio/mpeg") return "mp3";
   if (media.mimeType === "audio/mp4") return "m4a";
   return "ogg";
+}
+
+/**
+ * Whether an outbound `file` is a local path rather than a URL.
+ *
+ * GramJS accepts both, and only a path can reach the host filesystem.
+ */
+export function isLocalMediaPath(file: unknown): file is string {
+  if (typeof file !== "string" || !file.trim()) {
+    return false;
+  }
+
+  return !/^[a-z][a-z0-9+.-]*:/i.test(file.trim());
+}
+
+/**
+ * Refuses an outbound local file that sits outside the roots the host declared.
+ *
+ * Core hands every action the `mediaLocalRoots` the agent is scoped to, and
+ * bundled channels enforce them; this one passed `filePath` straight to
+ * `sendFile`, so a prompt-injected agent could name `/opt/openclaw-secrets/
+ * secrets.json` — or the config holding `sessionString` — and have it uploaded
+ * to any peer. Symlinks are resolved first, because a link inside a root
+ * pointing out of it is the obvious way around a prefix check.
+ *
+ * When the host declares no roots the path is left alone: the gateway RPC and
+ * the TTS contour both send files core never scoped, and refusing them here
+ * would break sending altogether rather than narrow it.
+ */
+export function assertLocalMediaWithinRoots(
+  file: unknown,
+  roots: readonly string[] | undefined,
+): void {
+  if (!isLocalMediaPath(file) || !roots || roots.length === 0) {
+    return;
+  }
+
+  const realPath = (candidate: string): string => {
+    try {
+      return realpathSync(candidate);
+    } catch {
+      return path.resolve(candidate);
+    }
+  };
+
+  const target = realPath(file.trim());
+  const allowed = roots.some((root) => {
+    const resolvedRoot = realPath(root);
+    return target === resolvedRoot || target.startsWith(`${resolvedRoot}${path.sep}`);
+  });
+
+  if (!allowed) {
+    // The path is the agent's own input, not a secret, and naming it is what
+    // makes the refusal actionable. The roots are not listed: they describe
+    // the host's layout.
+    throw new Error(`clawgram: ${file} is outside the media roots this agent may read`);
+  }
 }
