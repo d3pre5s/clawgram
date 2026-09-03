@@ -76,6 +76,7 @@ import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
 import { NewMessage, Raw } from "telegram/events";
+import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
@@ -827,7 +828,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
             const senderId = normalized.senderId ?? normalized.chatId;
             const isTelegramServiceDirect = normalized.chatType === "direct" &&
-              (normalized.chatId === "777000" || senderId === "777000");
+              (normalized.chatId === TELEGRAM_SERVICE_CHAT_ID || senderId === TELEGRAM_SERVICE_CHAT_ID);
             const isSavedMessagesDirect = normalized.chatType === "direct" &&
               Boolean(selfId) &&
               normalized.chatId === selfId &&

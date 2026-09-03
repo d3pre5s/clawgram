@@ -229,6 +229,24 @@ describe("isChatReadable", () => {
     assert.equal(isChatReadable("-100123", "-100123"), true);
     assert.equal(isChatReadable("-100999", "-100123"), false);
   });
+
+  // Telegram's service account sends the login codes for this very account.
+  // The inbound path has always dropped it; the read path had no equivalent,
+  // so `read chatId=777000` returned the current code whenever `readChats`
+  // was absent — which is what `--auth` writes — or held a wildcard.
+  test("never reads Telegram's service chat, whatever readChats says", () => {
+    assert.equal(isChatReadable("777000", undefined), false);
+    assert.equal(isChatReadable("777000", null), false);
+    assert.equal(isChatReadable("777000", [ "*" ]), false);
+    assert.equal(isChatReadable("777000", [ "777000" ]), false);
+    assert.equal(isChatReadable(777000, [ "*" ]), false);
+    assert.equal(isChatReadable(" 777000 ", [ "*" ]), false);
+  });
+
+  test("the service-chat deny does not touch ordinary chats", () => {
+    assert.equal(isChatReadable("-100777000", [ "*" ]), true);
+    assert.equal(isChatReadable("7770001", [ "*" ]), true);
+  });
 });
 
 describe("isWithinWindow", () => {

@@ -15,6 +15,7 @@ export const HISTORY_MAX_LIMIT = 500;
 
 import { describeMedia, type HistoryMedia } from "./media";
 import { resolveActiveUsername } from "./helpers";
+import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 
 export type ListMessagesParams = {
   target: string;
@@ -340,6 +341,14 @@ export function normalizeChatKey(value: unknown): string {
  * rather than a sentence in a prompt that a model may be argued out of.
  */
 export function isChatReadable(target: unknown, readChats?: unknown): boolean {
+  // The inbound path has always dropped Telegram's service chat so login codes
+  // never reach the model; the read path did not, so `read chatId=777000`
+  // handed them over whenever `readChats` was absent (the default `--auth`
+  // writes) or held `*`. The deny is unconditional on purpose: no deployment
+  // has a reason to let the agent read its own login codes, and a config entry
+  // that enabled it would be an account-takeover switch.
+  if (normalizeChatKey(target) === TELEGRAM_SERVICE_CHAT_ID) return false;
+
   if (readChats === undefined || readChats === null) return true;
 
   const entries = (Array.isArray(readChats) ? readChats : [ readChats ])

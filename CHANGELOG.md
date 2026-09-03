@@ -35,6 +35,15 @@ recorded in `git log` only.
   file before the rename; a config that cannot be stat'ed falls back to `0600`.
   `update-config.ts` had no tests at all, so four came with the fix.
 
+- **`read chatId=777000` handed the agent its own Telegram login codes.** The
+  inbound path has dropped Telegram's service chat since the beginning, but the
+  read gate had no equivalent: with `readChats` absent — the default `--auth`
+  writes — or holding `*`, every read action (`read`, `fetch-media`,
+  `participants`, `topics`, `chatInfo`) could pull the current login code, which
+  is an account takeover rather than a privacy lapse. `isChatReadable` now
+  refuses that chat unconditionally, so no config entry can enable it, and the
+  id itself moved to `constants.ts` so both paths name the same thing.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed
