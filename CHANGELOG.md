@@ -111,6 +111,15 @@ recorded in `git log` only.
   now excluded from what may count as being addressed; the body handed to the
   agent is unchanged, and a caption on the same image addresses her as before.
 
+- **`--auth` logged in without the account's proxy.** The interactive flow
+  built its own `TelegramClient` with a hand-rolled options object and read no
+  proxy at all, so the login handshake — phone number, code, 2FA password —
+  went out from the host's real IP even on a deployment whose whole point is
+  that Telegram never sees it. It now uses the same `buildTelegramClientOptions`
+  the channel does, which also means an unresolved SecretRef refuses the login
+  rather than falling back to a direct connection. The scheme is printed,
+  nothing else.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed

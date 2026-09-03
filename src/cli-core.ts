@@ -3,6 +3,7 @@ import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 import { readConfigFileSnapshotForWrite, type OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { CHANNEL_ID } from "./constants";
+import { buildTelegramClientOptions, describeProxy } from "./proxy-config";
 import { createConfigBackup, updateConfigFileDirectly } from "./update-config";
 
 type TelegramAuthResult = {
@@ -143,12 +144,30 @@ function buildConfigFragment(accountId: string, auth: TelegramAuthResult): Recor
   };
 }
 
-async function runTelegramAuthorization(prompt: PromptApi): Promise<TelegramAuthResult> {
+/**
+ * The proxy the account this login is for already uses, if any.
+ *
+ * The login handshake carries the phone number, the code and the 2FA password,
+ * and it used to go out from the host's real IP even on a deployment whose
+ * whole point is that Telegram never sees it: this flow built its own client
+ * and read no proxy at all. An unresolved SecretRef throws out of
+ * `buildTelegramClientOptions` rather than silently falling back to a direct
+ * connection — the same fail-closed rule the channel follows.
+ */
+function resolveAuthProxy(config: OpenClawConfig, accountId: string): unknown {
+  return (config as any)?.channels?.[ CHANNEL_ID ]?.accounts?.[ accountId ]?.proxy;
+}
+
+async function runTelegramAuthorization(prompt: PromptApi, proxy?: unknown): Promise<TelegramAuthResult> {
   const apiId = await prompt.askPositiveInteger("Please enter your apiId: ");
   const apiHash = await prompt.askRequired("Please enter your apiHash: ");
-  const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
-    connectionRetries: 5,
-  });
+  const clientOptions = buildTelegramClientOptions(proxy);
+  if (clientOptions.proxy) {
+    // Scheme only. The host, port and credentials are exactly what must not
+    // reach a terminal, a screen share or CI scrollback.
+    console.log(`Connecting through the account's ${describeProxy(clientOptions.proxy)} proxy.`);
+  }
+  const client = new TelegramClient(new StringSession(""), apiId, apiHash, clientOptions);
 
   try {
     await client.start({
@@ -176,7 +195,8 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
   try {
     console.log("Starting Clawgram authorization...");
 
-    const auth = await runTelegramAuthorization(prompt);
+    const authAccountId = resolveDefaultAccountId(config);
+    const auth = await runTelegramAuthorization(prompt, resolveAuthProxy(config, authAccountId));
     console.log("Telegram authorization completed successfully.");
     console.log("");
     // The session string is a bearer secret for the whole Telegram account.
@@ -186,7 +206,7 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
     console.log(`Session string received (${auth.sessionString.length} chars) — kept out of this output.`);
     console.log("");
 
-    const defaultAccountId = resolveDefaultAccountId(config);
+    const defaultAccountId = authAccountId;
     const rawAccountId = await prompt.ask(`Enter account id for config [${defaultAccountId}]: `);
     const accountId = rawAccountId.trim() || defaultAccountId;
     const shouldUpdateConfig = await prompt.askYesNo("Update OpenClaw config automatically? [y/N]: ", false);
