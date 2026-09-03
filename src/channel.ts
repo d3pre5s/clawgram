@@ -806,13 +806,44 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
             let text = normalized.text?.trim();
 
+            // Whether this sender may reach the agent at all — decided before
+            // the attachment is fetched.
+            //
+            // Reading an attachment downloads up to 25 MB and then spends a
+            // transcription or vision call on it. That used to happen for
+            // every photo and voice note from anyone in any group the account
+            // sits in, and only afterwards was the sender checked against
+            // `allowFrom`. A stranger could therefore spend the owner's model
+            // budget at will. None of these checks depend on the message text,
+            // so they cost nothing to run first.
+            const inboundSenderId = normalized.senderId ?? normalized.chatId;
+            const inboundScopes = resolveAccountScopes(cfg, accountId);
+            const inboundGroupConfig = normalized.chatType === "group"
+              ? resolveGroupConfig(inboundScopes.groups, normalized.chatId)
+              : undefined;
+            const senderMayReachAgent = normalized.chatType === "group"
+              ? Boolean(
+                inboundGroupConfig
+                && inboundGroupConfig.enabled !== false
+                && isSenderAllowed({
+                  allowFrom: inboundGroupConfig.allowFrom,
+                  senderId: inboundSenderId,
+                  senderUsername: normalized.senderUsername,
+                }),
+              )
+              : isSenderAllowed({
+                allowFrom: inboundScopes.allowFrom,
+                senderId: inboundSenderId,
+                senderUsername: normalized.senderUsername,
+              });
+
             // An attachment carries no text of its own, and dropping it as
             // "empty" is how the assistant used to go silent on being spoken
             // to or shown something. Read it into the body instead: for a
             // voice note and a screenshot alike, the attachment *is* the
             // message. A caption is kept and the reading appended, because
             // "look at this" plus the picture is one thought, not two.
-            const attachment = await readInboundAttachment({
+            const attachment = senderMayReachAgent ? await readInboundAttachment({
               gram,
               event,
               cfg,
@@ -821,7 +852,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
               accountId,
               chatId: normalized.chatId,
               messageId: normalized.messageId,
-            });
+            }) : undefined;
             if (attachment) {
               const marker = attachment.understanding === "transcript" ? "голосовое" : "изображение";
               const read = `[${marker}] ${attachment.text}`;
@@ -925,14 +956,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
             throw lastError;
           };
-          // Same resolver as `resolveAccount`, so the gate the inbound path
-          // applies is the one the account was started with. These used to be
-          // two independent reads of the raw config and could disagree.
-          const { allowFrom: directAllowFrom, groups } = resolveAccountScopes(cfg, accountId);
+          // Resolved once, above, before the attachment fetch that depends on
+          // the answer — and by the same resolver `resolveAccount` uses, so the
+          // gate applied here is the one the account was started with.
+          const { allowFrom: directAllowFrom } = inboundScopes;
           const dmPolicy = "open";
 
             if (normalized.chatType === "group") {
-              const groupConfig = resolveGroupConfig(groups, normalized.chatId);
+              const groupConfig = inboundGroupConfig;
               if (!groupConfig) {
                 log?.info?.("clawgram skipping group not present in groups config", {
                   accountId,

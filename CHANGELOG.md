@@ -130,6 +130,18 @@ recorded in `git log` only.
   call core did not scope — the gateway RPC, the voice contour — is unchanged,
   because refusing those would break sending rather than narrow it.
 
+- **A stranger's photo or voice note was downloaded and modelled before the
+  sender was checked.** Reading an inbound attachment fetches up to 25 MB and
+  then spends a transcription or vision call on it, and that ran for every
+  attachment from anyone in any group the account sits in — `allowFrom`, the
+  group config and the mention gate were all consulted afterwards. Anyone who
+  could reach the account could spend the owner's model budget at will.
+
+  None of the checks deciding whether a sender may reach the agent depend on
+  the message text, so they now run first and the fetch is skipped entirely for
+  a sender who would have been refused anyway. The scopes are resolved once and
+  reused by the branches below, which previously recomputed them.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed
