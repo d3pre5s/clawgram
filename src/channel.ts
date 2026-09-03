@@ -642,6 +642,17 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           throw new Error("clawgram: channelRuntime is required");
         }
 
+        // An empty allowlist denies everyone (2.21.0). That is the right
+        // default for a scope, but "the agent answers nobody" is indis-
+        // tinguishable from "the channel is broken" in a log, so say it out
+        // loud once per account start.
+        if (account.allowFrom.length === 0) {
+          log?.warn?.("clawgram allowFrom is empty: no direct message will be accepted", {
+            accountId,
+            hint: 'set allowFrom to ["*"] to accept everyone, or list the senders',
+          });
+        }
+
         if (runtimes.has(accountId)) {
           log?.warn?.("clawgram stale runtime detected, reconnecting", { accountId });
           await runtimes.get(accountId)?.stop().catch(() => undefined);

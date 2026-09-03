@@ -231,7 +231,7 @@ reconnect), not the whole Gateway.
 | `apiId` | number | required | Telegram API ID |
 | `apiHash` | string | required | Telegram API hash |
 | `sessionString` | string | `""` | Authenticated StringSession |
-| `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames for direct messages only |
+| `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames for direct messages only. Three states: absent means everyone, `[]` denies everyone (a warning is logged at account start), a list allows those senders |
 | `groups` | object | `{}` | Allowed groups map keyed by explicit group id or `*` |
 | `proxy` | object | unset | Optional SOCKS4/SOCKS5 proxy for this account — see [Proxy (SOCKS4/SOCKS5)](#proxy-socks4socks5) |
 | `manageChats` | string[] | unset | Chats the assistant may **manage** — see [Chat management](#chat-management). Absent or empty = management off; `["*"]` = every chat |
@@ -245,7 +245,7 @@ Group config fields:
 |---|---|---|---|
 | `enabled` | boolean | `true` | Enables or disables replies in the group |
 | `groupPolicy` | `"open"` \| `"mention"` \| `"tag"` | `"mention"` | What wakes the agent here — see [What wakes the agent in a group](#what-wakes-the-agent-in-a-group) |
-| `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames inside that group |
+| `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames inside that group. `[]` denies everyone, same as the account-level key |
 | `tools` | object | unset | `{ allow?, alsoAllow?, deny? }` — tool policy for this group; see [Per-group tools, skills and system prompt](#per-group-tools-skills-and-system-prompt) |
 | `toolsBySender` | object | unset | Per-sender tool policy inside this group, keys `id:<id>`, `username:<handle>`, `name:<display>` or `*` |
 | `skills` | string[] | unset | Skill allowlist for this group; `[]` = no skills here, unset = the agent's skills |

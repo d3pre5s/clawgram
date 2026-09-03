@@ -276,6 +276,20 @@ function readMessageText(params: Record<string, unknown>): string {
   return "";
 }
 
+/**
+ * Three states, and the empty one is the whole point:
+ *
+ * - absent (or a shape this cannot read) → `["*"]`, the historical default that
+ *   keeps a fresh install usable;
+ * - `"*"` or a non-empty list → itself;
+ * - `[]`, `""`, or a list of blanks → `[]`, which denies everyone.
+ *
+ * The last used to return `["*"]`: an operator who emptied the list to shut the
+ * account off opened it to every Telegram user instead, and the sibling scopes
+ * (`readChats: []`, `manageChats: []`) already read an empty list as deny.
+ * `startAccount` logs a warning when this returns empty, because "nobody can
+ * reach the agent" must not be a silent state.
+ */
 function resolveAllowFrom(value: unknown): string[] {
   if (value === "*") {
     return [ "*" ];
@@ -283,15 +297,14 @@ function resolveAllowFrom(value: unknown): string[] {
 
   if (typeof value === "string" || typeof value === "number") {
     const entry = String(value).trim();
-    return entry ? [ entry ] : [ "*" ];
+    return entry ? [ entry ] : [];
   }
 
   if (!Array.isArray(value)) {
     return [ "*" ];
   }
 
-  const entries = value.map((entry) => String(entry).trim()).filter(Boolean);
-  return entries.length > 0 ? entries : [ "*" ];
+  return value.map((entry) => String(entry).trim()).filter(Boolean);
 }
 
 /**

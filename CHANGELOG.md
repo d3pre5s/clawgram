@@ -9,6 +9,19 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Changed
+
+- **`allowFrom: []` now denies everyone instead of admitting everyone.** An
+  empty list, an empty string, or a list of blanks resolved to the wildcard, so
+  an operator who emptied the list to shut an account off opened it to every
+  Telegram user — while `readChats: []` and `manageChats: []` have always been
+  documented as deny. An absent key still means everyone, so a fresh install is
+  unaffected; only an explicitly empty list changes meaning.
+
+  **Migration:** if you relied on `allowFrom: []` to accept everyone, write
+  `["*"]`. The account logs `clawgram allowFrom is empty: no direct message
+  will be accepted` at start, so the new state is never silent.
+
 ### Fixed
 
 - **Inbound and outbound message bodies were written to the channel log.** The
