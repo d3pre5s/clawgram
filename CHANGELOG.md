@@ -26,6 +26,15 @@ recorded in `git log` only.
   and rejects any key ending in `text` unless it is a predicate (`hasText`), so
   a future rename cannot walk past it again.
 
+- **`--auth` widened the permissions of the config it rewrote.** The atomic
+  write and the backup copy both used `fs.writeFile` with no mode, and
+  `writeFile`'s mode is masked by the umask in any case, so a config the owner
+  had locked to `0600` came back `0644` with `apiHash` and `sessionString` in
+  plaintext — and the backup, which is never cleaned up, was created `0644`
+  from the start. Both now read the current file's mode and `chmod` the temp
+  file before the rename; a config that cannot be stat'ed falls back to `0600`.
+  `update-config.ts` had no tests at all, so four came with the fix.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed

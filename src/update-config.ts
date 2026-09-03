@@ -443,11 +443,29 @@ function buildUpdatedConfigText(raw: string, accountId: string, auth: TelegramAu
   return replaceObjectPropertyValue(raw, channelsProperty, updatedChannels, format);
 }
 
+/**
+ * The config this writes holds `apiHash` and `sessionString` in plaintext, so
+ * the permissions of the file it replaces are part of the credential's
+ * protection. `writeFile`'s own `mode` is masked by the process umask (0644
+ * under the usual 022), which is how a 0600 config came back world-readable
+ * after `--auth`; the explicit `chmod` on the temp file is what actually
+ * fixes it, and it happens before the rename so the config is never briefly
+ * readable at the wrong mode.
+ */
+const SECRET_FILE_MODE = 0o600;
+
+async function readFileMode(filePath: string): Promise<number> {
+  const stats = await fs.stat(filePath).catch(() => null);
+  return stats ? stats.mode & 0o777 : SECRET_FILE_MODE;
+}
+
 async function writeConfigAtomically(configPath: string, raw: string): Promise<void> {
   const tempPath = `${configPath}.tmp-${process.pid}-${Date.now()}`;
+  const mode = await readFileMode(configPath);
 
   try {
-    await fs.writeFile(tempPath, raw, "utf8");
+    await fs.writeFile(tempPath, raw, { encoding: "utf8", mode });
+    await fs.chmod(tempPath, mode);
     await fs.rename(tempPath, configPath);
   } catch (error) {
     await fs.unlink(tempPath).catch(() => undefined);
@@ -461,8 +479,12 @@ export async function createConfigBackup(configPath: string): Promise<string | n
     return null;
   }
 
+  // The backup is a verbatim copy of a credential file and it is never cleaned
+  // up, so it inherits the original's mode rather than the umask default.
+  const mode = await readFileMode(configPath);
   const backupPath = buildConfigBackupPath(configPath);
-  await fs.writeFile(backupPath, raw, "utf8");
+  await fs.writeFile(backupPath, raw, { encoding: "utf8", mode });
+  await fs.chmod(backupPath, mode);
   return backupPath;
 }
 
