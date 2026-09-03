@@ -29,12 +29,31 @@ const FORBIDDEN_LOG_KEYS = new Set([
   "twoFaPassword",
 ]);
 
+// The exact list above kept being outgrown by renames: `payloadText` and
+// `fallbackText` carried whole message bodies past it for four releases. Any
+// key that *ends* in "text" is a body until proven otherwise; a length is
+// spelled `…TextLength` and does not match.
+const FORBIDDEN_LOG_KEY_SUFFIX = /text$/i;
+
+// `hasText: Boolean(ctx.text)` is the shape this repo already uses to say "a
+// body was present" without printing it, so a predicate name is exempt from
+// the suffix rule — the exact list above still applies to it.
+const PREDICATE_LOG_KEY = /^(?:has|is|was|no)[A-Z]/;
+
+const isForbiddenLogKey = (key: string) =>
+  FORBIDDEN_LOG_KEYS.has(key)
+  || (FORBIDDEN_LOG_KEY_SUFFIX.test(key) && !PREDICATE_LOG_KEY.test(key));
+
 type LogCall = { name: string; line: number; keys: string[] };
 
 /** Extracts every `log(...)`-shaped call whose second argument is an object literal. */
 function collectLogCalls(source: string): LogCall[] {
   const calls: LogCall[] = [];
-  const callStart = /(?:actionLog\.(?:info|warn|error|debug)|log\??\.\w+\??)\(\s*"([^"]+)"\s*,\s*\{/g;
+  // `log?.info?.(` is the shape most of this file uses, and the previous
+  // pattern stopped at the second `?.` — so 42 of channel.ts's 87 log calls
+  // were never examined, which is how a whole message body sat in the group
+  // mention gate under a green test. Both optional links are matched now.
+  const callStart = /(?:actionLog|log)\s*\??\.\s*(?:info|warn|error|debug)\s*\??\.?\s*\(\s*"([^"]+)"\s*,\s*\{/g;
 
   for (let match = callStart.exec(source); match; match = callStart.exec(source)) {
     const objectStart = source.indexOf("{", match.index);
@@ -52,7 +71,13 @@ function collectLogCalls(source: string): LogCall[] {
     const body = source.slice(objectStart, end + 1);
     // Top-level-ish key names; nested objects are included on purpose — a body
     // hidden one level deeper is still a body in the journal.
-    const keys = [ ...body.matchAll(/(\w+)\s*:/g) ].map((m) => m[ 1 ]);
+    const named = [ ...body.matchAll(/(\w+)\s*:/g) ].map((m) => m[ 1 ]);
+    // Shorthand properties (`{ text, }`) never reached the check above, which
+    // is exactly how the group mention gate logged whole messages while this
+    // test stayed green. A shorthand key is a bare identifier that is followed
+    // by a comma or the closing brace instead of a colon.
+    const shorthand = [ ...body.matchAll(/[{,]\s*(\w+)\s*(?=[,}])/g) ].map((m) => m[ 1 ]);
+    const keys = [ ...named, ...shorthand ];
 
     calls.push({
       name: match[ 1 ],
@@ -68,7 +93,7 @@ describe("no message bodies or credentials in logs", () => {
   for (const file of [ "channel.ts", "gramjs-client.ts", "history.ts", "joins.ts", "normalize.ts" ]) {
     test(`${file} log calls carry no content or credential keys`, () => {
       const offenders = collectLogCalls(read(file))
-        .map((call) => ({ ...call, bad: call.keys.filter((key) => FORBIDDEN_LOG_KEYS.has(key)) }))
+        .map((call) => ({ ...call, bad: call.keys.filter(isForbiddenLogKey) }))
         .filter((call) => call.bad.length > 0)
         .map((call) => `${file}:${call.line} "${call.name}" logs ${call.bad.join(", ")}`);
 

@@ -1002,7 +1002,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                 wasMentioned,
                 wasReplyToSelf,
                 shouldSkip: mentionDecision.shouldSkip,
-                text,
+                textLength: text.length,
               });
 
               if (groupConfig.groupPolicy !== "open" && mentionDecision.shouldSkip && !wasReplyToSelf) {
@@ -1139,7 +1139,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                         accountId,
                         chatId: normalized.chatId,
                         messageId: normalized.messageId,
-                        payloadText: outboundText,
+                        payloadTextLength: outboundText.length,
                         payloadReplyToId: payload.replyToId ?? null,
                       });
                       if (!outboundText) {
@@ -1270,7 +1270,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                       chatId: normalized.chatId,
                       messageId: normalized.messageId,
                       routeSessionKey: route.sessionKey,
-                      fallbackText: visibleFallbackText,
+                      fallbackTextLength: visibleFallbackText.length,
                     });
 
                     await sendTextToConversation({

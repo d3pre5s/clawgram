@@ -9,6 +9,23 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Inbound and outbound message bodies were written to the channel log.** The
+  group mention gate logged the whole incoming message as a shorthand `text`
+  property, the group deliver path logged `payloadText`, and the transcript
+  fallback logged `fallbackText` — while `README.md` promised message bodies are
+  not logged and a static test was supposed to enforce it. All three now record
+  a length.
+
+  The test missed them twice over. Its call-site pattern stopped at the second
+  optional link, so `log?.info?.(` — the shape most of `channel.ts` uses — never
+  matched: 42 of the file's 87 log calls were never examined. And it read only
+  `key: value` pairs, so the shorthand `text,` was invisible even in the calls it
+  did examine. It now matches both optional links, reads shorthand properties,
+  and rejects any key ending in `text` unless it is a predicate (`hasText`), so
+  a future rename cannot walk past it again.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed
