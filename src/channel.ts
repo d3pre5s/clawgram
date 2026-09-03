@@ -133,8 +133,7 @@ import {
   resolveReplyToMessageIdForTarget,
   readMessageText,
   readVoiceNoteFlag,
-  resolveAllowFrom,
-  resolveGroups,
+  resolveAccountScopes,
   resolveGroupConfig,
   resolveActiveUsername,
   isSenderAllowed,
@@ -616,8 +615,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           apiId: Number(account?.apiId),
           apiHash: readSecretInput(account?.apiHash),
           sessionString: readSecretInput(account?.sessionString),
-          allowFrom: resolveAllowFrom(account?.allowFrom),
-          groups: resolveGroups(account?.groups),
+          ...resolveAccountScopes(cfg, accountId),
           readChats: readAccountReadChats(account),
           enabled: account?.enabled,
           accountId,
@@ -913,12 +911,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
             throw lastError;
           };
-          const accountConfig =
-            cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ] ??
-            cfg?.channels?.[ "clawgram" ] ??
-            {};
-          const directAllowFrom = resolveAllowFrom(accountConfig?.allowFrom ?? account?.allowFrom);
-          const groups = resolveGroups(accountConfig?.groups ?? account?.groups);
+          // Same resolver as `resolveAccount`, so the gate the inbound path
+          // applies is the one the account was started with. These used to be
+          // two independent reads of the raw config and could disagree.
+          const { allowFrom: directAllowFrom, groups } = resolveAccountScopes(cfg, accountId);
           const dmPolicy = "open";
 
             if (normalized.chatType === "group") {

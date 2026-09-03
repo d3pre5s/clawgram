@@ -91,6 +91,15 @@ recorded in `git log` only.
   one, and refuses outright when two keys name two different chats rather than
   picking by key order. Numeric ids are still refused rather than coerced.
 
+- **A channel-level `allowFrom` or `groups` validated and then did nothing.**
+  The manifest declares both per account and at the channel level, but only the
+  account copies were read: an allowlist written one level up passed validation
+  and admitted everyone. The config was also read twice by two independent
+  paths, `resolveAccount` and the inbound handler, which could therefore
+  disagree about the same file. One resolver serves both now — the account's
+  own value wins (a deliberate `[]` included), the channel level is the default
+  beneath it, and groups merge per key instead of replacing wholesale.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed

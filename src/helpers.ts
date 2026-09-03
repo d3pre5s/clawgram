@@ -402,6 +402,33 @@ function resolveGroupPromptSettings(groupConfig: Record<string, unknown> | undef
   return settings;
 }
 
+/**
+ * The sender scopes for one account: who may write, and what each group allows.
+ *
+ * `allowFrom` and `groups` are declared both per account and at the channel
+ * level, and the manifest validates them in both places — but only the account
+ * copies were read, so a channel-level allowlist passed validation and then
+ * admitted everyone. Worse, the config was read twice by two different paths
+ * (`resolveAccount` and the inbound handler), which is how they could disagree
+ * at all. One function serves both now.
+ *
+ * The account's own value wins, including a deliberate `[]`; the channel level
+ * is the default beneath it. Groups merge per key rather than replacing, so a
+ * channel-wide default and a per-account override can coexist.
+ */
+export function resolveAccountScopes(cfg: unknown, accountId: string): {
+  allowFrom: string[];
+  groups: Record<string, ResolvedGroupConfig>;
+} {
+  const channel = (cfg as any)?.channels?.clawgram;
+  const account = channel?.accounts?.[ accountId ];
+
+  return {
+    allowFrom: resolveAllowFrom(account?.allowFrom ?? channel?.allowFrom),
+    groups: { ...resolveGroups(channel?.groups), ...resolveGroups(account?.groups) },
+  };
+}
+
 function resolveGroups(value: unknown): Record<string, ResolvedGroupConfig> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
