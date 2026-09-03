@@ -191,6 +191,23 @@ config watcher and restart only this channel (a few seconds of MTProto
 reconnect), not the whole Gateway.
 
 
+## Upgrading to 2.21.0
+
+One config key changed meaning: **`allowFrom: []` now denies everyone.** It used
+to resolve to the wildcard, so emptying the list to shut an account off opened it
+to every Telegram user instead — the opposite of the request, and the opposite of
+`readChats: []` and `manageChats: []`, which have always been documented as deny.
+
+An absent key still means everyone, so an install that never set `allowFrom` is
+unaffected; only an explicitly empty list changes. If you relied on `[]` to admit
+everyone, write `["*"]`. The account logs `clawgram allowFrom is empty: no direct
+message will be accepted` at start, so the new state is never silent.
+
+This is a behaviour change to a config key and by the usual rule it would cost a
+major bump. It ships as a minor deliberately: the plugin currently has one
+operator, the value is almost certainly nowhere, and the warning makes the case
+loud where it does occur.
+
 ## Configuration Reference
 
 ### JSON Reference

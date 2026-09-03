@@ -2,7 +2,7 @@
   "id": "clawgram",
   "name": "Clawgram",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
-  "version": "2.20.2",
+  "version": "2.21.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -57,7 +57,7 @@
                     "tag"
                   ],
                   "default": "mention",
-                  "description": "What wakes the agent in this chat (2.18.0). `mention` \u2014 the name, an @mention or a reply to it; `open` \u2014 every message, the agent decides for itself whether words are owed; `tag` \u2014 only an explicit @username or a reply, for chats where the name occurs in conversation constantly."
+                  "description": "What wakes the agent in this chat (2.18.0). `mention` — the name, an @mention or a reply to it; `open` — every message, the agent decides for itself whether words are owed; `tag` — only an explicit @username or a reply, for chats where the name occurs in conversation constantly."
                 },
                 "allowFrom": {
                   "type": "array",
@@ -364,7 +364,7 @@
                           "tag"
                         ],
                         "default": "mention",
-                        "description": "What wakes the agent in this chat (2.18.0). `mention` \u2014 the name, an @mention or a reply to it; `open` \u2014 every message; `tag` \u2014 only an explicit @username or a reply."
+                        "description": "What wakes the agent in this chat (2.18.0). `mention` — the name, an @mention or a reply to it; `open` — every message; `tag` — only an explicit @username or a reply."
                       },
                       "allowFrom": {
                         "type": "array",

@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.21.0] — 2026-09-04
+
 ### Changed
 
 - **`allowFrom: []` now denies everyone instead of admitting everyone.** An
