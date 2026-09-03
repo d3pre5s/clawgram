@@ -114,7 +114,7 @@ import {
 import { resolveSecretRefValues } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { PluginConfig, RuntimeMap } from "./types";
-import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
+import { consumeGroupReplyAddress, peekGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import {
   hadTurnSendJustNow,
   hasRecentVisibleGroupReply,
@@ -2655,8 +2655,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             toolContextCurrentChannelId: currentChannelId || null,
           });
 
+          // A dry run reports the suppression instead of impersonating it: the
+          // caller asked what would happen, and what would happen is nothing.
           return jsonResult({
             ok: true,
+            ...(dryRun ? { dryRun: true } : {}),
             suppressedDuplicate: true,
             to,
             accountId: resolvedAccountId,
@@ -2668,7 +2671,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // `replyToId`, and until 2026-08-10 that fell through to the most
         // recent sender: in an interleaved chat the owner's report went out
         // addressed to a colleague who had asked something else entirely.
-        const groupReplyAddress = consumeGroupReplyAddress({
+        // A dry run peeks: consuming the address here left the real send with
+        // no greeting, so a rehearsal silently changed the message that went
+        // out afterwards.
+        const groupReplyAddress = (dryRun ? peekGroupReplyAddress : consumeGroupReplyAddress)({
           accountId: resolvedAccountId,
           chatId: to,
           replyToId: replyToId ?? currentMessageId,

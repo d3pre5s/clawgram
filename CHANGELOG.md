@@ -57,6 +57,15 @@ recorded in `git log` only.
   refuses that chat unconditionally, so no config entry can enable it, and the
   id itself moved to `constants.ts` so both paths name the same thing.
 
+- **A dry-run `send` changed what the real send did.** The `dryRun` return sat
+  after two stateful steps: `consumeGroupReplyAddress` deleted the remembered
+  "@name" for the message being answered, so the rehearsal ate the greeting and
+  the message that actually went out was unaddressed; and the duplicate-reply
+  guard could short-circuit the call, answering `suppressedDuplicate` where the
+  caller had asked for `dryRun`. A dry run now peeks at the address instead of
+  consuming it, and a suppression carries `dryRun: true` alongside, so the
+  rehearsal reports what would happen without being what happens.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed

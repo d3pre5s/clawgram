@@ -58,11 +58,10 @@ export function rememberGroupReplyAddress(input: {
  * to "who am I replying to", so the fallback is gone — callers pass the message
  * the turn is actually answering, and no message means no greeting.
  */
-export function consumeGroupReplyAddress(input: {
-  accountId?: string | null;
-  chatId: unknown;
-  replyToId?: string | number | null;
-}): string | undefined {
+function readGroupReplyAddress(
+  input: { accountId?: string | null; chatId: unknown; replyToId?: string | number | null },
+  consume: boolean,
+): string | undefined {
   const key = buildGroupReplyAddressKey(input);
   if (!key) {
     return undefined;
@@ -73,12 +72,38 @@ export function consumeGroupReplyAddress(input: {
     return undefined;
   }
 
-  groupReplyAddresses.delete(key);
+  if (consume) {
+    groupReplyAddresses.delete(key);
+  }
+
   if (stored.expiresAt < Date.now()) {
     return undefined;
   }
 
   return stored.address;
+}
+
+export function consumeGroupReplyAddress(input: {
+  accountId?: string | null;
+  chatId: unknown;
+  replyToId?: string | number | null;
+}): string | undefined {
+  return readGroupReplyAddress(input, true);
+}
+
+/**
+ * The same lookup without the delete, for a dry run.
+ *
+ * A rehearsal that consumed the address changed what the real send would do:
+ * the greeting was gone by the time the message actually went out. A dry run
+ * has to answer "what would happen" without being the thing that happens.
+ */
+export function peekGroupReplyAddress(input: {
+  accountId?: string | null;
+  chatId: unknown;
+  replyToId?: string | number | null;
+}): string | undefined {
+  return readGroupReplyAddress(input, false);
 }
 
 /** Test seam: the map is module state, and suites must not leak into each other. */
