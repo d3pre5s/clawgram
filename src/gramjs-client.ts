@@ -243,6 +243,7 @@ export class GramJsClientManager {
   private client: TelegramClient;
   private proxy: TelegramProxyConfig | undefined;
   private started = false;
+  private connected = false;
 
   constructor(private readonly config: PluginConfig) {
     // Credentials may be written as SecretRefs; account start-up resolves them
@@ -275,11 +276,24 @@ export class GramJsClientManager {
   async start(): Promise<void> {
     if (this.started) return;
 
-    await this.client.connect();
+    // `connect()` starts the update loop before anything is known about the
+    // session, so a revoked or expired one used to throw with `started` still
+    // false — and `stop()`, which returned early on exactly that flag, then
+    // left a connected client retrying forever. That is the same leak 2.17.1
+    // fixed for the ordinary teardown path, reached through the failure path
+    // instead.
+    try {
+      await this.client.connect();
+      this.connected = true;
 
-    const authorized = await this.client.checkAuthorization();
-    if (!authorized) {
-      throw new Error("GramJS client connected, but session is not authorized.");
+      const authorized = await this.client.checkAuthorization();
+      if (!authorized) {
+        throw new Error("GramJS client connected, but session is not authorized.");
+      }
+    } catch (error) {
+      await this.client.destroy().catch(() => undefined);
+      this.connected = false;
+      throw error;
     }
 
     this.started = true;
@@ -301,9 +315,15 @@ export class GramJsClientManager {
    * before a restart, ~4.5/min after one.
    */
   async stop(): Promise<void> {
-    if (!this.started) return;
-    await this.client.destroy();
+    // Keyed on `connected`, not `started`: a client whose `connect()` succeeded
+    // and whose authorization then failed never set `started`, and the old
+    // guard let it keep its update loop. A client that never connected is
+    // still left alone, and a second `stop()` still destroys nothing.
+    if (!this.started && !this.connected) return;
+
+    await this.client.destroy().catch(() => undefined);
     this.started = false;
+    this.connected = false;
   }
 
   getClient(): TelegramClient {

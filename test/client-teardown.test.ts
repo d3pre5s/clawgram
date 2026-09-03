@@ -53,4 +53,55 @@ describe("client teardown", () => {
 
     assert.deepEqual(calls, [ "destroy" ]);
   });
+
+  /**
+   * `connect()` starts the update loop before the session is known to be good.
+   * A revoked or expired session therefore threw out of `start()` with
+   * `started` still false, and `stop()` — which used to return on that flag —
+   * left the loop spinning: the 2.17.1 leak, reached through the failure path
+   * rather than the ordinary one. It surfaces whenever a channel restart meets
+   * a dead session, which is precisely when restarts are being attempted.
+   */
+  function managerWithUnauthorizedClient() {
+    const calls: string[] = [];
+    const manager = Object.create(GramJsClientManager.prototype) as any;
+    manager.started = false;
+    manager.connected = false;
+    manager.client = {
+      connect: async () => { calls.push("connect"); },
+      checkAuthorization: async () => { calls.push("checkAuthorization"); return false; },
+      destroy: async () => { calls.push("destroy"); },
+      disconnect: async () => { calls.push("disconnect"); },
+    };
+    return { manager, calls };
+  }
+
+  test("a connected but unauthorized client is destroyed by start() itself", async () => {
+    const { manager, calls } = managerWithUnauthorizedClient();
+
+    await assert.rejects(() => manager.start(), /not authorized/);
+
+    assert.deepEqual(calls, [ "connect", "checkAuthorization", "destroy" ]);
+    assert.equal(manager.started, false);
+    assert.equal(manager.connected, false);
+  });
+
+  test("a client that failed to connect is destroyed too", async () => {
+    const { manager, calls } = managerWithUnauthorizedClient();
+    manager.client.connect = async () => { calls.push("connect"); throw new Error("network down"); };
+
+    await assert.rejects(() => manager.start(), /network down/);
+
+    assert.deepEqual(calls, [ "connect", "destroy" ]);
+  });
+
+  test("stop() still destroys a client that connected but never authorized", async () => {
+    const { manager, calls } = managerWithUnauthorizedClient();
+    manager.connected = true;
+
+    await manager.stop();
+
+    assert.deepEqual(calls, [ "destroy" ]);
+    assert.equal(manager.connected, false);
+  });
 });

@@ -66,6 +66,18 @@ recorded in `git log` only.
   consuming it, and a suppression carries `dryRun: true` alongside, so the
   rehearsal reports what would happen without being what happens.
 
+- **A dead session leaked a GramJS update loop on every channel restart.**
+  `start()` calls `connect()` — which starts the loop unconditionally — before
+  `checkAuthorization()`, so a revoked or expired session threw with `started`
+  still false, and `stop()` returned early on exactly that flag: the connected
+  client kept retrying and logging `Error: TIMEOUT` forever. This is the 2.17.1
+  leak reached through the failure path, and it surfaces precisely when
+  restarts are being attempted against a session that no longer works.
+  `start()` now destroys the client on any failure, and `stop()` keys on
+  whether the client ever connected rather than on whether it fully started.
+  Stopping a client that never connected still touches nothing, and stopping
+  twice still destroys once.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed
