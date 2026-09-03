@@ -134,6 +134,7 @@ import {
   readMessageText,
   readVoiceNoteFlag,
   resolveAccountScopes,
+  resolveAddressableText,
   resolveGroupConfig,
   resolveActiveUsername,
   isSenderAllowed,
@@ -828,6 +829,20 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
               text = text ? `${text}\n\n${read}` : read;
             }
 
+            // What the mention gate is allowed to read.
+            //
+            // A transcript is the sender's own speech, so "Тина, посмотри"
+            // said aloud addresses the agent exactly as typing it would. A
+            // description is not: it is a vision model reading somebody
+            // else's content, and a screenshot of a chat where a third party
+            // wrote "@tina_bot" is not an address to her. Feeding the whole
+            // body to the gate made every such screenshot wake her up.
+            const addressableText = resolveAddressableText({
+              messageText: normalized.text,
+              bodyText: text,
+              understanding: attachment?.understanding,
+            });
+
             if (!text) {
               log?.info?.("clawgram skipping empty inbound text", {
                 accountId,
@@ -973,12 +988,12 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
               // almost never. Only the `@` counts, and it is the same fact the
               // stricter rung of the ladder is named after.
               const wasMentioned = groupConfig.groupPolicy === "tag"
-                ? hasExplicitTelegramMention({ selfUsername, text, message: rawMessage })
+                ? hasExplicitTelegramMention({ selfUsername, text: addressableText, message: rawMessage })
                 : hasTelegramMention({
                   cfg,
                   agentId: route.agentId,
                   selfUsername,
-                  text,
+                  text: addressableText,
                   message: rawMessage,
                 });
               // One fetch serves two needs: the reply-to-self gate below and
@@ -990,7 +1005,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                 facts: {
                   canDetectMention: true,
                   wasMentioned,
-                  hasAnyMention: /(^|\s)@[a-zA-Z0-9_]{5,}\b/.test(text),
+                  hasAnyMention: /(^|\s)@[a-zA-Z0-9_]{5,}\b/.test(addressableText),
                 },
                 policy: {
                   isGroup: true,

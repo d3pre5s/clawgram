@@ -100,6 +100,17 @@ recorded in `git log` only.
   own value wins (a deliberate `[]` included), the channel level is the default
   beneath it, and groups merge per key instead of replacing wholesale.
 
+- **A screenshot naming the agent woke her up.** The group mention gate read
+  the whole assembled body, attachment reading included, so a vision model's
+  description of somebody else's content counted as an address: a screenshot of
+  a chat where a third party wrote `@tina_bot`, or a photo of a poster carrying
+  the name, walked straight through `groupPolicy: "mention"` and `"tag"`.
+
+  A transcript is different in kind — it is the sender speaking, so "Тина,
+  посмотри" said aloud must keep working, and it does. Only descriptions are
+  now excluded from what may count as being addressed; the body handed to the
+  agent is unchanged, and a caption on the same image addresses her as before.
+
 ## [2.20.1] — 2026-09-02
 
 ### Fixed

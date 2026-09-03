@@ -198,6 +198,31 @@ function readLatestAssistantFallbackFromTranscript(sessionKey: string, storePath
 }
 
 /**
+ * The part of an inbound message the mention gate may read.
+ *
+ * A voice transcript is the sender's own speech: "Тина, посмотри" said aloud
+ * addresses the agent exactly as typing it would, and gating on the caption
+ * alone would make her deaf to being spoken to. A vision description is not
+ * speech — it is a model reading somebody else's content, so a screenshot of a
+ * chat in which a third party wrote `@tina_bot`, or a photo of a poster
+ * bearing the name, used to count as an address and wake her up.
+ *
+ * The body handed to the agent is unaffected; only what may count as being
+ * addressed is narrowed.
+ */
+export function resolveAddressableText(input: {
+  messageText?: string;
+  bodyText?: string;
+  understanding?: "transcript" | "description";
+}): string {
+  if (input.understanding === "description") {
+    return input.messageText?.trim() ?? "";
+  }
+
+  return input.bodyText?.trim() ?? input.messageText?.trim() ?? "";
+}
+
+/**
  * The chat named by a call, in the spellings this channel accepts.
  *
  * Five parsers spelled this chain out separately and none of them read
