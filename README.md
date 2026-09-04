@@ -825,6 +825,20 @@ they sat in a shared `/tmp` at 0644 for a day, readable by every local account o
 else removes them, and nothing sends them anywhere — putting a fetched file in a chat is an ordinary
 `upload-file`, with whatever confirmation the deployment requires for that.
 
+## Dependencies are pinned, and the lock ships
+
+`installDependencies: true` tells OpenClaw to run an install in the plugin
+directory, so what lands on the host is whatever the registry serves that day —
+and the MTProto client sees `apiHash`, `sessionString`, the proxy credentials
+and every message. Since 2.21.1 the two runtime dependencies are pinned to
+exact versions and `npm-shrinkwrap.json` is part of the published tarball, so an
+install reproduces the tree the tests ran against rather than resolving a caret
+range. `npm ci --ignore-scripts` verifies it.
+
+The transitive `ip-address` is held at 10.7.0 through `overrides`: everything at
+or below 10.3.0 carries three advisories about SSRF and trust-boundary bypass,
+and it sits under the SOCKS proxy path this channel uses.
+
 ## Security and privacy
 
 This plugin holds credentials for a real Telegram account and handles private correspondence. What

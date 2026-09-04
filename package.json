@@ -28,7 +28,8 @@
     "dist",
     "package.json",
     "openclaw.plugin.json",
-    "README.md"
+    "README.md",
+    "npm-shrinkwrap.json"
   ],
   "author": "Konstantin Dipezh (d3pre5s)",
   "contributors": [
@@ -64,7 +65,10 @@
   },
   "installDependencies": true,
   "dependencies": {
-    "json5": "^2.2.3",
-    "telegram": "^2.26.22"
+    "json5": "2.2.3",
+    "telegram": "2.26.22"
+  },
+  "overrides": {
+    "ip-address": "10.7.0"
   }
 }
