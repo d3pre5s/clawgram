@@ -252,12 +252,20 @@ export async function downloadMessageMediaToFile(params: {
     return undefined;
   }
 
-  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { mkdir, writeFile, chmod } = await import("node:fs/promises");
   const { join } = await import("node:path");
-  await mkdir(params.dir, { recursive: true });
+  // Личная переписка на диске: каталог и файл принадлежат только агенту.
+  // По умолчанию (umask 022) выходило 0755/0644, то есть вложения из личных
+  // чатов читал любой локальный пользователь — на этом же хосте живёт
+  // gitlab-runner (A5-13). `mode` у mkdir и writeFile маскируется umask,
+  // поэтому права выставляются отдельным chmod, как это уже делается для
+  // конфига в update-config.ts.
+  await mkdir(params.dir, { recursive: true, mode: 0o700 });
+  await chmod(params.dir, 0o700).catch(() => undefined);
   const extension = extensionFor(described, understanding);
   const path = join(params.dir, params.fileNameFor({ media: described, extension }));
-  await writeFile(path, buffer);
+  await writeFile(path, buffer, { mode: 0o600 });
+  await chmod(path, 0o600).catch(() => undefined);
   return { path, mimeType: described.mimeType, understanding, media: described };
 }
 

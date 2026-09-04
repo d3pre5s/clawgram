@@ -456,3 +456,31 @@ describe("core's target policy lets the call through", () => {
     }
   });
 });
+
+describe("fetched attachments are not readable by the rest of the host", () => {
+  // In file/both mode the attachment lands on disk and lives until the prune.
+  // Under the default umask that was 0755/0644 in a shared /tmp, so private
+  // chat images and voice notes were readable by every local account for a
+  // day — the deploy runner shares this host (A5-13).
+  it("writes the directory 0700 and the file 0600", async () => {
+    const { mkdtemp, stat, rm } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const base = await mkdtemp(path.join(os.tmpdir(), "clawgram-perm-"));
+    const dir = path.join(base, "fetched");
+    try {
+      const saved = await downloadMessageMediaToFile({
+        client: { downloadMedia: async () => Buffer.from("payload") } as any,
+        message: { media: { className: "MessageMediaPhoto", photo: { id: 1 } } } as any,
+        maxBytes: 1024 * 1024,
+        dir,
+        fileNameFor: () => "attachment.jpg",
+      });
+      assert.ok(saved, "nothing was written");
+      assert.equal((await stat(dir)).mode & 0o777, 0o700);
+      assert.equal((await stat(saved!.path)).mode & 0o777, 0o600);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+});

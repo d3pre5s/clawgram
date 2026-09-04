@@ -817,10 +817,13 @@ nothing is not an error — it says which nothing it was:
 A reading that fails while the download succeeded still returns `ok: true`, with `readError` beside
 the path: the bytes are already there and can still be forwarded.
 
-**Fetched files live in the system temp directory** (`clawgram-fetched/`), named after the chat and
-message they came from, and are pruned after 24 hours by the next fetch. Nothing else removes them,
-and nothing sends them anywhere — putting a fetched file in a chat is an ordinary `upload-file`,
-with whatever confirmation the deployment requires for that.
+**Fetched files live under the OpenClaw state directory** (`$OPENCLAW_STATE_DIR/tmp/clawgram-fetched/`,
+falling back to the system temp directory when that variable is unset), named after the chat and
+message they came from, and are pruned an hour later by the next fetch. The directory is created
+0700 and each file written 0600: these are private-chat images and voice notes, and until 2.21.1
+they sat in a shared `/tmp` at 0644 for a day, readable by every local account on the host. Nothing
+else removes them, and nothing sends them anywhere — putting a fetched file in a chat is an ordinary
+`upload-file`, with whatever confirmation the deployment requires for that.
 
 ## Security and privacy
 

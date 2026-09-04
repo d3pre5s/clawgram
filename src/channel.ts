@@ -19,7 +19,10 @@ const INBOUND_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
  * that a chat full of images does not silently become a copy of itself in the
  * temp directory.
  */
-const FETCHED_MEDIA_TTL_MS = 24 * 60 * 60 * 1000;
+// Час, а не сутки: `fetch-media` существует ради «прочитать и переслать», и
+// файл нужен ровно на время хода. Сутки означали сутки чужой личной переписки
+// на диске (A5-13).
+const FETCHED_MEDIA_TTL_MS = 60 * 60 * 1000;
 
 /**
  * What this channel promises the Gateway.
@@ -1997,11 +2000,19 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // the shared directory is keyed by chat and message, and deleting
           // that path would pull the file out from under an earlier `both`
           // fetch of the same message that handed the caller a path.
-          const sharedFetchDir = path.join(os.tmpdir(), "clawgram-fetched");
+          // Не общий /tmp: там файлы видит каждый локальный пользователь, а на
+          // этом хосте живёт ещё и раннер деплоя. Каталог состояния OpenClaw
+          // принадлежит агенту; если он не задан, остаётся /tmp — но права
+          // 0700/0600 ставятся в любом случае (A5-13).
+          const mediaRoot = process.env.OPENCLAW_STATE_DIR?.trim()
+            ? path.join(process.env.OPENCLAW_STATE_DIR.trim(), "tmp")
+            : os.tmpdir();
+          const sharedFetchDir = path.join(mediaRoot, "clawgram-fetched");
           let fetchDir = sharedFetchDir;
           if (fetchParams.mode === "read") {
-            const { mkdtemp } = await import("node:fs/promises");
-            fetchDir = await mkdtemp(path.join(os.tmpdir(), "clawgram-media-"));
+            const { mkdtemp, mkdir } = await import("node:fs/promises");
+            await mkdir(mediaRoot, { recursive: true, mode: 0o700 });
+            fetchDir = await mkdtemp(path.join(mediaRoot, "clawgram-media-"));
           } else {
             await pruneFetchedMedia(sharedFetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
           }
