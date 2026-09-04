@@ -40,7 +40,7 @@ export function secretRefKey(ref: SecretRefLike): string {
  * reference" rather than as an error, so a typo cannot be mistaken for a
  * resolvable secret and silently blank a credential.
  */
-function asSecretRef(value: unknown): SecretRefLike | undefined {
+export function asSecretRef(value: unknown): SecretRefLike | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
   }

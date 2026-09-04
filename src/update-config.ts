@@ -3,6 +3,7 @@ import path from "node:path";
 import JSON5 from "json5";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { CHANNEL_ID } from "./constants";
+import { asSecretRef } from "./secret-refs";
 
 type TelegramAuthResult = {
   apiId: number;
@@ -69,6 +70,35 @@ function buildAccountConfigFragment(auth: TelegramAuthResult): Record<string, un
   };
 }
 
+/**
+ * Credentials already moved into the secret store must survive re-auth.
+ *
+ * An account whose apiHash/sessionString were migrated to `{source, provider,
+ * id}` had them overwritten with the literal strings typed during the
+ * interactive flow: the spread put the fresh payload on top of the reference.
+ * So an operator re-authorising after a session expiry silently undid the
+ * migration and left plaintext credentials in a file that gets backed up and
+ * synced — the exact thing secret-refs.ts was written to prevent.
+ *
+ * The reference wins. The new value is handed back so the caller can tell the
+ * operator to store it where the reference points; it is never written to the
+ * config, and never printed here.
+ */
+export function keepSecretRefs(
+  existingAccount: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): { payload: Record<string, unknown>; kept: string[] } {
+  const next = { ...payload };
+  const kept: string[] = [];
+  for (const field of [ "apiHash", "sessionString" ]) {
+    if (asSecretRef(existingAccount?.[ field ])) {
+      next[ field ] = existingAccount[ field ];
+      kept.push(field);
+    }
+  }
+  return { payload: next, kept };
+}
+
 function applyAuthToConfig(config: OpenClawConfig, accountId: string, auth: TelegramAuthResult): OpenClawConfig {
   const channels = config.channels && typeof config.channels === "object" ? config.channels : {};
   const channelConfig = channels[ CHANNEL_ID ] && typeof channels[ CHANNEL_ID ] === "object" ? channels[ CHANNEL_ID ] : {};
@@ -85,7 +115,7 @@ function applyAuthToConfig(config: OpenClawConfig, accountId: string, auth: Tele
           ...accounts,
           [ accountId ]: {
             ...existingAccount,
-            ...buildAccountPayload(auth),
+            ...keepSecretRefs(existingAccount, buildAccountPayload(auth)).payload,
             enabled: existingAccount.enabled ?? true,
             allowFrom: existingAccount.allowFrom ?? [ "*" ],
             groups: existingAccount.groups ?? {
@@ -488,13 +518,31 @@ export async function createConfigBackup(configPath: string): Promise<string | n
   return backupPath;
 }
 
-export async function updateConfigFileDirectly(configPath: string, accountId: string, auth: TelegramAuthResult): Promise<void> {
+/**
+ * Which credentials stayed as secret-store references, so the caller can say
+ * so. Silence here would be the worst outcome: the operator would believe the
+ * freshly issued credential is in the config and find out at the next start.
+ */
+export function secretRefFieldsFor(raw: string, accountId: string): string[] {
+  let parsed: unknown;
+  try { parsed = JSON5.parse(raw); } catch { return []; }
+  if (!isPlainObject(parsed)) return [];
+  const channels = isPlainObject(parsed.channels) ? parsed.channels : {};
+  const channel = isPlainObject(channels[ CHANNEL_ID ]) ? channels[ CHANNEL_ID ] as Record<string, unknown> : {};
+  const accounts = isPlainObject(channel.accounts) ? channel.accounts as Record<string, unknown> : {};
+  const account = isPlainObject(accounts[ accountId ]) ? accounts[ accountId ] as Record<string, unknown> : {};
+  return [ "apiHash", "sessionString" ].filter((field) => asSecretRef(account[ field ]));
+}
+
+export async function updateConfigFileDirectly(configPath: string, accountId: string, auth: TelegramAuthResult): Promise<string[]> {
   const raw = await fs.readFile(configPath, "utf8");
+  const keptRefs = secretRefFieldsFor(raw, accountId);
   const nextRaw = buildUpdatedConfigText(raw, accountId, auth);
 
   if (nextRaw === raw) {
-    return;
+    return keptRefs;
   }
 
   await writeConfigAtomically(configPath, nextRaw);
+  return keptRefs;
 }

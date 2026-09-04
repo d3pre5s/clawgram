@@ -234,11 +234,21 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
 
     try {
       const backupPath = await createConfigBackup(snapshot.path);
-      await updateConfigFileDirectly(snapshot.path, accountId, auth);
+      const keptRefs = await updateConfigFileDirectly(snapshot.path, accountId, auth);
 
       console.log("");
       console.log(`OpenClaw config updated: ${snapshot.path}`);
       console.log(`Configured account id: ${accountId}`);
+      if (keptRefs.length > 0) {
+        // Не записали — значит обязаны сказать. Иначе оператор уйдёт в
+        // уверенности, что новые значения в конфиге, и узнает обратное при
+        // следующем старте.
+        console.log("");
+        console.log(`Kept in the secret store, NOT overwritten: ${keptRefs.join(", ")}`);
+        console.log("The freshly issued values are not in the config. Put them into the");
+        console.log("secret store the references point at, or the account will start with");
+        console.log("the previous credentials.");
+      }
       if (backupPath) {
         console.log(`Config backup created: ${backupPath}`);
       }
