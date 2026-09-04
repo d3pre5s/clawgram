@@ -9,6 +9,27 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.21.1] — 2026-09-04
+
+### Fixed
+
+- **The tool hints never said how `read` names its chat, and the neighbouring
+  hints taught the wrong answer.** `read` is in core's own vocabulary, so core
+  resolves the destination itself and reads only `to`/`target`; `chatId` is
+  silently ignored and the call comes back as `Action read requires a target`.
+  The chat-shaped reads beside it — `thread-list`, `channel-info`,
+  `member-info` — are the exact opposite, because core does not know them and
+  the plugin parses `chatId` itself. Nothing stated that asymmetry, so agents
+  generalised from the closest hint and addressed `read` with `chatId`.
+
+  Measured on the live server on 2026-09-04: `read` with `chatId` refused,
+  the same call with `target` returned messages. The cost was 745 refused
+  reads in the week before, and 32 more in a single cron run after.
+
+  The hint now names `target` for `read` explicitly, says `chatId` is wrong
+  there, and points at the asymmetry so the neighbouring convention stops
+  reading like a contradiction. A test asserts the hint keeps saying it.
+
 ## [2.21.0] — 2026-09-04
 
 ### Changed

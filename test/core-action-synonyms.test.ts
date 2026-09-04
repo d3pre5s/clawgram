@@ -100,3 +100,25 @@ describe("advertised actions are reachable", () => {
     }
   });
 });
+
+/**
+ * Core resolves the destination for actions in its own vocabulary and reads
+ * only `to`/`target`; a plugin channel's `chatId` never reaches it. For the
+ * actions core does NOT know the convention is the exact opposite — they take
+ * `chatId`. Agents generalise from the neighbouring hints and get it wrong:
+ * 745 refused reads in the week before 2026-09-04, and 32 more in a single
+ * cron run afterwards. The asymmetry has to be stated where the agent reads.
+ */
+describe("the read/target convention is spelled out", () => {
+  const channel = createChannelPlugin(new Map() as RuntimeMap) as any;
+  const hints: string[] = channel.agentPrompt.messageToolHints();
+
+  it("tells the agent that read is addressed by target, not chatId", () => {
+    const hint = hints.find((h) => h.includes("`read`") && h.includes("`target`"));
+    assert.ok(hint, "no hint names target as the way to address `read`");
+    assert.ok(
+      /never `chatId`|not `chatId`/.test(hint!),
+      "the hint must say chatId is wrong here — that is the mistake being made",
+    );
+  });
+});
