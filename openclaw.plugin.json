@@ -561,6 +561,17 @@
           "help": "Trusted prompt block appended for messages from this group — the place to state what this chat is about and what stays out of it.",
           "advanced": true
         },
+        "accounts.*.apiHash": {
+          "label": "API Hash",
+          "help": "The account's API hash from my.telegram.org. Together with the session string it is a bearer credential for everything this account can reach.",
+          "sensitive": true
+        },
+        "accounts.*.sessionString": {
+          "label": "Session String",
+          "help": "The logged-in session for this account. Whoever holds it is logged in as this account — no password, no 2FA.",
+          "sensitive": true,
+          "advanced": true
+        },
         "accounts.*.twoFaPassword": {
           "label": "2FA Password",
           "help": "The account's Telegram two-step verification password. Only needed for ownership transfer.",

@@ -294,6 +294,38 @@ describe("account schema accepts what the code reads", () => {
   });
 });
 
+describe("openclaw.plugin.json credential uiHints", () => {
+  // Every field the account schema requires and that can hold a SecretRef is a
+  // bearer credential: apiHash and sessionString open everything the account
+  // can reach, and sessionString needs neither password nor 2FA. They were
+  // rendered unmasked in the config UI, so a screenshot or a shoulder was
+  // enough to take them.
+  const bearer = [ "accounts.*.apiHash", "accounts.*.sessionString" ];
+
+  for (const key of bearer) {
+    test(`${key} is marked sensitive`, () => {
+      assert.equal(channelUiHints[ key ]?.sensitive, true);
+    });
+  }
+
+  test("every SecretRef-capable required field has a sensitive hint", () => {
+    // Derived from the schema rather than restated here: a new credential
+    // field would otherwise be added without anyone noticing it renders plain.
+    const account = channelSchema.properties.accounts.additionalProperties;
+    const required = account.required ?? [];
+    const secretRefCapable = required.filter((name: string) => {
+      const prop = account.properties?.[ name ];
+      return Array.isArray(prop?.anyOf)
+        && prop.anyOf.some((variant: { type?: string }) => variant?.type === "object");
+    });
+    assert.ok(secretRefCapable.length > 0, "schema exposes no SecretRef-capable required field");
+    for (const name of secretRefCapable) {
+      assert.equal(channelUiHints[ `accounts.*.${name}` ]?.sensitive, true,
+        `accounts.*.${name} can hold a credential and renders unmasked`);
+    }
+  });
+});
+
 describe("openclaw.plugin.json twoFaPassword uiHints", () => {
   // The dashboard must mask this field exactly as it masks the proxy password.
   test("twoFaPassword is marked sensitive", () => {
