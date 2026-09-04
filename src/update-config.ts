@@ -9,6 +9,7 @@ type TelegramAuthResult = {
   apiId: number;
   apiHash: string;
   sessionString: string;
+  selfId?: string;
 };
 
 type TextFormat = {
@@ -56,17 +57,12 @@ function buildAccountPayload(auth: TelegramAuthResult): Record<string, unknown> 
   };
 }
 
+/** Первый конфиг закрыт: см. одноимённую функцию в cli-core.ts. */
 function buildAccountConfigFragment(auth: TelegramAuthResult): Record<string, unknown> {
   return {
     ...buildAccountPayload(auth),
-    allowFrom: [ "*" ],
-    groups: {
-      "*": {
-        enabled: true,
-        groupPolicy: "mention",
-        allowFrom: [ "*" ],
-      },
-    },
+    allowFrom: auth.selfId ? [ auth.selfId ] : [],
+    readChats: [],
   };
 }
 
@@ -117,14 +113,10 @@ function applyAuthToConfig(config: OpenClawConfig, accountId: string, auth: Tele
             ...existingAccount,
             ...keepSecretRefs(existingAccount, buildAccountPayload(auth)).payload,
             enabled: existingAccount.enabled ?? true,
-            allowFrom: existingAccount.allowFrom ?? [ "*" ],
-            groups: existingAccount.groups ?? {
-              "*": {
-                enabled: true,
-                groupPolicy: "mention",
-                allowFrom: [ "*" ],
-              },
-            },
+            // Существующие настройки не трогаем — повторная авторизация не
+            // повод переписать чужие решения. Отсутствующие садятся закрытыми.
+            allowFrom: existingAccount.allowFrom ?? (auth.selfId ? [ auth.selfId ] : []),
+            readChats: existingAccount.readChats ?? [],
           },
         },
       },

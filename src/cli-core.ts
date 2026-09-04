@@ -10,6 +10,8 @@ type TelegramAuthResult = {
   apiId: number;
   apiHash: string;
   sessionString: string;
+  /** Own telegram id, so the first config can allow the operator and nobody else. */
+  selfId?: string;
 };
 
 type PromptApi = {
@@ -115,20 +117,29 @@ function resolveDefaultAccountId(config: OpenClawConfig): string {
   return firstAccountId?.trim() || "default";
 }
 
-function buildAccountConfigFragment(auth: TelegramAuthResult): Record<string, unknown> {
+/**
+ * Первый конфиг закрыт, а не открыт.
+ *
+ * Раньше сюда садились `allowFrom: ["*"]` и групповая запись `"*"`, а
+ * `readChats` не задавался вовсе — то есть сразу после `--auth` написать
+ * агенту в личку мог кто угодно, добавить его в группу и позвать по @ — тоже,
+ * а `read` доставал историю любого чата, в котором состоит личный аккаунт.
+ * Первый запуск не должен быть дырой, которую оператор потом закрывает
+ * (находка A5-09).
+ *
+ * `allowFrom` — сам авторизовавшийся. Если его id узнать не удалось, список
+ * пуст: закрыто для всех, и об этом печатается строка. Групповой записи нет:
+ * группы добавляются осознанно. `readChats: []` — пустой массив, а не
+ * отсутствие ключа: у него это разные вещи, и нужен именно запрет.
+ */
+export function buildAccountConfigFragment(auth: TelegramAuthResult): Record<string, unknown> {
   return {
     enabled: true,
     apiId: auth.apiId,
     apiHash: auth.apiHash,
     sessionString: auth.sessionString,
-    allowFrom: [ "*" ],
-    groups: {
-      "*": {
-        enabled: true,
-        groupPolicy: "mention",
-        allowFrom: [ "*" ],
-      },
-    },
+    allowFrom: auth.selfId ? [ auth.selfId ] : [],
+    readChats: [],
   };
 }
 
@@ -179,10 +190,23 @@ async function runTelegramAuthorization(prompt: PromptApi, proxy?: unknown): Pro
       },
     });
 
+    // Кто именно авторизовался — чтобы первый конфиг открывал доступ ему,
+    // а не всем. Сбой здесь не повод падать: без id набор будет закрытым,
+    // и оператору об этом скажут.
+    let selfId: string | undefined;
+    try {
+      const me: any = await client.getMe();
+      const id = me?.id;
+      if (id !== undefined && id !== null) selfId = String(id);
+    } catch {
+      selfId = undefined;
+    }
+
     return {
       apiId,
       apiHash,
       sessionString: String(client.session.save()),
+      selfId,
     };
   } finally {
     await client.destroy().catch(() => undefined);
@@ -239,6 +263,19 @@ async function runTelegramUserbotAuth(config: OpenClawConfig): Promise<void> {
       console.log("");
       console.log(`OpenClaw config updated: ${snapshot.path}`);
       console.log(`Configured account id: ${accountId}`);
+      // Кто теперь может к нему обратиться — одной строкой, сразу.
+      // «Настроено» и «настроено так, как думает оператор» — разные вещи,
+      // и вторая проверяется только если её показать.
+      console.log("");
+      if (auth.selfId) {
+        console.log(`Who can talk to it: only telegram id ${auth.selfId} (you). Groups: none yet.`);
+        console.log("Reading chat history: denied everywhere (readChats: []).");
+      } else {
+        console.log("Who can talk to it: nobody — your own id could not be read, so allowFrom is empty.");
+        console.log("Add your telegram id to allowFrom before the first start, or it will answer no one.");
+      }
+      console.log("Widen either list deliberately; the first config is closed on purpose.");
+
       if (keptRefs.length > 0) {
         // Не записали — значит обязаны сказать. Иначе оператор уйдёт в
         // уверенности, что новые значения в конфиге, и узнает обратное при
