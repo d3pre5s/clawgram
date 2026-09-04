@@ -100,7 +100,7 @@ import {
   parseTransferOwnershipParams,
 } from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
-import { shouldSuppressGroupSystemNotice } from "./system-notice";
+import { operatorIdsFor, rememberOperatorIds, shouldSuppressGroupSystemNotice } from "./system-notice";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { parseTopicsParams } from "./topics";
 import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
@@ -257,6 +257,25 @@ function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefi
  * tell apart here.
  */
 /** Chat discovery as configured; absent means "deny", like management scope. */
+/**
+ * Кому уходит операционная телеметрия ядра в личке.
+ *
+ * `operatorIds` — если задан. Иначе `allowFrom`, но только когда это
+ * конкретный список: со звёздочкой он означает «пишет кто угодно», и слать
+ * туда пути secret-store нельзя (A5-11). Пустой результат означает «оператор
+ * не назван», и уведомление подавляется везде.
+ *
+ * Запоминается при старте аккаунта — см. реестр в system-notice.ts.
+ */
+function resolveAccountOperatorIds(cfg: any, accountId: string): string[] {
+  const account = cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ];
+  const explicit = account?.operatorIds;
+  const raw = explicit !== undefined && explicit !== null ? explicit : account?.allowFrom;
+  if (raw === undefined || raw === null) return [];
+  const entries = Array.isArray(raw) ? raw : [ raw ];
+  return entries.map((entry: unknown) => String(entry).trim()).filter(Boolean);
+}
+
 function resolveAccountDiscoverChats(cfg: any, accountId: string): unknown {
   return cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]?.discoverChats;
 }
@@ -692,6 +711,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const gram = new GramJsClientManager(resolvedAccount);
         await gram.start();
         runtimes.set(accountId, gram);
+        rememberOperatorIds(accountId, resolveAccountOperatorIds(cfg, accountId));
         const pairing = createChannelPairingController({
           // The controller only reads core.channel.pairing, but its parameter is typed
           // as the full PluginRuntime, and ctx (hence channelRuntime) is untyped.
@@ -1215,6 +1235,26 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                         return;
                       }
 
+                      // Ядро подклеивает свою телеметрию к полезной нагрузке
+                      // хода, и сюда она приходит тем же путём, что ответ.
+                      // Проверка стояла только в `outbound.sendText`, то есть
+                      // класс инцидента 30.08–01.09 был закрыт для рассылок и
+                      // открыт для обычного ответа на упоминание (A5-10).
+                      const groupNotice = shouldSuppressGroupSystemNotice({
+                        targetKind: "group",
+                        text: visibleText,
+                      });
+                      if (groupNotice) {
+                        log?.warn?.("clawgram suppressing system notice in group reply", {
+                          accountId,
+                          chatId: normalized.chatId,
+                          messageId: normalized.messageId,
+                          noticeKind: groupNotice,
+                          textLength: visibleText.length,
+                        });
+                        return;
+                      }
+
                       const replyToMessageId = payload.replyToId ? Number(payload.replyToId) : Number(normalized.messageId);
                       const rememberedAddress = consumeGroupReplyAddress({
                         accountId: route.accountId ?? accountId,
@@ -1272,9 +1312,24 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
                   // `[[tts:text]]Привет, Вася!…[[/tts:text]]` verbatim. The
                   // spoken words are kept — a synthesis that did not happen
                   // should degrade to readable text, not to markup.
-                  const visibleFallbackText = fallbackText
+                  const rawFallback = fallbackText
                     ? stripTtsDirectives(stripSilentReplyToken(fallbackText))
                     : "";
+                  // Тот же фильтр и здесь: последняя реплика в стенограмме
+                  // вполне может оказаться именно уведомлением об ошибке.
+                  const fallbackNotice = rawFallback
+                    ? shouldSuppressGroupSystemNotice({ targetKind: "group", text: rawFallback })
+                    : undefined;
+                  if (fallbackNotice) {
+                    log?.warn?.("clawgram suppressing system notice in transcript fallback", {
+                      accountId,
+                      chatId: normalized.chatId,
+                      messageId: normalized.messageId,
+                      noticeKind: fallbackNotice,
+                      textLength: rawFallback.length,
+                    });
+                  }
+                  const visibleFallbackText = fallbackNotice ? "" : rawFallback;
                   if (!visibleFallbackText) {
                     if (fallbackText) {
                       log?.info?.("clawgram skipping silent transcript fallback", {
@@ -2911,6 +2966,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const suppressedNotice = shouldSuppressGroupSystemNotice({
           targetKind: inferOutboundTargetKind(ctx.to),
           text: ctx.text,
+          to: ctx.to,
+          operatorIds: operatorIdsFor(ctx.accountId),
         });
         if (suppressedNotice) {
           actionLog.warn("clawgram suppressing system notice in group", {

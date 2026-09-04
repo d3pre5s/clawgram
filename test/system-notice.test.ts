@@ -2,7 +2,9 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
 import { createChannelPlugin } from "../src/channel";
-import { classifySystemNotice, shouldSuppressGroupSystemNotice } from "../src/system-notice";
+import {
+  classifySystemNotice, forgetOperatorIds, rememberOperatorIds, shouldSuppressGroupSystemNotice,
+} from "../src/system-notice";
 import type { RuntimeMap } from "../src/types";
 
 /**
@@ -54,9 +56,31 @@ describe("shouldSuppressGroupSystemNotice", () => {
     assert.equal(shouldSuppressGroupSystemNotice({ targetKind: "channel", text: notice }), "message-failed");
   });
 
-  it("keeps the telemetry in DMs, where the reader runs the agent", () => {
-    assert.equal(shouldSuppressGroupSystemNotice({ targetKind: "user", text: notice }), undefined);
-    assert.equal(shouldSuppressGroupSystemNotice({ targetKind: undefined, text: notice }), undefined);
+  it("keeps the telemetry in a DM to a named operator", () => {
+    const toOperator = { targetKind: "user" as const, text: notice, to: "100200300", operatorIds: [ "100200300" ] };
+    assert.equal(shouldSuppressGroupSystemNotice(toOperator), undefined);
+  });
+
+  it("suppresses it in a DM to anyone else", () => {
+    // A DM is not the operator's console: it is open to everyone in allowFrom,
+    // and a stranger whose turn tripped a tool used to receive the full shell
+    // command and secret-store paths (A5-11).
+    assert.equal(
+      shouldSuppressGroupSystemNotice({ targetKind: "user", text: notice, to: "999", operatorIds: [ "100200300" ] }),
+      "message-failed",
+    );
+  });
+
+  it("suppresses it when no operator is named at all", () => {
+    // Empty or wildcard means "the operator is not identified", and telemetry
+    // to an unidentified reader is exactly the leak. Losing the diagnostic is
+    // cheaper: the same failure sits in the run diagnostics and the gateway log.
+    assert.equal(shouldSuppressGroupSystemNotice({ targetKind: "user", text: notice, to: "100200300" }), "message-failed");
+    assert.equal(
+      shouldSuppressGroupSystemNotice({ targetKind: "user", text: notice, to: "100200300", operatorIds: [ "*" ] }),
+      "message-failed",
+    );
+    assert.equal(shouldSuppressGroupSystemNotice({ targetKind: undefined, text: notice }), "message-failed");
   });
 
   it("never touches a real reply, whatever the chat", () => {
@@ -99,17 +123,40 @@ describe("the outbound path suppresses core notices for groups", () => {
     assert.equal((result as any)?.skipped, "system-notice");
   });
 
-  it("the same notice to a DM is delivered — the operator wants the telemetry", async () => {
+  it("the same notice reaches a DM only when that person is the named operator", async () => {
     const { sent, channel } = makeChannel();
+    rememberOperatorIds("default", [ "100200300" ]);
+    try {
+      const toOperator = await channel.outbound.sendText({
+        accountId: "default",
+        to: "100200300",
+        text: "⚠️ ✉️ Message failed",
+      });
+      assert.equal(sent.length, 1);
+      assert.equal((toOperator as any)?.ok, true);
 
+      // Тот же текст постороннему — утечка раскладки инфраструктуры (A5-11).
+      const toStranger = await channel.outbound.sendText({
+        accountId: "default",
+        to: "999000111",
+        text: "⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/secrets.json",
+      });
+      assert.equal(sent.length, 1, "уведомление ушло постороннему");
+      assert.equal((toStranger as any)?.skipped, "system-notice");
+    } finally {
+      forgetOperatorIds("default");
+    }
+  });
+
+  it("with no operator named, a DM notice is suppressed too", async () => {
+    const { sent, channel } = makeChannel();
     const result = await channel.outbound.sendText({
       accountId: "default",
       to: "100200300",
       text: "⚠️ ✉️ Message failed",
     });
-
-    assert.equal(sent.length, 1);
-    assert.equal((result as any)?.ok, true);
+    assert.equal(sent.length, 0);
+    assert.equal((result as any)?.skipped, "system-notice");
   });
 
   it("a real group reply passes untouched", async () => {

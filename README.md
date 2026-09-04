@@ -256,6 +256,7 @@ loud where it does occur.
 | `apiHash` | string | required | Telegram API hash |
 | `sessionString` | string | `""` | Authenticated StringSession |
 | `allowFrom` | string[] | `["*"]` | Allowed sender IDs/usernames for direct messages only. Three states: absent means everyone, `[]` denies everyone (a warning is logged at account start), a list allows those senders |
+| `operatorIds` | string[] | — | Who receives core's operational telemetry in a DM (tool-failure warnings, fallback notices). They quote shell commands and secret-store paths, so they go only to these ids. Absent falls back to `allowFrom` when it is a concrete list; a wildcard or an empty list means no operator is identified and the notices are dropped everywhere — they stay in the run diagnostics and the gateway log |
 | `groups` | object | `{}` | Allowed groups map keyed by explicit group id or `*` |
 | `proxy` | object | unset | Optional SOCKS4/SOCKS5 proxy for this account — see [Proxy (SOCKS4/SOCKS5)](#proxy-socks4socks5) |
 | `manageChats` | string[] | unset | Chats the assistant may **manage** — see [Chat management](#chat-management). Absent or empty = management off; `["*"]` = every chat |

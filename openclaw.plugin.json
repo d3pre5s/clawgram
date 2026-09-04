@@ -445,6 +445,13 @@
                     }
                   }
                 },
+                "operatorIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Who receives core's operational telemetry in a DM — tool-failure warnings, model-fallback notices. These carry shell commands and secret-store paths, so they go only to the people named here. Absent falls back to allowFrom when that is a concrete list; a wildcard or an empty list means no operator is identified and the notices are dropped everywhere (they stay in the run diagnostics and the gateway log)."
+                },
                 "readChats": {
                   "type": "array",
                   "items": {
@@ -559,6 +566,11 @@
         "accounts.*.groups.*.systemPrompt": {
           "label": "Group System Prompt",
           "help": "Trusted prompt block appended for messages from this group — the place to state what this chat is about and what stays out of it.",
+          "advanced": true
+        },
+        "accounts.*.operatorIds": {
+          "label": "Operator Ids",
+          "help": "Who may receive tool-failure and fallback notices in a DM. These quote shell commands and secret-store paths. Leave empty to drop them everywhere.",
           "advanced": true
         },
         "accounts.*.apiHash": {

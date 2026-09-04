@@ -68,11 +68,68 @@ export function classifySystemNotice(text: string): SystemNoticeKind | undefined
 export function shouldSuppressGroupSystemNotice(params: {
   targetKind: "user" | "group" | "channel" | undefined;
   text: string;
+  /**
+   * Кому адресовано. Нужен только для лички: в группе решение не зависит от
+   * адресата, а в личке — зависит целиком.
+   */
+  to?: string | number;
+  /**
+   * Кто считается оператором. `accounts.*.operatorIds`, а при его отсутствии —
+   * `allowFrom`, если это конкретный список.
+   */
+  operatorIds?: readonly string[];
 }): SystemNoticeKind | undefined {
-  // DMs keep the telemetry: there the reader is the person running the agent.
-  if (params.targetKind !== "group" && params.targetKind !== "channel") {
-    return undefined;
+  if (params.targetKind === "group" || params.targetKind === "channel") {
+    return classifySystemNotice(params.text);
   }
 
-  return classifySystemNotice(params.text);
+  // Личка держала телеметрию на допущении «здесь читает тот, кто запустил
+  // агента». Допущение неверно: в личку пишет всякий, кто попал в `allowFrom`,
+  // и посторонний, чей ход уронил инструмент, получал `⚠️ 🛠️ Bash failed:`
+  // с полной командой и путями вроде /opt/openclaw-secrets/… (A5-11).
+  //
+  // Поэтому телеметрия уходит только названному оператору. Список пуст или
+  // содержит `*` — значит «оператор» не определён, и уведомление подавляется:
+  // потерять диагностику дешевле, чем отдать раскладку инфраструктуры
+  // незнакомцу, тем более что те же сбои лежат в диагностике прогона,
+  // в `lastError` джоба и в логе gateway.
+  if (!isOperatorRecipient(params.to, params.operatorIds)) {
+    return classifySystemNotice(params.text);
+  }
+
+  return undefined;
+}
+
+export function isOperatorRecipient(
+  to: string | number | undefined,
+  operatorIds: readonly string[] | undefined,
+): boolean {
+  if (to === undefined || to === null || String(to).trim() === "") return false;
+  if (!operatorIds || operatorIds.length === 0) return false;
+  // `*` здесь не «все операторы», а «оператор не назван»: в списке отправителей
+  // звёздочка означает «кто угодно», и телеметрию кому угодно слать нельзя.
+  if (operatorIds.some((id) => String(id).trim() === "*")) return false;
+  const target = String(to).trim().replace(/^@/, "").toLowerCase();
+  return operatorIds.some((id) => String(id).trim().replace(/^@/, "").toLowerCase() === target);
+}
+
+/**
+ * Кто оператор у каждого аккаунта.
+ *
+ * Список запоминается при старте аккаунта: в `outbound.sendText` конфига нет,
+ * а тащить её туда параметром значило бы менять контракт ради одной проверки.
+ * Перезапуск канала при правке конфига обновляет запись.
+ */
+const operatorIdsByAccount = new Map<string, readonly string[]>();
+
+export function rememberOperatorIds(accountId: string, ids: readonly string[]): void {
+  operatorIdsByAccount.set(accountId, [ ...ids ]);
+}
+
+export function operatorIdsFor(accountId: string): readonly string[] {
+  return operatorIdsByAccount.get(accountId) ?? [];
+}
+
+export function forgetOperatorIds(accountId: string): void {
+  operatorIdsByAccount.delete(accountId);
 }
