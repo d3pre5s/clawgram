@@ -184,6 +184,13 @@ openclaw gateway restart
 openclaw gateway restart
 ```
 
+**What `--auth` writes is closed, on purpose.** The first config allows only the
+account that authorised (`allowFrom: [<your id>]`), seeds no group entry, and
+writes `readChats: []`. Until 2.21.1 it seeded `allowFrom: ["*"]` with an
+enabled wildcard group, so a freshly authorised account answered any Telegram
+user and read the history of every chat it belonged to. Widen both lists
+deliberately; the flow prints who can reach the agent before it exits.
+
 One restart after installation is enough. From 2.17.0 the plugin declares
 `channels.clawgram` as a hot-reloadable prefix, so later edits under it —
 `allowFrom`, `groups`, `readChats`, proxy — are picked up by the Gateway's
