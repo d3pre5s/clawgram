@@ -17,7 +17,9 @@ import { toPeerChannelId, toPeerChatId, toStringId } from "./normalize.js";
 export const JOINS_DEFAULT_LIMIT = 50;
 export const JOINS_MAX_LIMIT = 500;
 /** The journal answers "recently", not "since the beginning of time". */
-export const JOINS_JOURNAL_MAX_RECORDS = 2000;
+// Модульная константа: снаружи её никто не читает, а `export` обещает
+// публичную поверхность, которой нет (A6-21).
+const JOINS_JOURNAL_MAX_RECORDS = 2000;
 
 export type JoinEvent = {
   chatId: string;

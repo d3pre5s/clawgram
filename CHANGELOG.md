@@ -9,6 +9,19 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Changed
+
+- **A failing build now writes nothing.** `noEmitOnError` was off, so `tsc`
+  emitted working JavaScript even when it failed and a fresh-looking `dist/`
+  proved nothing — the repo's own CLAUDE.md warned about it in prose. The
+  plugin also owns its `@types/node` (^22, matching the runtime) instead of
+  borrowing v26 types transitively from `openclaw/node_modules`, and declares
+  `engines.node`.
+
+- Dead code removed: the CLI's "Specify one flag" branch was unreachable —
+  by that point argv is non-empty and contains only known flags. Two constants
+  with no readers outside their module lost their `export`.
+
 ## [2.22.0] — 2026-09-05
 
 ### Fixed

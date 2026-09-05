@@ -85,7 +85,9 @@ export function buildEmojiSystemPrompt(
  * difference is invisible in an editor and a stray U+FE0F would break them
  * again silently.
  */
-export const TELEGRAM_REACTIONS: readonly string[] = [
+// Модульная константа: снаружи её никто не читает, а `export` обещает
+// публичную поверхность, которой нет (A6-21).
+const TELEGRAM_REACTIONS: readonly string[] = [
   "👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱",
   "🤬", "😢", "🎉", "🤩", "🤮", "💩", "🙏", "👌", "\u{1F54A}", "🤡",
   "🥱", "🥴", "😍", "🐳", "🌚", "🌭", "💯", "🤣", "⚡", "🍌",

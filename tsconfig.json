@@ -8,7 +8,8 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "strict": false
+    "strict": false,
+    "noEmitOnError": true
   },
   "include": [
     "src/**/*.ts"

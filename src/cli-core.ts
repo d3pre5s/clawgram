@@ -399,14 +399,14 @@ export async function runTelegramUserbotStandaloneCli(argv: string[], config: Op
     return 1;
   }
 
-  if (flags.has("--hello") || flags.has("--auth")) {
-    await runTelegramUserbotCliFlags(config, {
-      hello: flags.has("--hello"),
-      auth: flags.has("--auth"),
-    });
-    return 0;
-  }
-
-  console.log("Specify one flag: --hello or --auth");
-  return 1;
+  // Здесь argv непуст (проверено выше) и не содержит ничего, кроме двух
+  // известных флагов, — значит хотя бы один из них есть. Прежде тут стоял
+  // ещё один `if` и за ним «Specify one flag», недостижимые по построению:
+  // код, который нельзя выполнить, читается как запасной путь и заставляет
+  // держать в голове случай, которого не бывает (находка A6-21).
+  await runTelegramUserbotCliFlags(config, {
+    hello: flags.has("--hello"),
+    auth: flags.has("--auth"),
+  });
+  return 0;
 }
