@@ -328,13 +328,29 @@ function scanValue(raw: string, start: number): { end: number; kind: ObjectPrope
   };
 }
 
-function findObjectEnd(raw: string, objectStart: number): number {
+/**
+ * Позиция СРАЗУ ЗА закрывающей скобкой объекта — как `end` у среза.
+ *
+ * Имя обманывало: `scanEnclosedValue` возвращает индекс после `}`, а вставка
+ * свойства обращалась с этим числом как с позицией самой скобки и клала
+ * свойство ЗА объектом. Итог — испорченный конфиг: аккаунт, добавленный к
+ * существующему `accounts`, оказывался соседом `accounts` внутри `clawgram`,
+ * а при отсутствующем `channels` вставка уезжала за корневую `}` и файл
+ * переставал быть JSON вовсе. Ловилось только на путях вставки, а обычная
+ * переавторизация идёт путём замены — поэтому и жило (находка A6-17).
+ */
+function findObjectEndExclusive(raw: string, objectStart: number): number {
   return scanEnclosedValue(raw, objectStart, "{", "}");
+}
+
+/** Позиция самой закрывающей скобки — точка, ПЕРЕД которой вставляют. */
+function findObjectCloseBrace(raw: string, objectStart: number): number {
+  return findObjectEndExclusive(raw, objectStart) - 1;
 }
 
 function listObjectProperties(raw: string, objectStart: number): ObjectProperty[] {
   const properties: ObjectProperty[] = [];
-  const objectEnd = findObjectEnd(raw, objectStart);
+  const objectEnd = findObjectEndExclusive(raw, objectStart);
   let cursor = skipTrivia(raw, objectStart + 1);
 
   while (cursor < objectEnd) {
@@ -412,7 +428,7 @@ function replaceRange(raw: string, start: number, end: number, value: string): s
 }
 
 function insertObjectProperty(raw: string, objectStart: number, key: string, value: unknown, format: TextFormat): string {
-  const objectEnd = findObjectEnd(raw, objectStart);
+  const closeBrace = findObjectCloseBrace(raw, objectStart);
   const parentIndent = getLineIndent(raw, objectStart);
   const propertyIndent = `${parentIndent}${format.indentUnit}`;
   const propertyText = `${JSON.stringify(key)}: ${formatConfigValue(value, propertyIndent, format)}`;
@@ -420,10 +436,10 @@ function insertObjectProperty(raw: string, objectStart: number, key: string, val
 
   if (properties.length === 0) {
     const insertion = `${format.eol}${propertyIndent}${propertyText}${format.eol}${parentIndent}`;
-    return replaceRange(raw, objectEnd, objectEnd, insertion);
+    return replaceRange(raw, closeBrace, closeBrace, insertion);
   }
 
-  let insertAt = objectEnd;
+  let insertAt = closeBrace;
   while (insertAt > objectStart + 1 && /[ \t\r\n]/.test(raw[insertAt - 1])) {
     insertAt -= 1;
   }

@@ -13,6 +13,17 @@ recorded in `git log` only.
 
 ### Fixed
 
+- **`--auth` could corrupt the config when it had to INSERT rather than
+  replace.** `findObjectEnd` returned the position *after* the closing brace,
+  and the insert treated it as the brace itself, so a new property landed
+  outside its object: a second account became a sibling of `accounts` inside
+  `clawgram` — an account the runtime does not see at all — and a config
+  without a `channels` block got the section written after the root's closing
+  brace, leaving a file that is not JSON. Only the insert paths were affected,
+  and an ordinary re-authorisation replaces, which is why it survived. The
+  module had no tests; it has thirteen now, and these two cases are among
+  them.
+
 - **Two per-message maps never swept, and grew for the life of the process.**
   The address a group reply greets and the marker of the turn's own send were
   removed only when something read them back — and plenty are never read: a
