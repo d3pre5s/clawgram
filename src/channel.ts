@@ -82,6 +82,7 @@ import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
+import { isChatSendable, isPhoneNumberTarget, rememberSendScope, sendScopeFor } from "./send-scope";
 import {
   appendJoinRecord,
   parseJoinEvent,
@@ -253,6 +254,26 @@ function readAccountReadChats(account: any): string[] | undefined {
 
 function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefined {
   return readAccountReadChats(cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]);
+}
+
+/**
+ * Outbound scope as configured. Handed to `isChatSendable` raw: an absent
+ * value means "unrestricted" and an empty list means "deny", and only the
+ * raw value tells those apart — same shape as `readChats`.
+ */
+function resolveAccountSendChats(cfg: any, accountId: string): unknown {
+  return cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]?.sendChats;
+}
+
+/** One refusal for every outbound action, so the three read the same. */
+function refuseOutboundOutsideScope(
+  action: string,
+  accountId: string,
+  target: string,
+): never {
+  const reason = isPhoneNumberTarget(target) ? "phone-number target" : "chat outside send scope";
+  actionLog.warn(`clawgram ${action} refused: ${reason}`, { accountId, target });
+  throw new Error(`clawgram: not-allowed-chat ${target}`);
 }
 
 /**
@@ -714,6 +735,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         await gram.start();
         runtimes.set(accountId, gram);
         rememberOperatorIds(accountId, resolveAccountOperatorIds(cfg, accountId));
+        // Область отправки — туда же и по той же причине: в `outbound.*`
+        // конфига нет, а барьер нужен и на пути доставки ядра (A5-12).
+        rememberSendScope(accountId, resolveAccountSendChats(cfg, accountId));
         const pairing = createChannelPairingController({
           // The controller only reads core.channel.pairing, but its parameter is typed
           // as the full PluginRuntime, and ctx (hence channelRuntime) is untyped.
@@ -2340,6 +2364,12 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             throw new Error("clawgram: no configured account found");
           }
 
+          // Реакция — видимое действие от имени владельца в чужом чате, и
+          // адресуется она так же, как сообщение: та же область (A5-12).
+          if (!isChatSendable(reactionParams.target, resolveAccountSendChats(cfg, reactionAccountId))) {
+            refuseOutboundOutsideScope("react", reactionAccountId, String(reactionParams.target));
+          }
+
           actionLog.info("clawgram handleAction react", {
             accountId: reactionAccountId,
             dryRun: dryRun === true,
@@ -2654,6 +2684,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             throw new Error("clawgram: no configured account found");
           }
 
+          // Та же граница, что у `send`: файл наружу — такое же исходящее.
+          if (!isChatSendable(uploadTo, resolveAccountSendChats(cfg, uploadAccountId))) {
+            refuseOutboundOutsideScope("upload-file", uploadAccountId, uploadTo);
+          }
+
           const file = attachedFile;
           if (!file) {
             throw new Error("clawgram: upload-file requires filePath, path, media, or mediaUrl");
@@ -2758,6 +2793,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const resolvedAccountId = resolveRuntimeAccountId(cfg, accountId);
         if (!resolvedAccountId) {
           throw new Error("clawgram: no configured account found");
+        }
+
+        // Проверка ПОСЛЕ резолва аккаунта и ДО любой доставки: область задаётся
+        // на аккаунт, а отказ должен случиться раньше, чем цель разрешена в
+        // Telegram-сущность — resolve сам по себе виден собеседнику (A5-12).
+        if (!isChatSendable(to, resolveAccountSendChats(cfg, resolvedAccountId))) {
+          refuseOutboundOutsideScope("send", resolvedAccountId, to);
         }
         const currentChannelId = toolContext?.currentChannelId?.trim() ?? "";
         const currentMessageId = toolContext?.currentMessageId;
@@ -2933,7 +2975,24 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             return { ok: false as const, error: new Error("clawgram: no delivery target — pass `to` or use a session with a bound chat") };
           }
 
-          return { ok: true as const, to: normalizeOutboundTarget(raw) };
+          const target = normalizeOutboundTarget(raw);
+          // Тот же барьер, что у `handleAction`: доставка ядра (`--deliver`,
+          // анонсы субагентов) идёт этим путём и мимо той проверки. Отказ
+          // здесь возвращается результатом, а не броском: бросок в этом хуке
+          // роняет весь gateway (грабли 06.08.2026, выше).
+          if (!isChatSendable(target, sendScopeFor(ctx.accountId))) {
+            const reason = isPhoneNumberTarget(target)
+              ? "phone-number target"
+              : "chat outside send scope";
+            actionLog.warn("clawgram outbound resolveTarget refused", {
+              accountId: ctx.accountId,
+              target,
+              reason,
+            });
+            return { ok: false as const, error: new Error(`clawgram: not-allowed-chat ${target}`) };
+          }
+
+          return { ok: true as const, to: target };
         } catch (err) {
           return { ok: false as const, error: err instanceof Error ? err : new Error(String(err)) };
         }

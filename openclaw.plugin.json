@@ -2,7 +2,7 @@
   "id": "clawgram",
   "name": "Clawgram",
   "description": "Clawgram — personal Telegram (MTProto userbot) channel for OpenClaw. Your AI assistant reads and responds as you.",
-  "version": "2.21.1",
+  "version": "2.22.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -458,6 +458,13 @@
                     "type": "string"
                   },
                   "description": "Chat ids the account may read history and membership for. Absent means no restriction; an empty array denies everything."
+                },
+                "sendChats": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Chat ids the account may SEND to (2.18.0): send, upload-file, react and core's delivery path. Same shape as readChats — absent means no restriction, [] denies everything, [\"*\"] allows every chat. A phone number is refused in every configuration, wildcard included: messaging a raw number starts a conversation with someone who never interacted with the account. Without this list an injected turn can message strangers from the owner's personal account or carry a work chat's content into a DM one send at a time."
                 },
                 "manageChats": {
                   "type": "array",

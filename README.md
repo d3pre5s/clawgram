@@ -18,9 +18,9 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 > it can read private and group conversations within its configured scope and send messages that are
 > indistinguishable from ones you typed yourself. Recipients cannot tell an assistant reply from a
 > human one. Treat the account as compromised-if-leaked: `apiHash` and `sessionString` are bearer
-> credentials for everything that account can reach. Scope reads with `readChats`, gate senders with
-> `allowFrom`, and prefer a dedicated account over your primary one — see
-> [Security and privacy](#security-and-privacy).
+> credentials for everything that account can reach. Scope reads with `readChats`, scope sends with
+> `sendChats`, gate senders with `allowFrom`, and prefer a dedicated account over your primary one —
+> see [Security and privacy](#security-and-privacy).
 
 
 ## Features
@@ -850,6 +850,7 @@ that means in practice, and what the code does about it:
 | Proxy password | `accounts.*.proxy.password`, or a secret store | Also accepts a SecretRef since 2.2.0. Marked `sensitive` in `uiHints`; diagnostics say `socks4`/`socks5` and nothing more. An invalid proxy fails the account rather than falling back to a direct connection, which would leak the host IP to Telegram |
 | Message bodies | channel logs | **Not logged.** Outbound sends record recipient, ids and `textLength`. Until 2.1.0 the full outbound text was written to the channel log — if you ran 2.0.x, treat those journal entries as containing private correspondence |
 | Read scope | `accounts.*.readChats` | History, membership and attachment fetches are confined to the listed chats. Absent means no restriction; an empty array denies everything. Telegram's own service chat (`777000`, where login codes arrive) is refused unconditionally, including under a wildcard |
+| Send scope | `accounts.*.sendChats` | `send`, `upload-file`, `react` and core's delivery path are confined to the listed chats. Same shape as `readChats`: absent means no restriction, `[]` denies everything, `["*"]` allows every chat. **A phone number is refused whatever the list says** — messaging a raw number starts a conversation with someone who never contacted the account. Without the list, an injected turn can write to strangers from the owner's account or move a work chat's content into a DM one send at a time (2.22.0) |
 | Manage scope | `accounts.*.manageChats` | Creating groups, changing membership, admin rights, ownership and invite links are confined to the listed chats — and **off entirely** when the key is absent or empty (opposite default to `readChats`, because these actions change chats rather than read them) |
 | 2FA password | `accounts.*.twoFaPassword`, or a secret store | Read only by `transferOwnership`, exchanged for an SRP proof in-process. Accepts a SecretRef since 2.12.0; `sensitive` in `uiHints`; on the forbidden-log-keys list the static tests enforce |
 | Who may talk to it | `allowFrom`, `groups.*.groupPolicy` | Direct-message senders and group behaviour are allowlisted; `mention` limits group replies to explicit mentions |

@@ -9,6 +9,33 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.22.0] — 2026-09-05
+
+### Added
+
+- **`accounts.*.sendChats` — outbound scope.** Reading has had a declared
+  scope since 2.x and management since 2.12, but sending had none: `send`,
+  `upload-file`, `react` and core's delivery path resolved whatever target
+  the caller named and delivered it. The account is a person's own Telegram
+  account, so an injected turn could message strangers under the owner's
+  name, or carry a work chat's content into an attacker's DM one send at a
+  time. The list has the same shape as `readChats`: absent means no
+  restriction, `[]` denies everything, `["*"]` allows every chat.
+
+  An absent list still allows sending, deliberately: flipping the default
+  would silence every existing deployment on upgrade, including scheduled
+  digests that write to an id nobody is talking to right now. A deployment
+  that wants the boundary writes `sendChats`, and then it is a boundary in
+  code rather than a sentence in a prompt a model can be argued out of.
+
+### Security
+
+- **A phone number is refused as an outbound target in every configuration**,
+  wildcard included. Messaging a raw number starts a conversation with
+  someone who never interacted with the account and hands them the account's
+  identity; an assistant has no reason to do it, and the address book is not
+  the model's to walk.
+
 ## [2.21.1] — 2026-09-04
 
 ### Fixed
