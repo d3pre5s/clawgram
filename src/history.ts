@@ -16,6 +16,7 @@ export const HISTORY_MAX_LIMIT = 500;
 import { describeMedia, type HistoryMedia } from "./media";
 import { resolveActiveUsername, readChatTargetParam } from "./helpers";
 import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
+import { toStringId } from "./normalize";
 
 export type ListMessagesParams = {
   target: string;
@@ -81,15 +82,7 @@ export type HistoryMessage = {
  * Peer instead of the id inside it, which would otherwise produce a plausible
  * looking string.
  */
-function toStringId(value: unknown): string | undefined {
-  if (value === null || value === undefined) return undefined;
-  try {
-    const text = String(value);
-    return text && text !== "[object Object]" ? text : undefined;
-  } catch {
-    return undefined;
-  }
-}
+
 
 /**
  * Accepts Unix seconds or anything `Date` can parse (ISO 8601 in practice).
@@ -145,7 +138,13 @@ export function parseMessageId(value: unknown, field: string): number | undefine
 
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric < 1) {
-    throw new Error(`clawgram: ${field} must be a positive message id`);
+    // Значение в тексте — из копии, которая жила в reactions.ts: без него
+    // «must be a positive message id» не говорит, что именно пришло, а
+    // приходит туда обычно чужой объект. Две копии расходились ещё и
+    // проверками (`Number.isFinite` была только здесь) — A12-05.
+    throw new Error(
+      `clawgram: ${field} must be a positive message id, got ${JSON.stringify(value)}`,
+    );
   }
   return numeric;
 }

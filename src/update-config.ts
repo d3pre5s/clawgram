@@ -4,6 +4,7 @@ import JSON5 from "json5";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { CHANNEL_ID } from "./constants";
 import { asSecretRef } from "./secret-refs";
+import { isPlainObject } from "./util";
 
 type TelegramAuthResult = {
   apiId: number;
@@ -42,10 +43,6 @@ function buildConfigBackupPath(configPath: string): string {
   const fileName = path.basename(configPath);
   const suffix = `${formatBackupTimestamp(new Date())}-clawgram-auth`;
   return path.join(dir, `${fileName}.bak-${suffix}`);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function buildAccountPayload(auth: TelegramAuthResult): Record<string, unknown> {

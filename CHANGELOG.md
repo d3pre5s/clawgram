@@ -11,6 +11,25 @@ recorded in `git log` only.
 
 ## [2.22.0] — 2026-09-05
 
+### Fixed
+
+- **Two per-message maps never swept, and grew for the life of the process.**
+  The address a group reply greets and the marker of the turn's own send were
+  removed only when something read them back — and plenty are never read: a
+  mention nobody answers, a send whose echo never comes. On a gateway that is
+  restarted rarely by design that is a permanent slow leak. All three maps now
+  share one `ExpiringMap`, bounded by time (swept on write, so a quiet process
+  does no work) and by count (many distinct keys inside one TTL window is the
+  case time cannot cover).
+
+- **`toStringId` existed three times and had drifted.** Only the history copy
+  refused `[object Object]` — a whole Peer passed where its id was meant — so
+  the same peer was "found" by one path and "unknown" by another. One guarded
+  copy now, imported everywhere. `parseMessageId` likewise: the two copies
+  differed both in the check (`Number.isFinite` was only in one) and in what
+  the error said. `readString`, `readNumber` and `isPlainObject` move into
+  `src/util.ts`.
+
 ### Added
 
 - **`accounts.*.sendChats` — outbound scope.** Reading has had a declared

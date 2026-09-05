@@ -4,6 +4,7 @@ import { describe, it, beforeEach } from "node:test";
 import {
   buildGroupReplyAddress,
   consumeGroupReplyAddress,
+  peekGroupReplyAddress,
   rememberGroupReplyAddress,
   resetGroupReplyAddresses,
 } from "../src/group-reply-address";
@@ -243,3 +244,23 @@ describe("a turn that already spoke does not speak again", () => {
     assert.equal(sent.length, 1, "a late result is the assistant speaking, not an echo");
   });
 });
+
+describe("expiry", () => {
+  it("an address nobody consumes stops existing on its own", () => {
+    // Раньше запись жила до чтения, а читают не всякую: упоминание, на
+    // которое не ответили, оставляло адрес в карте навсегда (A6-16).
+    resetGroupReplyAddresses();
+    const input = { accountId: "acc", chatId: "-1001", replyToId: "77" };
+    rememberGroupReplyAddress({ ...input, address: "@colleague" });
+    assert.equal(peekGroupReplyAddress(input), "@colleague");
+
+    const realNow = Date.now;
+    try {
+      Date.now = () => realNow() + 11 * 60 * 1000;
+      assert.equal(peekGroupReplyAddress(input), undefined, "TTL прошёл — адреса нет");
+    } finally {
+      Date.now = realNow;
+    }
+  });
+});
+

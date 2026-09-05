@@ -13,6 +13,7 @@
 
 import { realpathSync } from "node:fs";
 import path from "node:path";
+import { readNumber } from "./util";
 
 export type HistoryMediaKind =
   | "photo"
@@ -47,19 +48,6 @@ export type HistoryMedia = {
  * the same shape that once made `senderId` silently undefined. Anything that
  * stringifies to digits is accepted.
  */
-function readNumber(value: unknown): number | undefined {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined;
-  }
-
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const parsed = Number(String(value));
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function readAttributes(document: any): any[] {
   const attributes = document?.attributes;
   return Array.isArray(attributes) ? attributes : [];

@@ -18,15 +18,9 @@ import {
   type AdminRights,
   type InviteLinkParams,
 } from "./manage";
+import { toStringId } from "./normalize";
 
-function toStringId(value: unknown): string | undefined {
-  if (value === null || value === undefined) return undefined;
-  try {
-    return String(value);
-  } catch {
-    return undefined;
-  }
-}
+
 
 function inferChatTypeFromRaw(raw: string): ChatType {
   if (raw.startsWith("-100")) return "channel";

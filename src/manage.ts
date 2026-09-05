@@ -19,19 +19,11 @@
 
 import { normalizeChatKey } from "./history";
 import { readChatTargetParam } from "./helpers";
+import { readString } from "./util";
 
 export type ManageToolContext = {
   currentChannelId?: string;
 } | undefined;
-
-function readString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}
 
 /** A user reference: `@username` or a numeric id, as a trimmed string. */
 function readUserRef(value: unknown): string | undefined {

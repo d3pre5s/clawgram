@@ -5,7 +5,12 @@ import { resolveActiveUsername } from "./helpers";
 export function toStringId(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
   try {
-    return String(value);
+    const text = String(value);
+    // `[object Object]` — это не id, а целый Peer, переданный вместо поля
+    // внутри него: строка выглядит правдоподобно и уезжает дальше как ключ.
+    // Guard жил только в history.ts, поэтому один и тот же peer у одного пути
+    // был «найден», а у другого «неизвестен» (находка A12-05).
+    return text && text !== "[object Object]" ? text : undefined;
   } catch {
     return undefined;
   }

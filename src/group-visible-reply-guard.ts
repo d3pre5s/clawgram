@@ -1,8 +1,10 @@
+import { ExpiringMap } from "./expiring-map";
 import { normalizeOutboundTarget } from "./helpers";
 
-/** When each visible reply went out, keyed by account + chat + incoming message. */
-const recentVisibleGroupReplies = new Map<string, number>();
 const GROUP_VISIBLE_REPLY_TTL_MS = 10 * 60 * 1000;
+
+/** When each visible reply went out, keyed by account + chat + incoming message. */
+const recentVisibleGroupReplies = new ExpiringMap<true>(GROUP_VISIBLE_REPLY_TTL_MS);
 
 /**
  * How long after the agent's own send core's delivery of the same turn's final
@@ -31,38 +33,17 @@ function buildVisibleGroupReplyKey(input: {
   return [ input.accountId ?? "", chatId, currentMessageId ].join("\n");
 }
 
-function pruneExpiredEntries(now: number): void {
-  for (const [ key, expiresAt ] of recentVisibleGroupReplies.entries()) {
-    if (expiresAt <= now) {
-      recentVisibleGroupReplies.delete(key);
-    }
-  }
-}
-
 export function hasRecentVisibleGroupReply(input: {
   accountId?: string | null;
   chatId: unknown;
   currentMessageId?: string | number | null;
 }): boolean {
-  const now = Date.now();
-  pruneExpiredEntries(now);
-
   const key = buildVisibleGroupReplyKey(input);
   if (!key) {
     return false;
   }
 
-  const expiresAt = recentVisibleGroupReplies.get(key);
-  if (!expiresAt) {
-    return false;
-  }
-
-  if (expiresAt <= now) {
-    recentVisibleGroupReplies.delete(key);
-    return false;
-  }
-
-  return true;
+  return recentVisibleGroupReplies.get(key) === true;
 }
 
 export function rememberVisibleGroupReply(input: {
@@ -75,7 +56,7 @@ export function rememberVisibleGroupReply(input: {
     return;
   }
 
-  recentVisibleGroupReplies.set(key, sentAt + GROUP_VISIBLE_REPLY_TTL_MS);
+  recentVisibleGroupReplies.set(key, true, sentAt);
 }
 
 /**
@@ -86,7 +67,9 @@ export function rememberVisibleGroupReply(input: {
  * quietly make that rule stricter. This one answers a different question —
  * did core just echo the turn that has only now finished.
  */
-const lastTurnSends = new Map<string, number>();
+// Та же машинерия, что у соседней карты: запись жила до чтения, а читают её
+// только если ядро прислало эхо этого хода. Хода без эха — большинство (A6-16).
+const lastTurnSends = new ExpiringMap<true>(GROUP_TURN_ECHO_WINDOW_MS);
 
 /** Records that the agent itself put a message in the chat during this turn. */
 export function rememberTurnSend(input: {
@@ -99,7 +82,7 @@ export function rememberTurnSend(input: {
     return;
   }
 
-  lastTurnSends.set(key, sentAt);
+  lastTurnSends.set(key, true, sentAt);
 }
 
 /**
@@ -124,17 +107,9 @@ export function hadTurnSendJustNow(input: {
     return false;
   }
 
-  const sentAt = lastTurnSends.get(key);
-  if (sentAt === undefined) {
-    return false;
-  }
-
-  if (now - sentAt > GROUP_TURN_ECHO_WINDOW_MS) {
-    lastTurnSends.delete(key);
-    return false;
-  }
-
-  return true;
+  // Окно эха и есть TTL записи, поэтому «свежесть» теперь спрашивается
+  // у карты: она же и вычистит просроченное.
+  return lastTurnSends.get(key, now) === true;
 }
 
 /** Test seam: module state must not leak between suites. */

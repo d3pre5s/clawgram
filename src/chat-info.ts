@@ -16,6 +16,7 @@
 
 import { resolveActiveUsername, readChatTargetParam } from "./helpers";
 import { toPeerChannelId, toPeerChatId } from "./normalize";
+import { readNumber, readString } from "./util";
 
 export type ChatInfoType = "direct" | "group" | "supergroup" | "channel" | "unknown";
 
@@ -61,28 +62,6 @@ export function parseChatInfoParams(
  * GramJS carries ids and counts as `big-integer` objects as often as native
  * numbers — the shape that once made `senderId` come back silently undefined.
  */
-function readNumber(value: unknown): number | undefined {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : undefined;
-  }
-
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const parsed = Number(String(value));
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function readString(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-}
-
 function readId(value: unknown): string | undefined {
   if (value === undefined || value === null) {
     return undefined;

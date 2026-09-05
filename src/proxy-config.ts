@@ -1,5 +1,6 @@
 import type { TelegramClient } from "telegram";
 import type { SecretRefLike } from "./secret-refs";
+import { isPlainObject } from "./util";
 
 type TelegramClientParams = ConstructorParameters<typeof TelegramClient>[3];
 
@@ -33,10 +34,6 @@ export type TelegramClientOptions = {
 };
 
 const CONNECTION_RETRIES = 5;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function toFiniteNumber(value: unknown): number {
   if (typeof value === "number") {

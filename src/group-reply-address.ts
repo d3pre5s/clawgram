@@ -1,7 +1,10 @@
+import { ExpiringMap } from "./expiring-map";
 import { normalizeOutboundTarget } from "./helpers";
 
-const groupReplyAddresses = new Map<string, { address: string; expiresAt: number }>();
 const GROUP_REPLY_ADDRESS_TTL_MS = 10 * 60 * 1000;
+// Запись жила до тех пор, пока её не прочитают, а читают не всякую:
+// упоминание без ответа оставляло адрес навсегда (A6-16).
+const groupReplyAddresses = new ExpiringMap<string>(GROUP_REPLY_ADDRESS_TTL_MS);
 
 
 function normalizeGroupReplyTarget(rawTarget: unknown): string {
@@ -41,10 +44,7 @@ export function rememberGroupReplyAddress(input: {
     return;
   }
 
-  groupReplyAddresses.set(key, {
-    address: input.address,
-    expiresAt: Date.now() + GROUP_REPLY_ADDRESS_TTL_MS,
-  });
+  groupReplyAddresses.set(key, input.address);
 }
 
 /**
@@ -67,20 +67,7 @@ function readGroupReplyAddress(
     return undefined;
   }
 
-  const stored = groupReplyAddresses.get(key);
-  if (!stored) {
-    return undefined;
-  }
-
-  if (consume) {
-    groupReplyAddresses.delete(key);
-  }
-
-  if (stored.expiresAt < Date.now()) {
-    return undefined;
-  }
-
-  return stored.address;
+  return consume ? groupReplyAddresses.take(key) : groupReplyAddresses.get(key);
 }
 
 export function consumeGroupReplyAddress(input: {

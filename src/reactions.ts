@@ -11,6 +11,7 @@
  */
 
 import { readChatTargetParam } from "./helpers";
+import { parseMessageId } from "./history";
 
 export type ReactionParams = {
   target: string;
@@ -74,18 +75,7 @@ function readBooleanFlag(value: unknown): boolean {
  * some unrelated message, so anything else is refused rather than coerced —
  * the same reasoning as the history parser's id/date guard.
  */
-function parseMessageId(value: unknown): number | undefined {
-  if (value === undefined || value === null || value === "") {
-    return undefined;
-  }
 
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`clawgram: react messageId must be a positive integer, got ${JSON.stringify(value)}`);
-  }
-
-  return parsed;
-}
 
 export function parseReactionParams(
   params: Record<string, unknown>,
@@ -97,8 +87,8 @@ export function parseReactionParams(
     throw new Error("clawgram: react requires a chatId");
   }
 
-  const messageId = parseMessageId(params.messageId ?? params.msgId ?? params.message_id)
-    ?? parseMessageId(toolContext?.currentMessageId);
+  const messageId = parseMessageId(params.messageId ?? params.msgId ?? params.message_id, "react messageId")
+    ?? parseMessageId(toolContext?.currentMessageId, "react messageId");
   if (messageId === undefined) {
     throw new Error("clawgram: react requires a messageId");
   }
