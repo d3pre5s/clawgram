@@ -104,6 +104,7 @@ import {
 } from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
 import { operatorIdsFor, rememberOperatorIds, shouldSuppressGroupSystemNotice } from "./system-notice";
+import { resolveStateDir } from "./state-dir";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { parseTopicsParams } from "./topics";
 import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
@@ -408,9 +409,7 @@ function parseOptionalThreadId(value: unknown): number | undefined {
  * the caller degrade instead of throwing.
  */
 function resolveAgentDirForMedia(cfg: any): string | undefined {
-  const stateDir = typeof process.env.OPENCLAW_STATE_DIR === "string" && process.env.OPENCLAW_STATE_DIR.trim()
-    ? process.env.OPENCLAW_STATE_DIR.trim()
-    : path.join(os.homedir(), ".openclaw");
+  const stateDir = resolveStateDir();
   const configuredId = cfg?.agents?.defaults?.id;
   const agentId = typeof configuredId === "string" && configuredId.trim() ? configuredId.trim() : "main";
   const dir = path.join(stateDir, "agents", agentId, "agent");
@@ -2004,8 +2003,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // этом хосте живёт ещё и раннер деплоя. Каталог состояния OpenClaw
           // принадлежит агенту; если он не задан, остаётся /tmp — но права
           // 0700/0600 ставятся в любом случае (A5-13).
+          // Каталог состояния принадлежит агенту; при явно заданном
+          // OPENCLAW_STATE_DIR вложения не покидают его.
           const mediaRoot = process.env.OPENCLAW_STATE_DIR?.trim()
-            ? path.join(process.env.OPENCLAW_STATE_DIR.trim(), "tmp")
+            ? path.join(resolveStateDir(), "tmp")
             : os.tmpdir();
           const sharedFetchDir = path.join(mediaRoot, "clawgram-fetched");
           let fetchDir = sharedFetchDir;

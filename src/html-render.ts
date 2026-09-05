@@ -73,6 +73,22 @@ const ATTR_RE = /([a-zA-Z-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 /** A character reference the parser will decode; everything else is a bare `&`. */
 const ENTITY_RE = /^&(?:#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,31});/;
 const WORD_RE = /[\p{L}\p{N}_]/u;
+
+/**
+ * Позиция закрывающего тега в ИСХОДНОЙ строке, без учёта регистра.
+ *
+ * `indexOf` по `s.toLowerCase()` возвращает смещение в другой строке.
+ * Сравниваем посимвольно в оригинале — тогда позиция всегда его собственная.
+ */
+export function indexOfClosingTag(s: string, name: string, from: number): number {
+  const tag = `</${name}>`;
+  const len = tag.length;
+  for (let k = from; k + len <= s.length; k += 1) {
+    if (s[ k ] !== "<") continue;
+    if (s.slice(k, k + len).toLowerCase() === tag) return k;
+  }
+  return -1;
+}
 /** GFM backslash-escapable punctuation, so `\*` means a literal asterisk. */
 const ESCAPABLE = new Set([ ..."\\`*_{}[]()#+-.!|~<>" ]);
 
@@ -290,7 +306,12 @@ function renderInline(s: string): string {
           if (spec.canonical === "code" || spec.canonical === "pre") {
             // Code bodies pass through untouched by markdown: `**` inside
             // <code> is content, not emphasis.
-            const close = s.toLowerCase().indexOf(`</${name}>`, i + m[ 0 ].length);
+            // Искать в `s.toLowerCase()`, а применять смещение к `s` нельзя:
+            // понижение регистра не сохраняет длину. `İ` (U+0130) даёт два
+            // кода, поэтому каждая такая буква перед блоком сдвигала позицию
+            // на единицу: тело кода обрезалось, а продолжение начиналось
+            // внутри `</code>` и выпускало наружу `<` и `/` (находка A6-13).
+            const close = indexOfClosingTag(s, name, i + m[ 0 ].length);
             if (close !== -1) {
               out += buildOpenTag(spec.canonical, spec.attrs, parseAttrs(m[ 3 ]))
                 + escapeKeepEntities(s.slice(i + m[ 0 ].length, close))

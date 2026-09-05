@@ -244,3 +244,21 @@ describe("the mixed message — what the agent actually writes", () => {
     assert.equal(hard.text, "**оборвано\n\nне жирный**");
   });
 });
+
+describe("close tags are found in the original string, not the lowercased copy", () => {
+  // Lowercasing does not preserve length: `İ` (U+0130) becomes two code units.
+  // Searching the lowercased copy and applying the offset to the original cut
+  // the code body one character short per such letter and resumed inside
+  // `</code>`, leaking `<` and `/` into the output (A6-13).
+  it("keeps a code block intact after İ", () => {
+    const out = renderTelegramHtml("İ<code>rm -rf /tmp/x</code> дальше");
+    assert.match(out, /<code>rm -rf \/tmp\/x<\/code>/);
+    assert.doesNotMatch(out, /&lt;\/code/);
+    assert.match(out, /дальше/);
+  });
+
+  it("still matches a close tag in any case", () => {
+    const out = renderTelegramHtml("a<CODE>x</CODE>b");
+    assert.match(out, /<code>x<\/code>/);
+  });
+});

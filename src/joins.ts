@@ -8,6 +8,7 @@
  * business and would turn the journal into surveillance.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { resolveStateDir } from "./state-dir";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -98,7 +99,7 @@ export function resolveJoinsJournalPath(accountCfg: any, accountId: string): str
     return configured.trim();
   }
   const safeAccount = accountId.replace(/[^A-Za-z0-9._-]/g, "_");
-  return join(homedir(), ".openclaw", "state", "clawgram", `joins-${safeAccount}.jsonl`);
+  return join(resolveStateDir(), "state", "clawgram", `joins-${safeAccount}.jsonl`);
 }
 
 export function readJoinRecords(path: string): JoinEvent[] {

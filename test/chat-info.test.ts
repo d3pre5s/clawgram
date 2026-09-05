@@ -129,8 +129,23 @@ describe("describeChat", () => {
       megagroup: true,
     }, { participantsCount: { toString: () => "42" } });
 
-    assert.equal(info.chatId, "1234567890");
+    // Помеченный вид, а не голый: именно так id пишут конфиг, allowlists и
+    // все остальные ответы канала. Голый резолвится только обходом двухсот
+    // последних диалогов, а сначала пробуется как id пользователя (A6-09).
+    assert.equal(info.chatId, "-1001234567890");
     assert.equal(info.memberCount, 42);
+  });
+
+  it("marks the id the way each entity type is addressed", () => {
+    const channel = describeChat({ className: "Channel", id: "1234567890", megagroup: true }, undefined);
+    assert.equal(channel.chatId, "-1001234567890");
+
+    const group = describeChat({ className: "Chat", id: "987654321", title: "Группа" }, undefined);
+    assert.equal(group.chatId, "-987654321");
+
+    // Личка адресуется положительным id — помечать нечего.
+    const direct = describeChat({ className: "User", id: "100200300", firstName: "Иван" }, undefined);
+    assert.equal(direct.chatId, "100200300");
   });
 
   it("omits an empty description rather than reporting a blank one", () => {

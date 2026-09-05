@@ -15,6 +15,7 @@
  */
 
 import { resolveActiveUsername, readChatTargetParam } from "./helpers";
+import { toPeerChannelId, toPeerChatId } from "./normalize";
 
 export type ChatInfoType = "direct" | "group" | "supergroup" | "channel" | "unknown";
 
@@ -110,13 +111,33 @@ function resolveUserTitle(entity: any): string | undefined {
   return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
+/**
+ * Id в той же форме, в какой его понимают конфиг и все остальные ответы.
+ *
+ * GramJS хранит `Channel.id` голым и положительным, а входящие, `dialogs`,
+ * `read`, `participants` и `topics` возвращают помеченный вид (`-100…`).
+ * `channel-info` отдавал голый, и агент на вопрос «в каком я чате» получал id,
+ * который не совпадает ни с ключами `groups`/`readChats`/`manageChats`, ни с
+ * тем, что надо передать в `send`. Подставленный обратно, он резолвится только
+ * через обход двухсот последних диалогов — а `getInputEntity("1234567890")`
+ * сначала пробуется как id ПОЛЬЗОВАТЕЛЯ (находка A6-09).
+ */
+export function markedChatId(entity: any, raw: string | undefined): string | undefined {
+  if (!raw) return raw;
+  switch (entity?.className) {
+    case "Channel": return toPeerChannelId(raw);
+    case "Chat": return toPeerChatId(raw);
+    default: return raw;
+  }
+}
+
 export function describeChat(entity: unknown, full: unknown): ChatInfo {
   const raw = entity as any;
   const fullChat = full as any;
   const type = resolveType(raw);
 
   const info: ChatInfo = {
-    chatId: readId(raw?.id),
+    chatId: markedChatId(raw, readId(raw?.id)),
     type,
     title: type === "direct" ? resolveUserTitle(raw) : readString(raw?.title),
     // Not `raw.username`: an account or chat holding more than one handle keeps
