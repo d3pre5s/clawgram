@@ -442,14 +442,57 @@ function replaceObjectPropertyValue(raw: string, property: ObjectProperty, value
   return replaceRange(raw, property.valueStart, property.valueEnd, formattedValue);
 }
 
+/**
+ * Спуск по пути объектов. Недостающие звенья создаются пустыми объектами.
+ *
+ * Возвращает и текст, и позицию начала найденного объекта: после вставки
+ * прежние смещения указывают не туда.
+ */
+function descend(raw: string, objectStart: number, path: readonly string[]):
+{ objectStart: number; missing: readonly string[] } {
+  let start = objectStart;
+  for (let i = 0; i < path.length; i += 1) {
+    const property = findObjectProperty(raw, start, path[ i ]);
+    // Недостающее звено не достраивается по одному: вставить пустой объект и
+    // тут же найти его снова — значит положиться на разбор свойств сразу
+    // после правки текста, а это самое хрупкое место здесь. Вместо этого
+    // вызывающий вставляет весь остаток пути одним литералом.
+    if (!property) return { objectStart: start, missing: path.slice(i) };
+    const valueStart = skipTrivia(raw, property.valueStart);
+    if (raw[ valueStart ] !== "{") {
+      throw new Error(`clawgram: ${path[ i ]} в конфиге не объект — правка вручную безопаснее`);
+    }
+    start = valueStart;
+  }
+  return { objectStart: start, missing: [] };
+}
+
+/** Вложенный литерал `{a: {b: {c: value}}}` для недостающего остатка пути. */
+function nest(path: readonly string[], value: unknown): unknown {
+  return path.reduceRight((inner, key) => ({ [ key ]: inner }), value as any);
+}
+
+/**
+ * Правится один аккаунт, а не весь блок `channels`.
+ *
+ * Раньше блок находился хирургически, а его значение целиком пересобиралось
+ * через `JSON.stringify`: пропадали все комментарии JSON5, висячие запятые и
+ * ручное форматирование — включая блоки ДРУГИХ каналов, к авторизации
+ * отношения не имеющих. Файл потому и JSON5, что в нём пишут пояснения; после
+ * каждой переавторизации они исчезали, а diff тонул в переформатировании,
+ * пряча ровно то изменение, ради которого всё делалось (находка A6-06).
+ *
+ * Чего это НЕ спасает: комментарии внутри самого правимого аккаунта. Его
+ * значение пересобирается — там меняются учётные данные, и разбирать его
+ * посвойственно значит полагаться на разбор комментариев в позициях, который
+ * здесь и так самое хрупкое место. Всё за пределами этого аккаунта остаётся
+ * как было.
+ */
 function buildUpdatedConfigText(raw: string, accountId: string, auth: TelegramAuthResult): string {
   const parsed = JSON5.parse(raw);
   if (!isPlainObject(parsed)) {
     throw new Error("OpenClaw config root must be an object.");
   }
-
-  const updatedConfig = applyAuthToConfig(parsed as OpenClawConfig, accountId, auth);
-  const updatedChannels = isPlainObject(updatedConfig.channels) ? updatedConfig.channels : {};
 
   const format = detectTextFormat(raw);
   const rootStart = skipTrivia(raw, 0);
@@ -457,12 +500,23 @@ function buildUpdatedConfigText(raw: string, accountId: string, auth: TelegramAu
     throw new Error("OpenClaw config file is not a JSON object.");
   }
 
-  const channelsProperty = findObjectProperty(raw, rootStart, "channels");
-  if (!channelsProperty) {
-    return insertObjectProperty(raw, rootStart, "channels", updatedChannels, format);
+  // Что должно оказаться в аккаунте — считает та же функция, что и раньше:
+  // правила про SecretRef и закрытый посев живут в одном месте.
+  const updatedConfig = applyAuthToConfig(parsed as OpenClawConfig, accountId, auth);
+  const account = (updatedConfig as any)?.channels?.[ CHANNEL_ID ]?.accounts?.[ accountId ] ?? {};
+
+  const path = [ "channels", CHANNEL_ID, "accounts" ];
+  const { objectStart, missing } = descend(raw, rootStart, path);
+  if (missing.length) {
+    // Раздела нет — вставляем недостающий остаток вместе с аккаунтом.
+    return insertObjectProperty(raw, objectStart, missing[ 0 ],
+      nest(missing.slice(1), { [ accountId ]: account }), format);
   }
 
-  return replaceObjectPropertyValue(raw, channelsProperty, updatedChannels, format);
+  const existing = findObjectProperty(raw, objectStart, accountId);
+  return existing
+    ? replaceObjectPropertyValue(raw, existing, account, format)
+    : insertObjectProperty(raw, objectStart, accountId, account, format);
 }
 
 /**
