@@ -743,21 +743,59 @@ export class GramJsClientManager {
   }> {
     const resolved = await this.resolvePeer(args.target, { kind: "channel" });
 
-    const result: any = await this.client.invoke(new Api.channels.GetForumTopics({
-      channel: resolved.peer as any,
-      ...(args.query ? { q: args.query } : {}),
-      offsetDate: 0,
-      offsetId: 0,
-      offsetTopic: 0,
-      limit: args.limit,
-    }));
+    // Страницами, а не одним вызовом. `limit` принимался до 500, а сервер
+    // отдаёт страницу и ждёт смещений: всё, что не влезло в первую, просто
+    // терялось, и `truncated` при этом говорил «влезло». Соседние
+    // перечисления (`listMessages`, `listParticipants`, `listDialogs`) идут
+    // через пагинирующие помощники GramJS, а это — нет (находка A6-20).
+    const raw: any[] = [];
+    let offsetDate = 0;
+    let offsetId = 0;
+    let offsetTopic = 0;
+    let exhausted = false;
 
-    const raw = Array.isArray(result?.topics) ? result.topics : [];
+    while (raw.length < args.limit) {
+      const page: any = await this.client.invoke(new Api.channels.GetForumTopics({
+        channel: resolved.peer as any,
+        ...(args.query ? { q: args.query } : {}),
+        offsetDate,
+        offsetId,
+        offsetTopic,
+        limit: args.limit - raw.length,
+      }));
+
+      const pageTopics = Array.isArray(page?.topics) ? page.topics : [];
+      if (pageTopics.length === 0) {
+        exhausted = true;
+        break;
+      }
+
+      // Страница может прийти длиннее запрошенного — тогда лишнее режем сами,
+      // иначе `limit` вызывающего перестаёт быть пределом.
+      raw.push(...pageTopics.slice(0, args.limit - raw.length));
+
+      const last = pageTopics[ pageTopics.length - 1 ];
+      const nextTopic = Number(last?.id ?? 0);
+      const nextId = Number(last?.topMessage ?? 0);
+      const nextDate = Number(last?.date ?? 0);
+      // Страница, не сдвинувшая смещение, сдвинет его и в следующий раз —
+      // выходим, вместо того чтобы просить одно и то же вечно.
+      if (!Number.isFinite(nextTopic) || nextTopic === 0 || nextTopic === offsetTopic) {
+        exhausted = true;
+        break;
+      }
+
+      offsetTopic = nextTopic;
+      offsetId = Number.isFinite(nextId) ? nextId : 0;
+      offsetDate = Number.isFinite(nextDate) ? nextDate : 0;
+    }
 
     return {
       chatId: resolved.chatId,
       topics: normalizeForumTopics(raw, { query: args.query }),
-      truncated: raw.length >= args.limit,
+      // «Обрезано» теперь означает именно это: набрали ровно столько,
+      // сколько просили, и форум не сказал, что тем больше нет.
+      truncated: !exhausted && raw.length >= args.limit,
     };
   }
 

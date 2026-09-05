@@ -275,6 +275,8 @@ function tryEmphasis(s: string, i: number): { html: string; next: number } | nul
 function renderInline(s: string): string {
   let out = "";
   let i = 0;
+  // Сколько брошенных `tg-emoji` ждут своего закрывающего тега.
+  let droppedEmojiDepth = 0;
 
   while (i < s.length) {
     const c = s[ i ];
@@ -299,7 +301,26 @@ function renderInline(s: string): string {
         const spec = TELEGRAM_TAGS[ name ];
         if (spec) {
           if (closing) {
+            // Закрывающий тег брошенного `tg-emoji` тоже не выпускаем: иначе
+            // в тексте останется `</tg-emoji>` без пары.
+            if (spec.canonical === "tg-emoji" && droppedEmojiDepth > 0) {
+              droppedEmojiDepth -= 1;
+              i += m[ 0 ].length;
+              continue;
+            }
             out += `</${spec.canonical}>`;
+            i += m[ 0 ].length;
+            continue;
+          }
+
+          // `tg-emoji` без пригодного `emoji-id` выбрасывается целиком, а
+          // текст внутри остаётся. Проверено на самом парсере GramJS: голый
+          // `<tg-emoji>` не падает при разборе, а даёт сущность
+          // `MessageEntityCustomEmoji` с `documentId: undefined` и нулевой
+          // длиной — то есть ломается всё сообщение, а не один значок
+          // (находка A5-18).
+          if (spec.canonical === "tg-emoji" && !/^\d+$/.test(parseAttrs(m[ 3 ]).get("emoji-id") ?? "")) {
+            droppedEmojiDepth += 1;
             i += m[ 0 ].length;
             continue;
           }

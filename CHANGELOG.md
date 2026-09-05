@@ -56,6 +56,31 @@ recorded in `git log` only.
   the error said. `readString`, `readNumber` and `isPlainObject` move into
   `src/util.ts`.
 
+### Security
+
+- **Telegram's service chat was readable under a prefixed spelling.** The
+  unconditional refusal of `777000`, where login codes arrive, compared the raw
+  target — so with `readChats: ["*"]`, `clawgram:777000` walked past it. All
+  three scope gates (read, manage, send) now compare every spelling of a
+  target: the bare id, core's `clawgram:`/`tg:` prefix, a `user:`/`group:`
+  kind prefix and a `:topic:N` suffix. The same bug refused chats that *were*
+  listed as soon as core addressed them with a prefix. A scope entry naming
+  one topic still means that topic only.
+
+### Fixed
+
+- **A `tg-emoji` with no usable `emoji-id` broke the whole message.** The
+  attribute was dropped and the bare tag emitted; GramJS's HTML parser turns
+  that into a `MessageEntityCustomEmoji` with an undefined `documentId` and
+  zero length — verified against the parser itself. The tag is now dropped
+  and its text kept.
+
+- **`topics` asked the server once and lost everything past the first page.**
+  `limit` accepted up to 500, Telegram answers a page and waits for offsets,
+  and `truncated` claimed nothing was missing. It paginates on `offsetTopic`
+  now, stops when a page repeats an offset, and never returns more than the
+  caller asked for.
+
 ### Added
 
 - **`accounts.*.sendChats` — outbound scope.** Reading has had a declared

@@ -1,4 +1,4 @@
-import { normalizeChatKey } from "./history";
+import { chatKeyCandidates, normalizeChatKey } from "./history";
 
 /**
  * Outbound scope for the account: who this account may write to.
@@ -64,7 +64,7 @@ export function isChatSendable(target: unknown, sendChats?: unknown): boolean {
   if (entries.length === 0) return false;
   if (entries.includes("*")) return true;
 
-  return entries.includes(normalizeChatKey(target));
+  return chatKeyCandidates(target).some((candidate) => entries.includes(candidate));
 }
 
 

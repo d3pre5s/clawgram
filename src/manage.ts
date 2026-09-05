@@ -17,7 +17,7 @@
  * not something a fresh install may do because nobody said no.
  */
 
-import { normalizeChatKey } from "./history";
+import { chatKeyCandidates, normalizeChatKey } from "./history";
 import { readChatTargetParam } from "./helpers";
 import { readString } from "./util";
 
@@ -329,7 +329,7 @@ export function isChatManageable(target: unknown, manageChats?: unknown): boolea
     return true;
   }
 
-  return entries.includes(normalizeChatKey(target));
+  return chatKeyCandidates(target).some((candidate) => entries.includes(candidate));
 }
 
 /**

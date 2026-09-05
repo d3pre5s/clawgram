@@ -327,6 +327,32 @@ export function normalizeChatKey(value: unknown): string {
 }
 
 /**
+ * Все написания одной цели, по которым её ищут в списке доступа.
+ *
+ * Ворота сравнивали сырое написание, а адрес приходит в нескольких формах:
+ * `-1001234`, `clawgram:-1001234` (префикс канала от ядра), `-1001234:topic:5`
+ * (тема форума). Разбор этих форм живёт в `gramjs-client`, то есть ПОСЛЕ
+ * ворот, — и чат, честно перечисленный в `readChats`, получал отказ, стоило
+ * ядру адресовать его с префиксом (находка A5-17).
+ *
+ * Возвращается и полное написание, и «только чат»: запись списка вида
+ * `-1001234:topic:5` сегодня работает как область в одну тему, и сведение
+ * всего к чату молча расширило бы её на весь чат.
+ */
+export function chatKeyCandidates(target: unknown): string[] {
+  const raw = String(target ?? "").trim();
+  const withoutChannel = raw.replace(/^(?:clawgram|tguserbot|telegram|tg):/i, "");
+  const withoutKind = withoutChannel.replace(/^(?:user|channel|group|conversation|room|dm):/i, "");
+  const chatOnly = withoutKind.replace(/:topic:\d+$/i, "");
+
+  const candidates = [ raw, withoutKind, chatOnly ]
+    .map(normalizeChatKey)
+    .filter(Boolean);
+
+  return [ ...new Set(candidates) ];
+}
+
+/**
  * Read scope for the account, checked before any history call.
  *
  * Sending is gated by whoever asks; reading is not, so the scope has to be
@@ -346,7 +372,8 @@ export function isChatReadable(target: unknown, readChats?: unknown): boolean {
   // writes) or held `*`. The deny is unconditional on purpose: no deployment
   // has a reason to let the agent read its own login codes, and a config entry
   // that enabled it would be an account-takeover switch.
-  if (normalizeChatKey(target) === TELEGRAM_SERVICE_CHAT_ID) return false;
+  const candidates = chatKeyCandidates(target);
+  if (candidates.includes(TELEGRAM_SERVICE_CHAT_ID)) return false;
 
   if (readChats === undefined || readChats === null) return true;
 
@@ -359,7 +386,7 @@ export function isChatReadable(target: unknown, readChats?: unknown): boolean {
   if (entries.length === 0) return false;
   if (entries.includes("*")) return true;
 
-  return entries.includes(normalizeChatKey(target));
+  return candidates.some((candidate) => entries.includes(candidate));
 }
 
 export function isWithinWindow(timestamp: number | undefined, since?: number, until?: number): boolean {
