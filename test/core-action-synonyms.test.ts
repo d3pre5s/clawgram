@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { CORE_ACTION_SYNONYMS, createChannelPlugin } from "../src/channel";
+import { CORE_ACTION_SYNONYMS, canonicalAction, createChannelPlugin } from "../src/channel";
 import type { RuntimeMap } from "../src/types";
 
 /**
@@ -85,17 +85,21 @@ describe("advertised actions are reachable", () => {
     // With no account configured every branch fails at the same first guard,
     // so "not the unsupported-action error" is exactly the evidence that
     // dispatch reached the handler.
-    for (const nativeName of Object.values(CORE_ACTION_SYNONYMS)) {
+    // Both sides of the table, not just the native ones. Dispatching only
+    // `Object.values` was the hole: a core name could be added to the table
+    // and to the advertised list, never wired into the dispatcher, and this
+    // suite stayed green while the agent's every call failed (finding A6-10).
+    for (const name of [ ...Object.keys(CORE_ACTION_SYNONYMS), ...Object.values(CORE_ACTION_SYNONYMS) ]) {
       const error = await channel.actions.handleAction({
-        action: nativeName,
+        action: name,
         params: { chatId: "-100123" },
         cfg: { channels: { clawgram: { accounts: {} } } },
       }).then(() => null, (e: Error) => e);
 
-      assert.ok(error, `${nativeName} unexpectedly succeeded without an account`);
+      assert.ok(error, `${name} unexpectedly succeeded without an account`);
       assert.ok(
         !/unsupported message action/i.test(error.message),
-        `${nativeName} no longer dispatches — RPC callers would start failing`,
+        `${name} no longer dispatches — RPC callers would start failing`,
       );
     }
   });
@@ -120,5 +124,55 @@ describe("the read/target convention is spelled out", () => {
       /never `chatId`|not `chatId`/.test(hint!),
       "the hint must say chatId is wrong here — that is the mistake being made",
     );
+  });
+});
+
+describe("one table decides what a name means", () => {
+  const channel = createChannelPlugin(new Map() as RuntimeMap) as any;
+
+  it("resolves every advertised spelling to something dispatchable", async () => {
+    const described = channel.actions.describeMessageTool({
+      cfg: { channels: { clawgram: { accounts: { default: {} } } } },
+      accountId: "default",
+    });
+
+    for (const action of described.actions) {
+      const error = await channel.actions.handleAction({
+        action,
+        params: { chatId: "-100123" },
+        cfg: { channels: { clawgram: { accounts: {} } } },
+      }).then(() => null, (e: Error) => e);
+
+      assert.ok(
+        error && !/unsupported message action/i.test(error.message),
+        `${action} is advertised to the agent but reaches no branch`,
+      );
+    }
+  });
+
+  it("leaves a name it does not know alone", () => {
+    // An unknown action must stay itself and fall through to the
+    // unsupported-action error, not silently become something else.
+    assert.equal(canonicalAction("definitelyNotAnAction"), "definitelyNotAnAction");
+  });
+
+  it("is idempotent: a canonical name resolves to itself", () => {
+    for (const spelling of Object.keys(CORE_ACTION_SYNONYMS)) {
+      const canonical = canonicalAction(spelling);
+      assert.equal(
+        canonicalAction(canonical), canonical,
+        `${spelling} -> ${canonical} -> ${canonicalAction(canonical)}: the table chains, so a rename would move a call`,
+      );
+    }
+  });
+
+  it("refuses an unsupported action by its canonical name", async () => {
+    const error = await channel.actions.handleAction({
+      action: "nope",
+      params: {},
+      cfg: { channels: { clawgram: { accounts: {} } } },
+    }).then(() => null, (e: Error) => e);
+
+    assert.match(String(error?.message), /unsupported message action/i);
   });
 });

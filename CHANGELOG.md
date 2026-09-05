@@ -11,6 +11,16 @@ recorded in `git log` only.
 
 ### Changed
 
+- **One table decides what an action name means.** The synonyms lived in
+  `CORE_ACTION_SYNONYMS`, again in `MANAGE_ACTION_ALIASES`, and a third time
+  as `action === "…" || …` chains in the dispatcher — and only the chains were
+  consulted. A name could be added to a table and to the advertised list and
+  still reach nothing, with the suite green: it dispatched only the native
+  spellings. `canonicalAction` now resolves every spelling once, and both
+  tables are derived from it. Reachability was compared against a build of the
+  previous commit across 60 spellings: 54 dispatched before, 54 after, no
+  differences, case-sensitivity unchanged.
+
 - **A failing build now writes nothing.** `noEmitOnError` was off, so `tsc`
   emitted working JavaScript even when it failed and a fresh-looking `dist/`
   proved nothing — the repo's own CLAUDE.md warned about it in prose. The
