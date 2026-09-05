@@ -67,7 +67,25 @@ recorded in `git log` only.
   listed as soon as core addressed them with a prefix. A scope entry naming
   one topic still means that topic only.
 
+- **`--auth` echoed the login code and the 2FA password into the terminal.**
+  Both are account credentials, and a printed one stays in the scrollback, in
+  a terminal session recording, and in the screenshot someone takes to report
+  an error. They are read without echo now.
+
+- **`allowFrom` entries written as `@username` are a claim about a handle**,
+  and a released handle can be taken by someone else — after which the entry
+  admits a stranger. Handles still work, but the account logs a warning at
+  start-up (naming only how many, not who) and the docs say to write ids.
+
 ### Fixed
+
+- **`outbound.sendMedia` had none of the guards its text sibling applies.**
+  A caption carrying the silent token was delivered as a file, a group reply
+  greeted nobody, and the send scope was never consulted. It now refuses a
+  chat outside the scope, skips a silent caption and addresses the person the
+  reply answers. Echo suppression is deliberately *not* applied to media: for
+  text a duplicate costs a redundant message, for media a refusal costs the
+  file itself.
 
 - **A `tg-emoji` with no usable `emoji-id` broke the whole message.** The
   attribute was dropped and the bare tag emitted; GramJS's HTML parser turns

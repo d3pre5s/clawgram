@@ -130,3 +130,18 @@ describe("the auth flow does not print the session string unprompted", () => {
     }
   });
 });
+
+test("the login code and the 2FA password are never echoed to the terminal", () => {
+  // Оба — учётные данные аккаунта: напечатанные, они остаются в прокрутке,
+  // в записи сессии терминала и на снимке экрана, который человек делает,
+  // чтобы прислать ошибку (A5-15).
+  const source = read("cli-core.ts");
+
+  assert.match(source, /password: async \(\) => await prompt\.askSecret\(/,
+    "the 2FA password must be read without echo");
+  assert.match(source, /phoneCode: async \(\) => await prompt\.askSecret\(/,
+    "the login code must be read without echo");
+  assert.doesNotMatch(source, /(password|phoneCode): async \(\) => await prompt\.askRequired\(/,
+    "a secret read through the echoing prompt is the defect this test exists for");
+});
+

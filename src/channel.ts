@@ -261,6 +261,34 @@ function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefi
  * value means "unrestricted" and an empty list means "deny", and only the
  * raw value tells those apart — same shape as `readChats`.
  */
+/**
+ * Хэндл в `allowFrom` — обещание, которое Telegram не держит.
+ *
+ * Запись `@username` утверждает не про человека, а про хэндл: хэндл можно
+ * освободить, и тогда его берёт кто угодно — запись начинает пускать
+ * постороннего, ничего об этом не сказав. Числовой id так не переходит из рук
+ * в руки. Отказываться от хэндлов нельзя (люди пишут ими, и конфиг у многих
+ * уже такой), но молчать об этом тоже не годится — поэтому предупреждение
+ * один раз при старте аккаунта (находка A5-16).
+ */
+function warnAboutHandleAllowlistEntries(cfg: any, accountId: string): void {
+  const account = cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ];
+  const entries = Array.isArray(account?.allowFrom) ? account.allowFrom : [];
+  const handles = entries
+    .map((entry: unknown) => String(entry ?? "").trim())
+    .filter((entry: string) => entry.startsWith("@"));
+  if (handles.length === 0) {
+    return;
+  }
+
+  actionLog.warn("clawgram allowFrom names handles, not ids", {
+    accountId,
+    // Сами хэндлы — это про людей: в лог уходит только их число.
+    handleEntries: handles.length,
+    why: "a released handle can be taken by someone else; numeric ids do not change hands",
+  });
+}
+
 function resolveAccountSendChats(cfg: any, accountId: string): unknown {
   return cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]?.sendChats;
 }
@@ -738,6 +766,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // Область отправки — туда же и по той же причине: в `outbound.*`
         // конфига нет, а барьер нужен и на пути доставки ядра (A5-12).
         rememberSendScope(accountId, resolveAccountSendChats(cfg, accountId));
+        warnAboutHandleAllowlistEntries(cfg, accountId);
         const pairing = createChannelPairingController({
           // The controller only reads core.channel.pairing, but its parameter is typed
           // as the full PluginRuntime, and ctx (hence channelRuntime) is untyped.
@@ -3154,6 +3183,49 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         if (!file) {
           throw new Error("clawgram: sendMedia requires filePath or mediaUrl");
         }
+
+        // Ниже — проверки, которые у `sendText` были, а здесь не было ни
+        // одной: путь доставки медиа писался отдельно и обзавёлся только
+        // своими границами (находка A6-18).
+        const mediaTarget = normalizeOutboundTarget(ctx.to);
+
+        // Область отправки: файл наружу — такое же исходящее, как текст.
+        // `resolveTarget` ядро зовёт не на каждом пути, поэтому проверяем и тут.
+        if (!isChatSendable(mediaTarget, sendScopeFor(ctx.accountId))) {
+          actionLog.warn("clawgram outbound sendMedia refused", {
+            accountId: ctx.accountId,
+            target: mediaTarget,
+            reason: isPhoneNumberTarget(mediaTarget) ? "phone-number target" : "chat outside send scope",
+          });
+          return { skipped: "not-allowed" as const };
+        }
+
+        // Молчаливый ответ: подпись с токеном молчания означает «ничего не
+        // говорить», и отправлять файл с ним в подписи — тем более.
+        const mediaCaption = ctx.caption ?? ctx.text;
+        if (mediaCaption?.trim() && isSilentReplyText(mediaCaption)) {
+          actionLog.info("clawgram suppressing silent outbound media", {
+            accountId: ctx.accountId,
+            rawTo: ctx.to,
+          });
+          return { skipped: "silent" as const };
+        }
+
+        // Обращение в группе — то же, что у текста: адрес принадлежит
+        // конкретному входящему сообщению, а не последнему говорившему.
+        const mediaReplyAddress = consumeGroupReplyAddress({
+          accountId: ctx.accountId,
+          chatId: ctx.to,
+          replyToId: ctx.replyToId,
+        });
+
+        // Чего здесь НЕТ намеренно:
+        // — подавление эха хода (`hadTurnSendJustNow`): у текста дубль стоит
+        //   лишнего сообщения, а у медиа отказ стоит потерянного файла —
+        //   картинку агент готовил, и второй раз она не появится;
+        // — подавление служебных сообщений ядра в группах: они текстовые,
+        //   медиа-доставка ими не бывает.
+
         const messageThreadId = parseOptionalThreadId(ctx.threadId);
         // Same normalization `sendText` does two functions up. Without it the
         // channel prefix reaches peer resolution and the send throws — which is
@@ -3164,7 +3236,10 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const sent = await gram.sendMedia({
           target,
           file,
-          caption: ctx.caption ?? ctx.text,
+          // Подпись получает то же обращение, что и текстовый ответ.
+          caption: mediaCaption
+            ? prefixReplyTextToAddress(mediaCaption, mediaReplyAddress)
+            : mediaCaption,
           // Captions follow the account reply format like every other reply:
           // they are the same agent prose, just attached to a file (2.15.0).
           parseMode: gram.replyParseMode,

@@ -103,7 +103,10 @@ export const TELEGRAM_REACTIONS: readonly string[] = [
  * `👍🏽` is not a member of the set, `👍` is.
  */
 export function canonicalizeReactionEmoji(value: string): string {
-  return value.replace(/️/g, "").replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "");
+  // U+FE0F записан кодом, а не символом: в исходнике он невидим, и
+  // регекс выглядел как `/ /g` — пустая на вид группа, которую при
+  // следующей правке легко «почистить» вместе со смыслом (S1-09).
+  return value.replace(/\u{FE0F}/gu, "").replace(/[\u{1F3FB}-\u{1F3FF}]/gu, "");
 }
 
 /**

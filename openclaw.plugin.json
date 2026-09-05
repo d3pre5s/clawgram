@@ -35,7 +35,8 @@
                   "type": "number"
                 }
               ]
-            }
+            },
+            "description": "Who may talk to this account. Numeric Telegram ids are the recommended form: an `@username` entry is a claim about a handle, and a handle can be released and taken by someone else — after which the entry admits a stranger. Ids do not change hands. `[\"*\"]` means anyone."
           },
           "groups": {
             "type": "object",
@@ -70,7 +71,8 @@
                         "type": "number"
                       }
                     ]
-                  }
+                  },
+                  "description": "Who may talk to this account. Numeric Telegram ids are the recommended form: an `@username` entry is a claim about a handle, and a handle can be released and taken by someone else — after which the entry admits a stranger. Ids do not change hands. `[\"*\"]` means anyone."
                 },
                 "tools": {
                   "type": "object",
@@ -342,7 +344,8 @@
                         "type": "number"
                       }
                     ]
-                  }
+                  },
+                  "description": "Who may talk to this account. Numeric Telegram ids are the recommended form: an `@username` entry is a claim about a handle, and a handle can be released and taken by someone else — after which the entry admits a stranger. Ids do not change hands. `[\"*\"]` means anyone."
                 },
                 "groups": {
                   "type": "object",
@@ -377,7 +380,8 @@
                               "type": "number"
                             }
                           ]
-                        }
+                        },
+                        "description": "Who may talk to this account. Numeric Telegram ids are the recommended form: an `@username` entry is a claim about a handle, and a handle can be released and taken by someone else — after which the entry admits a stranger. Ids do not change hands. `[\"*\"]` means anyone."
                       },
                       "tools": {
                         "type": "object",

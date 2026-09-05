@@ -17,6 +17,8 @@ type TelegramAuthResult = {
 type PromptApi = {
   ask: (question: string) => Promise<string>;
   askRequired: (question: string) => Promise<string>;
+  /** Same as askRequired, but nothing typed is echoed to the terminal. */
+  askSecret: (question: string) => Promise<string>;
   askPositiveInteger: (question: string) => Promise<number>;
   askYesNo: (question: string, defaultValue?: boolean) => Promise<boolean>;
   close: () => void;
@@ -54,8 +56,53 @@ function createPrompt(): PromptApi {
       rl.question(question, resolve);
     });
 
+  /**
+   * Ввод без эха: код входа и пароль 2FA печатались в терминал как есть.
+   *
+   * Оба — учётные данные аккаунта: они остаются в прокрутке, в записи сессии
+   * терминала и в снимке экрана, который человек делает, чтобы прислать
+   * ошибку. Ниоткуда, кроме глаз рядом стоящего, они не защищены — и именно
+   * поэтому пароли нигде не эхоятся (находка A5-15).
+   *
+   * `_writeToOutput` — единственная точка, через которую readline печатает
+   * ввод; подменяем её на время вопроса и возвращаем обратно, чтобы
+   * последующие обычные вопросы снова были видны.
+   */
+  const askSecret = (question: string): Promise<string> =>
+    new Promise((resolve) => {
+      const anyRl = rl as unknown as { _writeToOutput?: (text: string) => void };
+      const original = anyRl._writeToOutput?.bind(rl);
+      let armed = false;
+      anyRl._writeToOutput = (text: string) => {
+        if (!armed) {
+          // Сам вопрос печатается — молчащая подсказка означала бы «висит».
+          original?.(text);
+          armed = true;
+          return;
+        }
+        if (text.includes("\n")) {
+          original?.("\n");
+        }
+      };
+
+      rl.question(question, (answer) => {
+        anyRl._writeToOutput = original as never;
+        resolve(answer);
+      });
+    });
+
   return {
     ask,
+    async askSecret(question: string): Promise<string> {
+      for (;;) {
+        const answer = (await askSecret(question)).trim();
+        if (answer) {
+          return answer;
+        }
+
+        console.log("Value is required.");
+      }
+    },
     async askRequired(question: string): Promise<string> {
       for (;;) {
         const answer = (await ask(question)).trim();
@@ -183,8 +230,8 @@ async function runTelegramAuthorization(prompt: PromptApi, proxy?: unknown): Pro
   try {
     await client.start({
       phoneNumber: async () => await prompt.askRequired("Please enter your number: "),
-      password: async () => await prompt.askRequired("Please enter your password: "),
-      phoneCode: async () => await prompt.askRequired("Please enter the code you received: "),
+      password: async () => await prompt.askSecret("Please enter your password: "),
+      phoneCode: async () => await prompt.askSecret("Please enter the code you received: "),
       onError: (error) => {
         console.log(error);
       },
