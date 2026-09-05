@@ -13,6 +13,12 @@ recorded in `git log` only.
 
 ### Fixed
 
+- **The transcript fallback read the entire transcript on every turn that
+  delivered nothing.** A live session's transcript grows without bound and the
+  needed entry is always the last one, so only the final 256 KB is read now.
+  The first line of that window is dropped: reading from an arbitrary offset
+  lands mid-line, and mid-UTF-8-character.
+
 - **`--auth` could corrupt the config when it had to INSERT rather than
   replace.** `findObjectEnd` returned the position *after* the closing brace,
   and the insert treated it as the brace itself, so a new property landed

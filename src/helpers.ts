@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
 import path from "node:path";
 import {
   stripChannelTargetPrefix,
@@ -122,6 +122,39 @@ function resolveTranscriptPathFromStoreEntry(input: {
 }
 
 /**
+ * Хвост стенограммы, а не вся она.
+ *
+ * Читался весь файл целиком и синхронно — на каждом ходе, где ядро ничего не
+ * доставило. Стенограмма живой сессии растёт неограниченно, а нужна ровно
+ * последняя запись ассистента: всё, что дальше пары сотен килобайт назад, по
+ * определению не «только что» и проверку свежести всё равно не прошло бы
+ * (находка A6-15).
+ *
+ * Первая строка куска отбрасывается: чтение с произвольного смещения почти
+ * наверняка попадает в середину строки, а заодно — в середину UTF-8-символа.
+ * Целая строка перед ней нам не нужна, потому что ищем мы с конца.
+ */
+const TRANSCRIPT_TAIL_BYTES = 256 * 1024;
+
+function readTranscriptTail(sessionFile: string): string {
+  const fd = openSync(sessionFile, "r");
+  try {
+    const size = fstatSync(fd).size;
+    if (size <= TRANSCRIPT_TAIL_BYTES) {
+      return readFileSync(sessionFile, "utf8");
+    }
+
+    const buffer = Buffer.allocUnsafe(TRANSCRIPT_TAIL_BYTES);
+    const read = readSync(fd, buffer, 0, TRANSCRIPT_TAIL_BYTES, size - TRANSCRIPT_TAIL_BYTES);
+    const text = buffer.subarray(0, read).toString("utf8");
+    const firstBreak = text.indexOf("\n");
+    return firstBreak === -1 ? "" : text.slice(firstBreak + 1);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
  * Salvages a reply that reached the transcript but not stdout.
  *
  * `notBeforeMs` is the start of the current dispatch. Only entries stamped at
@@ -148,7 +181,7 @@ function readLatestAssistantFallbackFromTranscript(sessionKey: string, storePath
       return undefined;
     }
 
-    const lines = readFileSync(sessionFile, "utf8")
+    const lines = readTranscriptTail(sessionFile)
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);

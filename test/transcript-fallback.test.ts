@@ -105,3 +105,41 @@ describe("fallback call site wiring", () => {
     assert.ok(source.includes("const dispatchStartedAt = Date.now()"));
   });
 });
+
+describe("readLatestAssistantFallbackFromTranscript: long transcripts", () => {
+  /**
+   * The whole transcript used to be read into memory, synchronously, on every
+   * turn that delivered nothing. A live session's transcript grows without
+   * bound while the answer needed is always the last entry (A6-15).
+   */
+  test("a transcript far larger than the tail still yields its last reply", () => {
+    const filler = assistantEntry("x".repeat(4000), EARLIER);
+    const entries = Array.from({ length: 200 }, () => filler);
+    entries.push(assistantEntry("свежий ответ", DURING));
+    const storePath = transcriptSetup(entries);
+
+    const sessionFile = path.join(path.dirname(storePath), "test-session.jsonl");
+    assert.ok(readFileSync(sessionFile, "utf8").length > 512 * 1024,
+      "the fixture must exceed the tail window, or it proves nothing");
+
+    assert.equal(
+      readLatestAssistantFallbackFromTranscript("agent:main:probe", storePath, NOW),
+      "свежий ответ",
+    );
+  });
+
+  test("a partial line at the cut is discarded, not parsed as truncated JSON", () => {
+    // Чтение с произвольного смещения попадает в середину строки — и в
+    // середину UTF-8-символа. Первая строка куска отбрасывается целиком.
+    const entries = Array.from({ length: 200 }, () => assistantEntry("ы".repeat(4000), EARLIER));
+    entries.push(assistantEntry("последний", DURING));
+    const storePath = transcriptSetup(entries);
+
+    assert.equal(
+      readLatestAssistantFallbackFromTranscript("agent:main:probe", storePath, NOW),
+      "последний",
+      "многобайтные символы на границе не должны ломать разбор",
+    );
+  });
+});
+
