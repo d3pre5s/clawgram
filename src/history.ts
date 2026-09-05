@@ -377,12 +377,26 @@ function readSender(msg: any, key: string): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/**
+ * Хэндл отправителя — через `resolveActiveUsername`, а не с сырого поля.
+ *
+ * Telegram оставляет `username` пустым, как только у аккаунта больше одного
+ * хэндла: они переезжают в `usernames[]`. Разбор участников в этом же файле
+ * так и делает и объясняет почему, а разбор истории читал сырое поле — то есть
+ * терял хэндл ровно у владельца, у которого хэндлов несколько. Сводки
+ * подписывали его сообщения голым id, пока у всех остальных стоял `@`, а
+ * `allowFrom`, пересобранный из `read`, терял того же человека (A6-04).
+ */
+function senderHandle(msg: any): string | undefined {
+  return resolveActiveUsername(msg?.sender ?? msg?._sender);
+}
+
 function resolveSenderDisplay(msg: any): string | undefined {
   const first = readSender(msg, "firstName");
   const last = readSender(msg, "lastName");
   const joined = [ first, last ].filter(Boolean).join(" ").trim();
   if (joined) return joined;
-  return readSender(msg, "title") ?? readSender(msg, "username");
+  return readSender(msg, "title") ?? senderHandle(msg);
 }
 
 /**
@@ -421,7 +435,7 @@ export function normalizeHistoryMessage(msg: any, fallbackChatId?: string): Hist
     messageId,
     chatId: toStringId(msg?.chatId) ?? fallbackChatId,
     senderId: toStringId(msg?.senderId) ?? toStringId(msg?.fromId?.userId) ?? toStringId(msg?.fromId?.channelId),
-    senderUsername: readSender(msg, "username"),
+    senderUsername: senderHandle(msg),
     senderDisplay: resolveSenderDisplay(msg),
     text,
     timestamp,

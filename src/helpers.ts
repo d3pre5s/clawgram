@@ -285,17 +285,30 @@ function resolveActionTarget(params: Record<string, unknown>, toolContext?: {
   throw new Error("clawgram: message target is required");
 }
 
+/**
+ * Ответ на сообщение — во всех чатах, а не только в группах.
+ *
+ * Прежде `replyToId` молча отбрасывался, если тип цели не группа и не канал, а
+ * `inferOutboundTargetKind` возвращает `undefined` и для `@username`, и для
+ * положительного числового id — то есть для любой лички. Инструмент отвечал
+ * `ok: true`, человек получал сообщение вне ветки, и ничего об этом не
+ * сообщало. Приходящий путь лички при этом ветку проставлял, так что два пути
+ * расходились между собой (находка A6-05).
+ *
+ * Telegram поддерживает `reply_to` и в приватных чатах, поэтому чинится это
+ * не отказом, а тем, что ветка ставится везде. Нечисловой `replyToId` —
+ * ошибка вызова, а не повод молча отправить вне ветки.
+ */
 function resolveReplyToMessageIdForTarget(rawTarget: string, replyToId?: string | number | null): number | undefined {
   if (replyToId === null || replyToId === undefined || replyToId === "") {
     return undefined;
   }
 
-  const targetKind = inferOutboundTargetKind(rawTarget);
-  if (targetKind === "group" || targetKind === "channel") {
-    return Number(replyToId);
+  const id = Number(replyToId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error(`clawgram: replyToId must be a message id, got ${JSON.stringify(replyToId)}`);
   }
-
-  return undefined;
+  return id;
 }
 
 /**

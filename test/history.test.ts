@@ -448,3 +448,47 @@ describe("inbound sender handles", () => {
     assert.equal(normalized?.senderUsername, "vasya");
   });
 });
+
+/**
+ * The history read hit the same trap as inbound and participants, and was the
+ * one place that still read the raw field: a sender with several handles keeps
+ * them in `usernames[]`, so the owner's own messages came back without a
+ * handle while everyone else had one (A6-04).
+ */
+describe("history sender handles", () => {
+  test("reads the active handle of a multi-username sender", () => {
+    const normalized = normalizeHistoryMessage({
+      id: 7,
+      message: "привет",
+      sender: {
+        id: 100200300,
+        firstName: "Иван",
+        username: "",
+        usernames: [
+          { username: "old_handle", active: false },
+          { username: "current_handle", active: true },
+        ],
+      },
+    });
+
+    assert.equal(normalized?.senderUsername, "current_handle");
+  });
+
+  test("falls back to the handle for display when there is no name", () => {
+    const normalized = normalizeHistoryMessage({
+      id: 8,
+      message: "привет",
+      sender: { id: 1, usernames: [ { username: "only_handle", active: true } ] },
+    });
+
+    assert.equal(normalized?.senderDisplay, "only_handle");
+  });
+
+  test("a single-handle sender still works off the legacy field", () => {
+    const normalized = normalizeHistoryMessage({
+      id: 9, message: "привет", sender: { id: 2, username: "plain_handle" },
+    });
+
+    assert.equal(normalized?.senderUsername, "plain_handle");
+  });
+});
