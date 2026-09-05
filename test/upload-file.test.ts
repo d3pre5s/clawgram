@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
+import { parseResult } from "./helpers";
 
 import { createChannelPlugin } from "../src/channel";
 import type { RuntimeMap } from "../src/types";
@@ -18,9 +19,6 @@ import type { RuntimeMap } from "../src/types";
 describe("upload-file carries a real file", () => {
   const cfg = { channels: { clawgram: { accounts: { default: {} } } } };
 
-  const parse = (result: unknown) => JSON.parse(
-    typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
-  );
 
   const describeTool = (channel: any) => channel.actions.describeMessageTool({
     cfg,
@@ -72,7 +70,7 @@ describe("upload-file carries a real file", () => {
   it("passes the file and caption through to Telegram", async () => {
     const { channel, calls } = withRecordingRuntime();
 
-    const payload = parse(await channel.actions.handleAction({
+    const payload = parseResult(await channel.actions.handleAction({
       action: "upload-file",
       params: { to: "-100123", filePath: "/tmp/cat.png", message: "Вот кот" },
       cfg,
@@ -179,7 +177,7 @@ describe("upload-file carries a real file", () => {
   it("answers a dry run without touching Telegram", async () => {
     const { channel, calls } = withRecordingRuntime();
 
-    const payload = parse(await channel.actions.handleAction({
+    const payload = parseResult(await channel.actions.handleAction({
       action: "upload-file",
       params: { to: "-100123", filePath: "/tmp/cat.png" },
       cfg,

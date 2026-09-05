@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
+import { parseResult } from "./helpers";
 
 import os from "node:os";
 import path from "node:path";
@@ -189,9 +190,6 @@ describe("downloadMessageMediaToFile", () => {
 describe("the fetch-media action", () => {
   const cfg = { channels: { clawgram: { accounts: { default: {} } } } };
 
-  const parse = (result: unknown) => JSON.parse(
-    typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
-  );
 
   const photoMessage = { className: "Message", media: { className: "MessageMediaPhoto" } };
 
@@ -214,7 +212,7 @@ describe("the fetch-media action", () => {
     return createChannelPlugin(runtimes, pluginRuntime) as any;
   };
 
-  const fetchMedia = async (channel: any, params: Record<string, unknown>) => parse(
+  const fetchMedia = async (channel: any, params: Record<string, unknown>) => parseResult(
     await channel.actions.handleAction({
       action: "fetch-media",
       params: { chatId: "-1001234", messageId: 42, ...params },
@@ -340,7 +338,7 @@ describe("the fetch-media action", () => {
 
   it("answers to the names a caller is likely to guess", async () => {
     for (const action of [ "fetchMedia", "download-media", "downloadMedia", "getMedia", "download-file" ]) {
-      const result = parse(await withRuntime().actions.handleAction({
+      const result = parseResult(await withRuntime().actions.handleAction({
         action,
         params: { chatId: "-1001234", messageId: 42, mode: "read" },
         cfg,
@@ -380,9 +378,6 @@ describe("a read-mode fetch does not delete an earlier fetch of the same message
   // `both` handed that path to the caller.
   const cfg = { channels: { clawgram: { accounts: { default: {} } } } };
 
-  const parse = (result: unknown) => JSON.parse(
-    typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
-  );
 
   it("keeps the file the earlier fetch returned", async () => {
     const runtimes = new Map([ [ "default", {
@@ -400,7 +395,7 @@ describe("a read-mode fetch does not delete an earlier fetch of the same message
       },
     } as any) as any;
 
-    const call = async (mode: string) => parse(await channel.actions.handleAction({
+    const call = async (mode: string) => parseResult(await channel.actions.handleAction({
       action: "fetch-media",
       params: { chatId: "-1005555", messageId: 9, mode },
       cfg,

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
+import { parseResult } from "./helpers";
 
 import { createChannelPlugin } from "../src/channel";
 import type { RuntimeMap } from "../src/types";
@@ -161,9 +162,6 @@ describe("the topics action", () => {
     };
   };
 
-  const parse = (result: unknown) => JSON.parse(
-    typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
-  );
 
   test("is offered by the message tool", () => {
     const { channel } = makeChannel(makeGram(), {});
@@ -207,7 +205,7 @@ describe("the topics action", () => {
     const gram = makeGram();
     const { act } = makeChannel(gram, { readChats: [ "-1000000000003" ] });
 
-    const payload = parse(await act({ chatId: "-1000000000003", query: "Визитка", limit: 10 }));
+    const payload = parseResult(await act({ chatId: "-1000000000003", query: "Визитка", limit: 10 }));
 
     assert.deepEqual(gram.calls, [ { target: "-1000000000003", limit: 10, query: "Визитка" } ]);
     assert.equal(payload.count, 1);

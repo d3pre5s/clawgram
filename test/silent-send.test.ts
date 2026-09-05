@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
+import { parseResult } from "./helpers";
 
 import { createChannelPlugin } from "../src/channel";
 import type { RuntimeMap } from "../src/types";
@@ -30,12 +31,9 @@ describe("message.action send suppresses the silent token", () => {
     accountId: "default",
   });
 
-  const parse = (result: unknown) => JSON.parse(
-    typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
-  );
 
   it("skips a send whose whole text is the token", async () => {
-    const payload = parse(await send({ text: "NO_REPLY" }));
+    const payload = parseResult(await send({ text: "NO_REPLY" }));
 
     assert.equal(payload.ok, true);
     assert.equal(payload.skipped, "silent");
@@ -43,13 +41,13 @@ describe("message.action send suppresses the silent token", () => {
   });
 
   it("skips the token whatever its casing", async () => {
-    const payload = parse(await send({ text: "no_reply" }));
+    const payload = parseResult(await send({ text: "no_reply" }));
 
     assert.equal(payload.skipped, "silent");
   });
 
   it("skips a token surrounded by whitespace", async () => {
-    const payload = parse(await send({ text: "  NO_REPLY \n" }));
+    const payload = parseResult(await send({ text: "  NO_REPLY \n" }));
 
     assert.equal(payload.skipped, "silent");
   });
@@ -67,7 +65,7 @@ describe("message.action send suppresses the silent token", () => {
       address: "Иван",
     });
 
-    const payload = parse(await send({ text: "NO_REPLY", replyToId: "42" }));
+    const payload = parseResult(await send({ text: "NO_REPLY", replyToId: "42" }));
 
     assert.equal(payload.skipped, "silent");
   });

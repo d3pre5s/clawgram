@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe, beforeEach } from "node:test";
+import { makeChannel, parseResult } from "./helpers";
 
 import { createChannelPlugin } from "../src/channel";
 import type { RuntimeMap } from "../src/types";
@@ -44,20 +45,8 @@ function makeFakeGram(overrides?: { twoFaPassword?: string }) {
   };
 }
 
-const parse = (result: unknown) => JSON.parse(
-  typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
-);
 
-function makeChannel(gram: ReturnType<typeof makeFakeGram>, account: Record<string, unknown>) {
-  const runtimes = new Map([ [ "default", gram ] ]) as unknown as RuntimeMap;
-  const channel = createChannelPlugin(runtimes) as any;
-  const cfg = { channels: { clawgram: { accounts: { default: account } } } };
 
-  const act = (action: string, params: Record<string, unknown>, dryRun?: boolean) =>
-    channel.actions.handleAction({ action, params, cfg, accountId: "default", dryRun });
-
-  return { act };
-}
 
 describe("chat management is opt-in", () => {
   let gram: ReturnType<typeof makeFakeGram>;
@@ -106,7 +95,7 @@ describe("createGroup", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("createGroup", {
+    const payload = parseResult(await act("createGroup", {
       title: " Проект Альфа ",
       about: "рабочий чат",
       users: [ "@ivan", 42 ],
@@ -125,7 +114,7 @@ describe("createGroup", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("createGroup", { title: "Проект" }, true));
+    const payload = parseResult(await act("createGroup", { title: "Проект" }, true));
 
     assert.equal(payload.ok, true);
     assert.equal(payload.dryRun, true);
@@ -136,7 +125,7 @@ describe("createGroup", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("createChat", { title: "Проект" }));
+    const payload = parseResult(await act("createChat", { title: "Проект" }));
 
     assert.equal(payload.ok, true);
     assert.equal(gram.calls[ 0 ]?.method, "createGroup");
@@ -148,7 +137,7 @@ describe("addMembers", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "-100123" ] });
 
-    const payload = parse(await act("addMembers", { chatId: "-100123", members: [ "@ivan", 42 ] }));
+    const payload = parseResult(await act("addMembers", { chatId: "-100123", members: [ "@ivan", 42 ] }));
 
     assert.equal(payload.ok, true);
     assert.equal(payload.requested, 2);
@@ -163,7 +152,7 @@ describe("addMembers", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("addMember", { chatId: "-100123", users: "@ivan" }, true));
+    const payload = parseResult(await act("addMember", { chatId: "-100123", users: "@ivan" }, true));
 
     assert.equal(payload.dryRun, true);
     assert.equal(gram.calls.length, 0);
@@ -175,11 +164,11 @@ describe("removeMember", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "-100123" ] });
 
-    const kicked = parse(await act("removeMember", { chatId: "-100123", user: "@ivan" }));
+    const kicked = parseResult(await act("removeMember", { chatId: "-100123", user: "@ivan" }));
     assert.equal(kicked.ok, true);
     assert.equal(kicked.banned, false);
 
-    const banned = parse(await act("kick", { chatId: "-100123", user: "@ivan", ban: true }));
+    const banned = parseResult(await act("kick", { chatId: "-100123", user: "@ivan", ban: true }));
     assert.equal(banned.banned, true);
 
     assert.deepEqual(gram.calls.map((call) => call.args.ban), [ false, true ]);
@@ -190,7 +179,7 @@ describe("removeMember", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("removeMember", { chatId: "-100123", user: "@ivan" }, true));
+    const payload = parseResult(await act("removeMember", { chatId: "-100123", user: "@ivan" }, true));
 
     assert.equal(payload.dryRun, true);
     assert.equal(gram.calls.length, 0);
@@ -202,7 +191,7 @@ describe("promoteAdmin / demoteAdmin", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "-100123" ] });
 
-    const payload = parse(await act("promoteAdmin", { chatId: "-100123", user: "@ivan", rank: "тимлид" }));
+    const payload = parseResult(await act("promoteAdmin", { chatId: "-100123", user: "@ivan", rank: "тимлид" }));
 
     assert.equal(payload.ok, true);
     assert.equal(payload.isAdmin, true);
@@ -218,7 +207,7 @@ describe("promoteAdmin / demoteAdmin", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "-100123" ] });
 
-    const payload = parse(await act("demoteAdmin", { chatId: "-100123", user: "@ivan" }));
+    const payload = parseResult(await act("demoteAdmin", { chatId: "-100123", user: "@ivan" }));
 
     assert.equal(payload.isAdmin, false);
     const rights = gram.calls[ 0 ]?.args.rights as Record<string, boolean>;
@@ -229,7 +218,7 @@ describe("promoteAdmin / demoteAdmin", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("promote", { chatId: "-100123", user: "@ivan" }, true));
+    const payload = parseResult(await act("promote", { chatId: "-100123", user: "@ivan" }, true));
 
     assert.equal(payload.dryRun, true);
     assert.equal(gram.calls.length, 0);
@@ -252,7 +241,7 @@ describe("transferOwnership", () => {
     const gram = makeFakeGram({ twoFaPassword: "correct horse" });
     const { act } = makeChannel(gram, { manageChats: [ "-100123" ] });
 
-    const payload = parse(await act("transferOwner", { chatId: "-100123", userId: 42 }));
+    const payload = parseResult(await act("transferOwner", { chatId: "-100123", userId: 42 }));
 
     assert.equal(payload.ok, true);
     assert.equal(payload.newOwner, "42");
@@ -279,7 +268,7 @@ describe("transferOwnership", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("transferOwnership", { chatId: "-100123", user: "@ivan" }, true));
+    const payload = parseResult(await act("transferOwnership", { chatId: "-100123", user: "@ivan" }, true));
 
     assert.equal(payload.dryRun, true);
     assert.equal(gram.calls.length, 0);
@@ -291,7 +280,7 @@ describe("inviteLink", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "-100123" ] });
 
-    const payload = parse(await act("inviteLink", {
+    const payload = parseResult(await act("inviteLink", {
       chatId: "-100123",
       usageLimit: 5,
       title: "для новичков",
@@ -309,7 +298,7 @@ describe("inviteLink", () => {
     const gram = makeFakeGram();
     const { act } = makeChannel(gram, { manageChats: [ "*" ] });
 
-    const payload = parse(await act("exportInviteLink", { chatId: "-100123" }, true));
+    const payload = parseResult(await act("exportInviteLink", { chatId: "-100123" }, true));
 
     assert.equal(payload.dryRun, true);
     assert.equal(gram.calls.length, 0);

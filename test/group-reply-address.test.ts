@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it, beforeEach } from "node:test";
+import { parseResult } from "./helpers";
 
 import {
   buildGroupReplyAddress,
@@ -62,9 +63,6 @@ describe("group reply addressing follows the message being answered", () => {
   });
 });
 
-const parse = (result: unknown) => JSON.parse(
-  typeof result === "string" ? result : (result as any).content?.[ 0 ]?.text ?? "{}",
-);
 
 /**
  * The tool path is where the mis-addressing actually happened: an agent
