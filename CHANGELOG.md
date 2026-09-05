@@ -22,6 +22,15 @@ recorded in `git log` only.
   does no work) and by count (many distinct keys inside one TTL window is the
   case time cannot cover).
 
+- **Every Telegram call re-resolved its peer, and an unseen target cost a scan
+  of 200 dialogs.** `resolvePeer` is the entry of send, media, history,
+  participants, topics, reactions, read marks and typing; writing to a person
+  by id paid the scan on the send and again on the read mark and the typing
+  indicator, over the SOCKS proxy. Peers are cached per client for ten minutes
+  — short enough that a replaced session or a vanished peer is looked up again
+  — and the dialog scan, which stays because `@username` without shared
+  history resolves no other way, now says so in the log.
+
 - **`toStringId` existed three times and had drifted.** Only the history copy
   refused `[object Object]` — a whole Peer passed where its id was meant — so
   the same peer was "found" by one path and "unknown" by another. One guarded

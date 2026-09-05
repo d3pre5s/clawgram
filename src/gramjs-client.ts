@@ -18,7 +18,16 @@ import {
   type AdminRights,
   type InviteLinkParams,
 } from "./manage";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/core";
+
+import { ExpiringMap } from "./expiring-map";
 import { toStringId } from "./normalize";
+
+/** Ten minutes: long enough to spare the repeat lookups of one turn,
+ *  short enough that a replaced session or a vanished peer is re-resolved. */
+const PEER_CACHE_TTL_MS = 10 * 60 * 1000;
+
+const peerLog = createSubsystemLogger("channels/clawgram");
 
 
 
@@ -324,12 +333,46 @@ export class GramJsClientManager {
     return this.client;
   }
 
+  /**
+   * Peers already resolved by this client.
+   *
+   * `resolvePeer` is the entry of every call that touches Telegram — send,
+   * media, history, participants, topics, reactions, read marks, typing — and
+   * a target the session has not seen fell through to a scan of the 200 most
+   * recent dialogs. A DM to an id by number, the standard "write to this
+   * person" flow, paid that scan on the send and again on the read mark and
+   * the typing indicator, over a SOCKS proxy (finding A6-14).
+   *
+   * The TTL is short on purpose: a peer that stops existing, or a session
+   * replaced under the account, should not be remembered for the life of a
+   * process that is restarted rarely.
+   */
+  private peerCacheStore?: ExpiringMap<ResolvedTelegramTarget>;
+
+  /**
+   * Ленивая инициализация, а не поле класса: тесты собирают менеджер через
+   * `Object.create(GramJsClientManager.prototype)` — конструктор там не
+   * выполняется, и поле осталось бы `undefined` у любого такого объекта.
+   */
+  private get peerCache(): ExpiringMap<ResolvedTelegramTarget> {
+    this.peerCacheStore ??= new ExpiringMap<ResolvedTelegramTarget>(PEER_CACHE_TTL_MS, 500);
+    return this.peerCacheStore;
+  }
+
   async getMe() {
     return this.client.getMe();
   }
 
   private async resolveDialogPeer(raw: string, kind?: "user" | "group" | "channel"): Promise<ResolvedTelegramTarget | undefined> {
     const targetKeys = buildTargetKeys(raw, kind);
+    // Самый дорогой путь резолва: 200 диалогов по сети, через прокси — секунды.
+    // Он остаётся (без него `@username` без общей истории не находится вовсе),
+    // но теперь виден в логе: если он в логе частый, значит кэш не спасает и
+    // адресация идёт не тем ключом (A6-14).
+    peerLog.info("clawgram peer resolve falling back to dialog scan", {
+      target: raw,
+      kind: kind ?? null,
+    });
     const dialogs = await this.client.getDialogs({ limit: 200 }).catch(() => []);
 
     for (const dialog of dialogs as any[]) {
@@ -396,6 +439,14 @@ export class GramJsClientManager {
       };
     }
 
+    // Кэш спрашивается ПОСЛЕ «me»: тот и так не ходит в сеть, а класть его
+    // в карту значило бы держать запись, которая никогда не понадобится.
+    const cacheKey = `${chatLookupTarget}\u0000${kind ?? ""}`;
+    const cached = this.peerCache.get(cacheKey);
+    if (cached) {
+      return { ...cached, messageThreadId: parsedTarget.messageThreadId };
+    }
+
     let entity: unknown;
     for (const candidate of buildPeerCandidates(chatLookupTarget, kind)) {
       entity = await this.client.getInputEntity(candidate as any).catch(() => undefined);
@@ -407,6 +458,7 @@ export class GramJsClientManager {
     if (!entity) {
       const dialogResolved = await this.resolveDialogPeer(chatLookupTarget, kind);
       if (dialogResolved) {
+        this.peerCache.set(cacheKey, { ...dialogResolved, messageThreadId: undefined });
         dialogResolved.messageThreadId = parsedTarget.messageThreadId;
         return dialogResolved;
       }
@@ -418,13 +470,19 @@ export class GramJsClientManager {
 
     const chatId = getChatIdFromPeer(entity, chatLookupTarget);
 
-    return {
+    const resolved: ResolvedTelegramTarget = {
       raw,
       peer: entity as any,
       chatId,
       messageThreadId: parsedTarget.messageThreadId,
       chatType: inferChatTypeFromRaw(chatId ?? raw)
     };
+
+    // В карту кладётся тема-независимая часть: `messageThreadId` приходит
+    // из адреса конкретного вызова, а пир у всех тем чата один.
+    this.peerCache.set(cacheKey, { ...resolved, messageThreadId: undefined });
+
+    return resolved;
   }
 
   /**
