@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.26.0] — 2026-09-07
+
 ### Fixed
 
 - **`-1001234:5` is the same chat to the scope gates as to the resolver.**
