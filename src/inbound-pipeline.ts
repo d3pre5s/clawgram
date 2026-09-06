@@ -163,7 +163,6 @@ export type InboundContext = {
   channelRuntime: any;
   gram: any;
   log: any;
-  pairing: any;
   pluginRuntime?: PluginRuntime;
   runtimes: RuntimeMap;
   selfId: string | undefined;
@@ -177,7 +176,7 @@ export type InboundContext = {
 };
 
 export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
-  const { accountId, cfg, channelRuntime, client, gram, log, pairing,
+  const { accountId, cfg, channelRuntime, client, gram, log,
     pluginRuntime, runtimes, selfId, selfLabel, selfUsername } = ctx;
 
           try {
@@ -461,6 +460,12 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
           // the answer — and by the same resolver `resolveAccount` uses, so the
           // gate applied here is the one the account was started with.
           const { allowFrom: directAllowFrom } = inboundScopes;
+          // Fixed, not configurable: clawgram admits a DM by `allowFrom` alone
+          // (the roster) and offers no pairing challenge — a stranger cannot
+          // talk their way in. Core's resolver is still called for the block
+          // decision and `commandAuthorized`; with "open" it never answers
+          // "pairing", so the 30-line challenge branch that once followed it
+          // was unreachable and read like a barrier (audit B5-15).
           const dmPolicy = "open";
 
             if (normalized.chatType === "group") {
@@ -925,7 +930,6 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                 senderId,
                 senderUsername,
               }),
-              readStoreAllowFrom: pairing.readStoreForDmPolicy,
             });
 
             if (access.access.decision === "block") {
@@ -936,38 +940,6 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                 senderId,
                 reason: access.access.reason,
                 reasonCode: access.access.reasonCode,
-              });
-              return;
-            }
-
-            if (access.access.decision === "pairing") {
-              await pairing.issueChallenge({
-                senderId,
-                senderIdLine: `Your Telegram user id: ${senderId}`,
-                meta: {
-                  username: normalized.senderUsername,
-                  name: normalized.senderDisplay,
-                },
-                sendPairingReply: async (pairingText) => {
-                  await sendTextToConversation({
-                    text: pairingText,
-                  });
-                },
-                onReplyError: (err) => {
-                  log?.info?.("clawgram pairing reply failed", {
-                    accountId,
-                    chatId: normalized.chatId,
-                    senderId,
-                    error: String(err),
-                  });
-                },
-              });
-
-              log?.info?.("clawgram pairing required for inbound direct message", {
-                accountId,
-                chatId: normalized.chatId,
-                messageId: normalized.messageId,
-                senderId,
               });
               return;
             }

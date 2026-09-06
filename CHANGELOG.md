@@ -17,6 +17,11 @@ recorded in `git log` only.
   and compares each outcome with `action-probe.snapshot.json`; the 2.22.0
   claim of "354 outcomes, zero differences" could not be re-run by anyone
   but its author (audit D2-05). `npm run verify:actions`.
+- **The unreachable pairing branch is gone.** `dmPolicy` has always been the
+  literal `"open"`: a DM is admitted by `allowFrom` alone and clawgram offers
+  no pairing challenge, so the branch that issued one could never run — but
+  a reader took it for a barrier (audit B5-15). The policy is now stated as
+  fixed where it is set, and the pairing controller is no longer created.
 
 ## [2.25.0] — 2026-09-06
 

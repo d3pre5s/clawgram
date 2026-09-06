@@ -63,7 +63,6 @@ import {
 } from "openclaw/plugin-sdk/direct-dm";
 import type { ChannelCapabilities } from "openclaw/plugin-sdk";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
-import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
 import { NewMessage, Raw } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
@@ -471,13 +470,6 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // конфига нет, а барьер нужен и на пути доставки ядра (A5-12).
         rememberSendScope(accountId, resolveAccountSendChats(cfg, accountId));
         warnAboutHandleAllowlistEntries(cfg, accountId);
-        const pairing = createChannelPairingController({
-          // The controller only reads core.channel.pairing, but its parameter is typed
-          // as the full PluginRuntime, and ctx (hence channelRuntime) is untyped.
-          core: { channel: channelRuntime } as PluginRuntime,
-          channel: "clawgram",
-          accountId,
-        });
 
   const me = await gram.getMe();
   const selfId = me?.id ? String(me.id) : undefined;
@@ -499,7 +491,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const client = gram.getClient();
         const eventBuilder = new NewMessage({});
         const eventHandler = async (event: unknown) => handleInboundEvent(event, {
-          accountId, cfg, channelRuntime, client, gram, log, pairing,
+          accountId, cfg, channelRuntime, client, gram, log,
           pluginRuntime, runtimes, selfId, selfLabel, selfUsername,
         });
         client.addEventHandler(eventHandler, eventBuilder);

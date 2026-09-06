@@ -38,7 +38,6 @@ function fakeContext(over: Record<string, unknown> = {}) {
       replyParseMode: undefined,
     },
     log: { info: () => {}, warn: () => {}, error: () => {} },
-    pairing: { isPairingRequest: () => false, handle: async () => undefined },
     pluginRuntime: undefined,
     runtimes: new Map(),
     selfId: "777",
