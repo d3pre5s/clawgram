@@ -2517,18 +2517,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           if (!manageAccountId) {
             throw new Error("clawgram: no configured account found");
           }
-
           const manageScope = resolveAccountManageChats(cfg, manageAccountId);
-          const requireManagedChat = (target: string) => {
-            if (!isChatManageable(target, manageScope)) {
-              actionLog.warn("clawgram management refused: chat outside manage scope", {
-                accountId: manageAccountId,
-                action: manageAction,
-                target,
-              });
-              throw new Error(`clawgram: not-managed-chat ${target}`);
-            }
-          };
           const requireRuntime = () => {
             const gram = runtimes.get(manageAccountId);
             if (!gram) {
@@ -2538,220 +2527,189 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             return gram;
           };
 
-          if (manageAction === "createGroup") {
-            const createParams = parseCreateGroupParams(params);
-            // A group being created is not in any scope yet, so the gate is
-            // coarser: management must be enabled at all for this account.
-            if (!isManagementEnabled(manageScope)) {
-              actionLog.warn("clawgram createGroup refused: management is not enabled", {
+          /**
+           * The scaffold every management action shares.
+           *
+           * Six actions used to spell it out one after another: resolve the
+           * account, check the scope, log, answer a dry run, call the
+           * runtime, log again, build the result. A change to any of those —
+           * the dry-run contract, say — was a six-place edit in the plugin's
+           * largest file, and the one deliberate exception (createGroup does
+           * not check a chat scope, because the chat does not exist yet) was
+           * invisible among the copies (finding A12-06).
+           *
+           * The differences stay written at each call site: what to parse,
+           * what to log, what to run, what to answer. Only the scaffold moved.
+           */
+          const runManage = async <P, R>(spec: {
+            /** Log name; promote and demote deliberately share `setAdmin`. */
+            name: string;
+            parse: () => P;
+            /** The chat this touches, or nothing when it does not exist yet. */
+            target: (parsed: P) => string | undefined;
+            before: (parsed: P) => Record<string, unknown>;
+            /** Checked after the gate, before any call. */
+            precondition?: (gram: ReturnType<typeof requireRuntime>) => void;
+            run: (gram: ReturnType<typeof requireRuntime>, parsed: P) => Promise<R>;
+            after: (parsed: P, result: R) => Record<string, unknown>;
+            result: (parsed: P, result: R) => Record<string, unknown>;
+          }) => {
+            const parsed = spec.parse();
+            const target = spec.target(parsed);
+
+            if (target === undefined) {
+              // Nothing to check a scope against yet, so the gate is coarser:
+              // management must be enabled at all for this account.
+              if (!isManagementEnabled(manageScope)) {
+                actionLog.warn(`clawgram ${spec.name} refused: management is not enabled`, {
+                  accountId: manageAccountId,
+                });
+                throw new Error(
+                  "clawgram: chat management is not enabled for this account — "
+                  + `set channels.clawgram.accounts.${manageAccountId}.manageChats`,
+                );
+              }
+            } else if (!isChatManageable(target, manageScope)) {
+              actionLog.warn("clawgram management refused: chat outside manage scope", {
                 accountId: manageAccountId,
+                action: manageAction,
+                target,
               });
-              throw new Error(
-                "clawgram: chat management is not enabled for this account — "
-                + `set channels.clawgram.accounts.${manageAccountId}.manageChats`,
-              );
+              throw new Error(`clawgram: not-managed-chat ${target}`);
             }
 
-            actionLog.info("clawgram handleAction createGroup", {
+            actionLog.info(`clawgram handleAction ${spec.name}`, {
               accountId: manageAccountId,
               dryRun: dryRun === true,
-              users: createParams.users.length,
-              hasAbout: Boolean(createParams.about),
+              ...spec.before(parsed),
             });
 
             if (dryRun === true) {
-              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId });
+              return jsonResult({
+                ok: true,
+                dryRun: true,
+                accountId: manageAccountId,
+                ...(target === undefined ? {} : { chatId: target }),
+              });
             }
 
-            const created = await requireRuntime().createGroup(createParams);
+            const gram = requireRuntime();
+            spec.precondition?.(gram);
+            const result = await spec.run(gram, parsed);
 
-            actionLog.info("clawgram handleAction createGroup completed", {
+            actionLog.info(`clawgram handleAction ${spec.name} completed`, {
               accountId: manageAccountId,
-              chatId: created.chatId ?? null,
-              missing: created.missing.length,
+              ...spec.after(parsed, result),
             });
 
-            return jsonResult({
-              ok: true,
-              accountId: manageAccountId,
-              chatId: created.chatId,
-              missing: created.missing,
+            return jsonResult({ ok: true, accountId: manageAccountId, ...spec.result(parsed, result) });
+          };
+
+          if (manageAction === "createGroup") {
+            return await runManage({
+              name: "createGroup",
+              parse: () => parseCreateGroupParams(params),
+              // A group being created is not in any scope yet.
+              target: () => undefined,
+              before: (p) => ({ users: p.users.length, hasAbout: Boolean(p.about) }),
+              run: (gram, p) => gram.createGroup(p),
+              after: (_p, created) => ({ chatId: created.chatId ?? null, missing: created.missing.length }),
+              result: (_p, created) => ({ chatId: created.chatId, missing: created.missing }),
             });
           }
 
           if (manageAction === "addMembers") {
-            const addParams = parseAddMembersParams(params, toolContext);
-            requireManagedChat(addParams.target);
-
-            actionLog.info("clawgram handleAction addMembers", {
-              accountId: manageAccountId,
-              dryRun: dryRun === true,
-              target: addParams.target,
-              users: addParams.users.length,
-            });
-
-            if (dryRun === true) {
-              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: addParams.target });
-            }
-
-            const added = await requireRuntime().addChatMembers(addParams);
-
-            actionLog.info("clawgram handleAction addMembers completed", {
-              accountId: manageAccountId,
-              target: addParams.target,
-              requested: addParams.users.length,
-              missing: added.missing.length,
-            });
-
-            return jsonResult({
-              ok: true,
-              accountId: manageAccountId,
-              chatId: added.chatId ?? addParams.target,
-              requested: addParams.users.length,
-              // Telegram refuses silently-restricted invites per user; the
-              // caller gets the ids so it can hand them an invite link.
-              missing: added.missing,
+            return await runManage({
+              name: "addMembers",
+              parse: () => parseAddMembersParams(params, toolContext),
+              target: (p) => p.target,
+              before: (p) => ({ target: p.target, users: p.users.length }),
+              run: (gram, p) => gram.addChatMembers(p),
+              after: (p, added) => ({
+                target: p.target,
+                requested: p.users.length,
+                missing: added.missing.length,
+              }),
+              result: (p, added) => ({
+                chatId: added.chatId ?? p.target,
+                requested: p.users.length,
+                // Telegram refuses silently-restricted invites per user; the
+                // caller gets the ids so it can hand them an invite link.
+                missing: added.missing,
+              }),
             });
           }
 
           if (manageAction === "removeMember") {
-            const removeParams = parseRemoveMemberParams(params, toolContext);
-            requireManagedChat(removeParams.target);
-
-            actionLog.info("clawgram handleAction removeMember", {
-              accountId: manageAccountId,
-              dryRun: dryRun === true,
-              target: removeParams.target,
-              ban: removeParams.ban,
-            });
-
-            if (dryRun === true) {
-              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: removeParams.target });
-            }
-
-            await requireRuntime().removeChatMember(removeParams);
-
-            actionLog.info("clawgram handleAction removeMember completed", {
-              accountId: manageAccountId,
-              target: removeParams.target,
-              ban: removeParams.ban,
-            });
-
-            return jsonResult({
-              ok: true,
-              accountId: manageAccountId,
-              chatId: removeParams.target,
-              user: removeParams.user,
-              banned: removeParams.ban,
+            return await runManage({
+              name: "removeMember",
+              parse: () => parseRemoveMemberParams(params, toolContext),
+              target: (p) => p.target,
+              before: (p) => ({ target: p.target, ban: p.ban }),
+              run: (gram, p) => gram.removeChatMember(p),
+              after: (p) => ({ target: p.target, ban: p.ban }),
+              result: (p) => ({ chatId: p.target, user: p.user, banned: p.ban }),
             });
           }
 
           if (manageAction === "promoteAdmin" || manageAction === "demoteAdmin") {
-            const adminParams = manageAction === "promoteAdmin"
-              ? parsePromoteAdminParams(params, toolContext)
-              : parseDemoteAdminParams(params, toolContext);
-            requireManagedChat(adminParams.target);
-
-            actionLog.info("clawgram handleAction setAdmin", {
-              accountId: manageAccountId,
-              dryRun: dryRun === true,
-              target: adminParams.target,
-              isAdmin: adminParams.isAdmin,
-              hasRank: Boolean(adminParams.rank),
-            });
-
-            if (dryRun === true) {
-              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: adminParams.target });
-            }
-
-            await requireRuntime().setChatAdmin(adminParams);
-
-            actionLog.info("clawgram handleAction setAdmin completed", {
-              accountId: manageAccountId,
-              target: adminParams.target,
-              isAdmin: adminParams.isAdmin,
-            });
-
-            return jsonResult({
-              ok: true,
-              accountId: manageAccountId,
-              chatId: adminParams.target,
-              user: adminParams.user,
-              isAdmin: adminParams.isAdmin,
-              ...(adminParams.rank ? { rank: adminParams.rank } : {}),
+            const promote = manageAction === "promoteAdmin";
+            return await runManage({
+              // Both spellings log as `setAdmin`, as they always have.
+              name: "setAdmin",
+              parse: () => (promote
+                ? parsePromoteAdminParams(params, toolContext)
+                : parseDemoteAdminParams(params, toolContext)),
+              target: (p) => p.target,
+              before: (p) => ({ target: p.target, isAdmin: p.isAdmin, hasRank: Boolean(p.rank) }),
+              run: (gram, p) => gram.setChatAdmin(p),
+              after: (p) => ({ target: p.target, isAdmin: p.isAdmin }),
+              result: (p) => ({
+                chatId: p.target,
+                user: p.user,
+                isAdmin: p.isAdmin,
+                ...(p.rank ? { rank: p.rank } : {}),
+              }),
             });
           }
 
           if (manageAction === "transferOwnership") {
-            const transferParams = parseTransferOwnershipParams(params, toolContext);
-            requireManagedChat(transferParams.target);
-
-            actionLog.info("clawgram handleAction transferOwnership", {
-              accountId: manageAccountId,
-              dryRun: dryRun === true,
-              target: transferParams.target,
-            });
-
-            if (dryRun === true) {
-              return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: transferParams.target });
-            }
-
-            const transferGram = requireRuntime();
-            // The password stays inside the runtime: it is read from the
-            // account config at start-up and never travels through dispatch
-            // arguments, which are one log call away from the journal.
-            if (!transferGram.twoFaPassword) {
-              throw new Error(
-                "clawgram: ownership transfer requires twoFaPassword in the account config "
-                + "(the account's Telegram 2FA password, as a literal or a SecretRef)",
-              );
-            }
-
-            await transferGram.transferChatOwnership(transferParams);
-
-            actionLog.info("clawgram handleAction transferOwnership completed", {
-              accountId: manageAccountId,
-              target: transferParams.target,
-            });
-
-            return jsonResult({
-              ok: true,
-              accountId: manageAccountId,
-              chatId: transferParams.target,
-              newOwner: transferParams.user,
+            return await runManage({
+              name: "transferOwnership",
+              parse: () => parseTransferOwnershipParams(params, toolContext),
+              target: (p) => p.target,
+              before: (p) => ({ target: p.target }),
+              // The password stays inside the runtime: it is read from the
+              // account config at start-up and never travels through dispatch
+              // arguments, which are one log call away from the journal.
+              precondition: (gram) => {
+                if (!gram.twoFaPassword) {
+                  throw new Error(
+                    "clawgram: ownership transfer requires twoFaPassword in the account config "
+                    + "(the account's Telegram 2FA password, as a literal or a SecretRef)",
+                  );
+                }
+              },
+              run: (gram, p) => gram.transferChatOwnership(p),
+              after: (p) => ({ target: p.target }),
+              result: (p) => ({ chatId: p.target, newOwner: p.user }),
             });
           }
 
           // inviteLink — the only management action left.
-          const inviteParams = parseInviteLinkParams(params, toolContext);
-          requireManagedChat(inviteParams.target);
-
-          actionLog.info("clawgram handleAction inviteLink", {
-            accountId: manageAccountId,
-            dryRun: dryRun === true,
-            target: inviteParams.target,
-            hasExpiry: inviteParams.expireDate !== undefined,
-            usageLimit: inviteParams.usageLimit ?? null,
-            requestNeeded: inviteParams.requestNeeded,
-          });
-
-          if (dryRun === true) {
-            return jsonResult({ ok: true, dryRun: true, accountId: manageAccountId, chatId: inviteParams.target });
-          }
-
-          const exported = await requireRuntime().exportChatInviteLink(inviteParams);
-
-          actionLog.info("clawgram handleAction inviteLink completed", {
-            accountId: manageAccountId,
-            target: inviteParams.target,
-            hasLink: Boolean(exported.link),
-          });
-
-          return jsonResult({
-            ok: true,
-            accountId: manageAccountId,
-            chatId: inviteParams.target,
-            link: exported.link,
+          return await runManage({
+            name: "inviteLink",
+            parse: () => parseInviteLinkParams(params, toolContext),
+            target: (p) => p.target,
+            before: (p) => ({
+              target: p.target,
+              hasExpiry: p.expireDate !== undefined,
+              usageLimit: p.usageLimit ?? null,
+              requestNeeded: p.requestNeeded,
+            }),
+            run: (gram, p) => gram.exportChatInviteLink(p),
+            after: (p, exported) => ({ target: p.target, hasLink: Boolean(exported.link) }),
+            result: (p, exported) => ({ chatId: p.target, link: exported.link }),
           });
         }
 
