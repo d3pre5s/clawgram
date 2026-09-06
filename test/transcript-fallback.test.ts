@@ -83,7 +83,7 @@ describe("readLatestAssistantFallbackFromTranscript: turn boundary", () => {
     );
   });
 
-  test("without a boundary the old behaviour stands (legacy callers, none in channel.ts)", () => {
+  test("without a boundary the old behaviour stands (legacy callers, none in the channel)", () => {
     const storePath = transcriptSetup([ assistantEntry("прошлый ответ", EARLIER) ]);
     assert.equal(
       readLatestAssistantFallbackFromTranscript("agent:main:probe", storePath),
@@ -96,8 +96,10 @@ describe("readLatestAssistantFallbackFromTranscript: turn boundary", () => {
 // type system forces the call site to pass the boundary, and dropping the
 // argument silently restores the duplicate bug.
 describe("fallback call site wiring", () => {
-  test("channel.ts passes the dispatch start to the fallback", () => {
-    const source = readFileSync(path.resolve(__dirname, "..", "..", "src", "channel.ts"), "utf8");
+  test("the inbound path passes the dispatch start to the fallback", () => {
+    const source = [ "channel.ts", "inbound-pipeline.ts" ]
+      .map((f) => readFileSync(path.resolve(__dirname, "..", "..", "src", f), "utf8"))
+      .join("\n");
     assert.ok(
       /readLatestAssistantFallbackFromTranscript\(\s*route\.sessionKey,\s*storePath,\s*dispatchStartedAt\s*\)/.test(source),
       "expected the call site to pass dispatchStartedAt",

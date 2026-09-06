@@ -1132,3 +1132,30 @@ export function parseOptionalThreadId(value: unknown): number | undefined {
   const parsed = Number.parseInt(trimmed, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
+
+/** Reads the configured reaction level for an account, tolerating a missing config. */
+export function readAccountReactionLevel(cfg: any, accountId?: string | null): unknown {
+  const resolvedAccountId = resolveConfiguredAccountId(cfg, accountId);
+  if (!resolvedAccountId) {
+    return undefined;
+  }
+
+  return cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]?.reactionLevel;
+}
+/**
+ * Model ref for the emoji pick, when the account names one.
+ *
+ * Picking one emoji out of a fixed list of 68 is the cheapest judgement this
+ * channel makes and the only model call it makes on its own; running it on the
+ * agent's own head spends the expensive quota on a decision a small model
+ * makes just as well.
+ */
+export function readAccountReactionModel(cfg: any, accountId?: string | null): string | undefined {
+  const resolvedAccountId = resolveConfiguredAccountId(cfg, accountId);
+  if (!resolvedAccountId) {
+    return undefined;
+  }
+
+  const raw = cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]?.reactionModel;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+}

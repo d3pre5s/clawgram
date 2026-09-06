@@ -94,7 +94,7 @@ describe("no message bodies or credentials in logs", () => {
 // обязано ехать за кодом. Когда исходящий контур переехал в outbound.ts,
 // проверка осталась бы зелёной, охраняя пустое место (A6-11).
 for (const file of [
-  "channel.ts", "outbound.ts", "attachments.ts", "actions.ts",
+  "channel.ts", "inbound-pipeline.ts", "outbound.ts", "attachments.ts", "actions.ts",
   "gramjs-client.ts", "history.ts", "joins.ts", "normalize.ts",
 ]) {
     test(`${file} log calls carry no content or credential keys`, () => {

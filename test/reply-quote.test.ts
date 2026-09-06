@@ -111,12 +111,18 @@ describe("normalizeHistoryMessage: reply quote", () => {
 });
 
 // Static guard, not a behavioural test — same reasoning as no-secret-logging.
-// Inbound context is assembled at two separate sites in channel.ts (group and
+// The source these read moved: the inbound handler is `inbound-pipeline.ts`
+// now, and reading `channel.ts` alone would have left these green while they
+// scanned a file the code had left. Both files are read.
+//
+// Inbound context is assembled at two separate sites (group and
 // direct message), and nothing in the type system links them. The failure this
 // catches is a future edit that wires one and forgets the other: the feature
 // then works in groups and silently does nothing in DMs, or the reverse.
 describe("inbound context wiring", () => {
-  const source = readFileSync(path.resolve(__dirname, "..", "..", "src", "channel.ts"), "utf8");
+  const source = [ "channel.ts", "inbound-pipeline.ts" ]
+      .map((f) => readFileSync(path.resolve(__dirname, "..", "..", "src", f), "utf8"))
+      .join("\n");
   const count = (needle: string) => source.split(needle).length - 1;
 
   test("every site that passes the parent id also passes the highlight", () => {
