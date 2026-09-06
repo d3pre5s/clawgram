@@ -9,6 +9,44 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.23.0] — 2026-09-06
+
+### Changed
+
+- **The dispatcher stops retyping its own scaffold.** Six chat-management
+  actions and five chat-shaped reads each spelled out the same sequence —
+  resolve the account, check a scope, log, answer a dry run, call the
+  runtime, log again, build the result — so a change to any of it, the
+  dry-run contract for instance, was an eleven-place edit in the plugin's
+  largest file. `runManage` and `runRead` hold it now, and each gate follows
+  from the shape instead of being restated: `createGroup` checks that
+  management is enabled at all rather than that a chat is in scope, because
+  the chat does not exist yet, and that exception is written where it applies
+  instead of hidden in a missing call. `requireRuntimeFor` replaces eleven
+  copies of the same lookup.
+
+- **Three modules out of `channel.ts`**: `actions.ts` (every accepted
+  spelling of an action and what it resolves to), `attachments.ts` (an
+  inbound attachment from download to text) and `outbound.ts` (the outbound
+  contour). 3274 lines down to 3009 — worth saying plainly that the file is
+  *larger in bytes* than the audit measured it, because the comments
+  explaining the scaffolding cost more than the duplication they replaced.
+  The dispatcher is better factored, not smaller.
+
+  The inbound handler is deliberately untouched: no test drives it,
+  `startAccount` constructs its client directly so there is no seam to put a
+  fake behind, and splitting the one path that carries every incoming message
+  with no net under it is a coin toss rather than a refactor.
+
+- `no-secret-logging` now covers the new modules. It checked a hard-coded
+  list of files, and moving the outbound code out would have left it green
+  while guarding an empty space.
+
+Behaviour is unchanged and was measured, not assumed: 354 outcomes — every
+action spelling × three account configurations × dry-run and live — captured
+from a build of the previous release and compared after each step, zero
+differences every time, refusal messages included.
+
 ## [2.22.0] — 2026-09-06
 
 ### Changed
