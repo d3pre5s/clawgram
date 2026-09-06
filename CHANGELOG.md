@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.25.0] — 2026-09-06
+
 ### Security
 
 - **A direct reply no longer carries core's telemetry to whoever is in
