@@ -131,9 +131,6 @@ import { CHANNEL_ID } from './constants';
 
 const actionLog = createSubsystemLogger("channels/clawgram");
 
-
-
-
 /**
  * Read scope as configured for the account. Left `undefined` when the key is
  * absent so `isChatReadable` can tell "not configured" from "configured empty" —
@@ -243,8 +240,6 @@ import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions
 export { CORE_ACTION_SYNONYMS, canonicalAction };
 import { createOutbound } from "./outbound";
 import { handleInboundEvent } from "./inbound-pipeline";
-
-
 
 /**
  * Turns an inbound attachment into text the agent can read.
@@ -453,14 +448,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         });
         warnAboutHandleAllowlistEntries(cfg, accountId);
 
-  const me = await gram.getMe();
-  const selfId = me?.id ? String(me.id) : undefined;
-  const selfUsername = resolveActiveUsername(me);
-  const selfLabel = toDisplayName({
-    username: selfUsername,
-    firstName: typeof (me as any)?.firstName === "string" ? (me as any).firstName : undefined,
-    lastName: typeof (me as any)?.lastName === "string" ? (me as any).lastName : undefined,
-    fallback: selfId,
+        const me = await gram.getMe();
+        const selfId = me?.id ? String(me.id) : undefined;
+        const selfUsername = resolveActiveUsername(me);
+        const selfLabel = toDisplayName({
+          username: selfUsername,
+          firstName: typeof (me as any)?.firstName === "string" ? (me as any).firstName : undefined,
+          lastName: typeof (me as any)?.lastName === "string" ? (me as any).lastName : undefined,
+          fallback: selfId,
         });
 
         log?.info?.("clawgram connected ------------------------------------------", {
