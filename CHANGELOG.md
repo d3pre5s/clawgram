@@ -55,6 +55,12 @@ recorded in `git log` only.
   and two lowercased (audit B5-13, first two parts; extracting the action
   branches out of `channel.ts` is deferred — the diff would not be
   reviewable against the probe).
+- **README names every action under the name the `message` tool reaches it
+  by.** Eight of the ten core spellings (`thread-list`, `channel-list`,
+  `channel-info`, `member-info`, `channel-create`, `addParticipant`,
+  `role-add`, `role-remove`) appeared nowhere in it (audit B5-07): a table
+  «Actions and the names that reach them» and a column in the management
+  table, both pointing at `src/actions.ts` as the source.
 
 ## [2.25.0] — 2026-09-06
 

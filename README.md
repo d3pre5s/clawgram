@@ -714,6 +714,35 @@ Bindings
 ```
 
 
+## Actions and the names that reach them
+
+Two grammars name the same actions. The **native** names (`read`, `participants`, `topics`,
+`dialogs`, `chatInfo`, `fetch-media`, `createGroup`, …) are what the gateway RPC, the tests and
+this README use. The agent's `message` tool, however, only dispatches names from **core's own
+vocabulary** (`CHANNEL_MESSAGE_ACTION_NAMES`), so every action worth reaching from a prompt also
+answers to core's nearest name. `src/actions.ts` is the single source of both lists
+(`ACTION_ALIASES`, `CORE_VOCABULARY_SPELLINGS`); that core really knows each name is asserted
+against the installed core in `test/core-action-synonyms.test.ts`, so a core release that drops
+one fails the suite rather than the chat.
+
+| Does | Native name | Callable from the `message` tool as | Gate |
+|---|---|---|---|
+| send text | `send` | `send` | `sendChats` |
+| send a file | `upload-file` | `upload-file`, `sendAttachment` | `sendChats`, media roots |
+| react to a message | `react` | `react` | `sendChats` |
+| read history | `read` (also `list`) | `read` | `readChats` |
+| fetch an attachment | `fetch-media` | `download-file` | `readChats` |
+| list members | `participants` | `member-info` | `readChats` |
+| list forum topics | `topics` | `thread-list` | `readChats` |
+| list chats | `dialogs` | `channel-list` | `discoverChats` |
+| describe a chat | `chatInfo` | `channel-info` (the chat arrives in `channelId`) | `readChats` |
+| where the account was added | `joins` | — (gateway RPC only) | — |
+| chat management | see the table below | see the table below | `manageChats` |
+
+Names outside core's vocabulary (`joins`, `transferOwnership`, `inviteLink`) are reachable through
+the gateway RPC only. A name core does not know fails as "requires a target" and "does not accept a
+target" at once — there is no call that satisfies both, which is why this table exists.
+
 ## Chat management
 
 Since 2.12.0 the assistant can assemble a chat, not only speak in it: create a supergroup, add and
@@ -728,15 +757,15 @@ management to those chats, `["*"]` allows every chat. A non-empty list also unlo
 (the chat being created is not in any list yet). All actions honour `dryRun`, and the gate is
 checked before the dry-run answer, so a dry run exercises the same refusals a real call would hit.
 
-| Action | Parameters | Notes |
-|---|---|---|
-| `createGroup` | `title`, `about?`, `users?` | Creates a **supergroup** (megagroup) — granular admin rights, bans and ownership transfer only exist there. Initial members are invited right after creation; who could not be added is returned in `missing` |
-| `addMembers` | `chatId`, `users` | Adds to supergroups in one call, to basic groups one by one. Ids Telegram refused (privacy settings) come back in `missing` instead of failing the call |
-| `removeMember` | `chatId`, `user`, `ban?` | Soft kick by default — the person may be re-invited later. `ban: true` keeps them out until unbanned |
-| `promoteAdmin` | `chatId`, `user`, `rank?`, `rights?` | Grants a deliberate default set (change info, delete messages, ban, invite, pin, calls, topics). `addAdmins` and `anonymous` stay **off** unless explicitly set in `rights` |
-| `demoteAdmin` | `chatId`, `user` | Strips every admin right |
-| `transferOwnership` | `chatId`, `user` | Supergroups only. Requires `twoFaPassword` (below); Telegram's own rules surface as errors — see the fine print |
-| `inviteLink` | `chatId`, `expireDate?`, `usageLimit?`, `title?`, `requestNeeded?` | The path for people whose privacy settings refuse a direct add. `expireDate` takes unix seconds or an ISO date |
+| Action | Callable from the `message` tool as | Parameters | Notes |
+|---|---|---|---|
+| `createGroup` | `channel-create` | `title`, `about?`, `users?` | Creates a **supergroup** (megagroup) — granular admin rights, bans and ownership transfer only exist there. Initial members are invited right after creation; who could not be added is returned in `missing` |
+| `addMembers` | `addParticipant` | `chatId`, `users` | Adds to supergroups in one call, to basic groups one by one. Ids Telegram refused (privacy settings) come back in `missing` instead of failing the call |
+| `removeMember` | `kick` | `chatId`, `user`, `ban?` | Soft kick by default — the person may be re-invited later. `ban: true` keeps them out until unbanned |
+| `promoteAdmin` | `role-add` | `chatId`, `user`, `rank?`, `rights?` | Grants a deliberate default set (change info, delete messages, ban, invite, pin, calls, topics). `addAdmins` and `anonymous` stay **off** unless explicitly set in `rights` |
+| `demoteAdmin` | `role-remove` | `chatId`, `user` | Strips every admin right |
+| `transferOwnership` | — (gateway RPC only) | `chatId`, `user` | Supergroups only. Requires `twoFaPassword` (below); Telegram's own rules surface as errors — see the fine print |
+| `inviteLink` | — (gateway RPC only) | `chatId`, `expireDate?`, `usageLimit?`, `title?`, `requestNeeded?` | The path for people whose privacy settings refuse a direct add. `expireDate` takes unix seconds or an ISO date |
 
 User references in `users`/`user` are `@username` or a numeric Telegram id. A `@username` always
 resolves; a bare numeric id only when the account has already seen the user (shared chat, dialog,
