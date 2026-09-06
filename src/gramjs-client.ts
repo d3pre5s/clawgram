@@ -371,7 +371,8 @@ export class GramJsClientManager {
     // но теперь виден в логе: если он в логе частый, значит кэш не спасает и
     // адресация идёт не тем ключом (A6-14).
     peerLog.info("clawgram peer resolve falling back to dialog scan", {
-      target: raw,
+      // Цель может быть телефоном или @handle человека — в журнал идёт только её форма (B5-09).
+      targetShape: String(raw).startsWith("+") ? "phone" : String(raw).startsWith("@") ? "handle" : /^-?\d+/.test(String(raw)) ? "id" : "other",
       kind: kind ?? null,
     });
     const dialogs = await this.client.getDialogs({ limit: 200 }).catch(() => []);

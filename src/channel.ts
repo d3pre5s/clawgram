@@ -194,8 +194,10 @@ function refuseOutboundOutsideScope(
   accountId: string,
   target: string,
 ): never {
-  const reason = isPhoneNumberTarget(target) ? "phone-number target" : "chat outside send scope";
-  actionLog.warn(`clawgram ${action} refused: ${reason}`, { accountId, target });
+  const phone = isPhoneNumberTarget(target);
+  const reason = phone ? "phone-number target" : "chat outside send scope";
+  // Телефонный номер — персональные данные: в журнал идёт вид цели, не значение (B5-09).
+  actionLog.warn(`clawgram ${action} refused: ${reason}`, { accountId, ...(phone ? { targetKind: "phone" } : { target }) });
   throw new Error(`clawgram: not-allowed-chat ${target}`);
 }
 

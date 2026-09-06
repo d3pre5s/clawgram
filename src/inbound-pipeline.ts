@@ -494,7 +494,10 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                   messageId: normalized.messageId,
                   senderId,
                   username: normalized.senderUsername,
-                  allowFrom: groupConfig.allowFrom,
+                  // Сам список — id владельца и допущенных — в журнал не идёт:
+                  // посторонний управлял бы числом его копий в journald (B5-09).
+                  allowFromCount: Array.isArray(groupConfig.allowFrom) ? groupConfig.allowFrom.length : 0,
+                  allowFromHasWildcard: Array.isArray(groupConfig.allowFrom) && groupConfig.allowFrom.some((e) => String(e).trim() === "*"),
                 });
                 return;
               }
@@ -902,7 +905,8 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                 accountId,
                 senderId,
                 senderUsername: normalized.senderUsername,
-                allowFrom: directAllowFrom,
+                allowFromCount: Array.isArray(directAllowFrom) ? directAllowFrom.length : 0,
+                allowFromHasWildcard: Array.isArray(directAllowFrom) && directAllowFrom.some((e) => String(e).trim() === "*"),
               });
               return;
             }

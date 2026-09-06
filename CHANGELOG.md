@@ -45,6 +45,11 @@ recorded in `git log` only.
 
 ### Changed
 
+- Refusal logs carry the shape of things, not the things: a blocked sender
+  logs the size of `allowFrom` and whether it has a wildcard instead of the
+  list itself (the owner's id among it, once per stranger's message); a
+  refused phone-number target and the dialog-scan fallback log a target kind
+  instead of the value (B5-09).
 - 132 unused imports and one dead helper left behind by the 2.22–2.24 split
   are gone; `npx tsc --noEmit --noUnusedLocals` is clean (D2-09).
 - The proxy verification scripts are tracked under `scripts/verify/` and
