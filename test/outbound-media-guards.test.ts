@@ -3,7 +3,7 @@ import test, { describe, beforeEach } from "node:test";
 
 import { createChannelPlugin } from "../src/channel";
 import { rememberGroupReplyAddress, resetGroupReplyAddresses } from "../src/group-reply-address";
-import { rememberSendScope, forgetSendScope } from "../src/send-scope";
+import { forgetAccount, rememberAccount } from "../src/account-registry";
 import type { RuntimeMap } from "../src/types";
 
 /**
@@ -26,7 +26,7 @@ describe("outbound sendMedia guards", () => {
 
   beforeEach(() => {
     resetGroupReplyAddresses();
-    forgetSendScope(ACCOUNT);
+    forgetAccount(ACCOUNT);
   });
 
   test("a caption carrying the silent token sends nothing", async () => {
@@ -42,7 +42,7 @@ describe("outbound sendMedia guards", () => {
 
   test("a chat outside the send scope is refused, not delivered", async () => {
     const { plugin, sent } = pluginWithRuntime();
-    rememberSendScope(ACCOUNT, [ "-1001" ]);
+    rememberAccount(ACCOUNT, { sendChats: [ "-1001" ], operatorIds: [] });
 
     const result = await plugin.outbound.sendMedia({
       accountId: ACCOUNT, to: "-1009999", filePath: "/tmp/x.png", caption: "привет",
@@ -54,7 +54,7 @@ describe("outbound sendMedia guards", () => {
 
   test("a listed chat still goes through, prefix and all", async () => {
     const { plugin, sent } = pluginWithRuntime();
-    rememberSendScope(ACCOUNT, [ "-1001" ]);
+    rememberAccount(ACCOUNT, { sendChats: [ "-1001" ], operatorIds: [] });
 
     await plugin.outbound.sendMedia({
       accountId: ACCOUNT, to: "clawgram:-1001", filePath: "/tmp/x.png", caption: "привет",
@@ -94,7 +94,7 @@ describe("outbound.sendText honours sendChats (D2-01)", () => {
   const ACCOUNT = "text-acc";
 
   test("refuses a chat outside the scope and a phone number; passes a listed chat", async () => {
-    rememberSendScope(ACCOUNT, [ "-1001" ]);
+    rememberAccount(ACCOUNT, { sendChats: [ "-1001" ], operatorIds: [] });
     try {
       const sent: unknown[] = [];
       const gram = { sendText: async (args: unknown) => { sent.push(args); return { id: 1 }; }, get replyParseMode() { return undefined; } };
@@ -108,7 +108,7 @@ describe("outbound.sendText honours sendChats (D2-01)", () => {
       assert.equal(inside?.ok, true);
       assert.equal(sent.length, 1);
     } finally {
-      forgetSendScope(ACCOUNT);
+      forgetAccount(ACCOUNT);
     }
   });
 });

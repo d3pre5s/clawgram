@@ -2,13 +2,12 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 
 import {
-  forgetSendScope,
+  describeSendRefusal,
   isChatSendable,
   isPhoneNumberTarget,
   isSendScopeConfigured,
-  rememberSendScope,
-  sendScopeFor,
 } from "../src/send-scope";
+import { forgetAccount, operatorIdsFor, rememberAccount, sendScopeFor } from "../src/account-registry";
 
 /**
  * Sending was the one capability without a declared scope.
@@ -65,14 +64,27 @@ describe("send scope", () => {
   });
 
   test("the registry carries the scope into outbound, which has no cfg", () => {
-    forgetSendScope("acc");
+    forgetAccount("acc");
     assert.equal(sendScopeFor("acc"), undefined);
-    rememberSendScope("acc", [ "42" ]);
+    rememberAccount("acc", { sendChats: [ "42" ], operatorIds: [ "7" ] });
     assert.deepEqual(sendScopeFor("acc"), [ "42" ]);
+    assert.deepEqual(operatorIdsFor("acc"), [ "7" ]);
     assert.equal(isChatSendable("42", sendScopeFor("acc")), true);
     assert.equal(isChatSendable("43", sendScopeFor("acc")), false);
-    forgetSendScope("acc");
+    // One record, one lifecycle: forgetting the account forgets both (D2-11).
+    forgetAccount("acc");
     assert.equal(isChatSendable("43", sendScopeFor("acc")), true,
       "a forgotten account behaves like an unconfigured one");
+    assert.deepEqual(operatorIdsFor("acc"), []);
+  });
+
+  test("one refusal for every outbound door; a phone number is not logged (B5-09)", () => {
+    const chat = describeSendRefusal("-1005678");
+    assert.equal(chat.reason, "chat outside send scope");
+    assert.deepEqual(chat.logFields, { target: "-1005678" });
+    assert.equal(chat.error.message, "clawgram: not-allowed-chat -1005678");
+    const phone = describeSendRefusal("+79990000000");
+    assert.equal(phone.reason, "phone-number target");
+    assert.deepEqual(phone.logFields, { targetKind: "phone" });
   });
 });

@@ -39,6 +39,13 @@ recorded in `git log` only.
   no pairing challenge, so the branch that issued one could never run — but
   a reader took it for a barrier (audit B5-15). The policy is now stated as
   fixed where it is set, and the pairing controller is no longer created.
+- **One account registry, cleared on stop.** `sendChats` and `operatorIds`
+  were remembered in two module-level maps at account start and never
+  forgotten; `account-registry.ts` holds one record per account, written on
+  connect and dropped on disconnect. The send-scope refusal is spelled once
+  (`describeSendRefusal`) for all four outbound doors — two of which logged a
+  phone number the others hid (B5-09) — and the seven remaining copies of
+  the runtime lookup use `requireRuntime` (audit D2-11).
 
 ## [2.25.0] — 2026-09-06
 

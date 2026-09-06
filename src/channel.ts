@@ -66,7 +66,8 @@ import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { NewMessage, Raw } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
-import { isChatSendable, isPhoneNumberTarget, rememberSendScope} from "./send-scope";
+import { describeSendRefusal, isChatSendable } from "./send-scope";
+import { forgetAccount, rememberAccount, requireRuntime } from "./account-registry";
 import {
   appendJoinRecord,
   parseJoinEvent,
@@ -87,7 +88,6 @@ import {
   parseRemoveMemberParams,
   parseTransferOwnershipParams,
 } from "./manage";
-import { rememberOperatorIds} from "./system-notice";
 import { resolveStateDir } from "./state-dir";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { parseTopicsParams } from "./topics";
@@ -193,11 +193,9 @@ function refuseOutboundOutsideScope(
   accountId: string,
   target: string,
 ): never {
-  const phone = isPhoneNumberTarget(target);
-  const reason = phone ? "phone-number target" : "chat outside send scope";
-  // Телефонный номер — персональные данные: в журнал идёт вид цели, не значение (B5-09).
-  actionLog.warn(`clawgram ${action} refused: ${reason}`, { accountId, ...(phone ? { targetKind: "phone" } : { target }) });
-  throw new Error(`clawgram: not-allowed-chat ${target}`);
+  const refusal = describeSendRefusal(target);
+  actionLog.warn(`clawgram ${action} refused: ${refusal.reason}`, { accountId, ...refusal.logFields });
+  throw refusal.error;
 }
 
 /**
@@ -286,21 +284,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
     return configured ?? runtimes.keys().next().value;
   };
 
-  /**
-   * The connected runtime for an account, or a refusal naming it.
-   *
-   * One helper instead of the eleven copies of this three-liner that used to
-   * sit inside each dispatch branch — the same repetition that made every new
-   * action cost a scaffold (finding A6-11).
-   */
-  const requireRuntimeFor = (id: string) => {
-    const gram = runtimes.get(id);
-    if (!gram) {
-      throw new Error(`clawgram: runtime not found for account ${id}`);
-    }
-
-    return gram;
-  };
+  /** The connected runtime for an account, or a refusal naming it (A6-11, D2-11). */
+  const requireRuntimeFor = (id: string) => requireRuntime(runtimes, id);
 
   return {
     id: "clawgram",
@@ -465,10 +450,13 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const gram = new GramJsClientManager(resolvedAccount);
         await gram.start();
         runtimes.set(accountId, gram);
-        rememberOperatorIds(accountId, resolveAccountOperatorIds(cfg, accountId));
-        // Область отправки — туда же и по той же причине: в `outbound.*`
-        // конфига нет, а барьер нужен и на пути доставки ядра (A5-12).
-        rememberSendScope(accountId, resolveAccountSendChats(cfg, accountId));
+        // Что `outbound.*` должен знать об аккаунте без конфига: область
+        // отправки (A5-12) и операторы (A5-11). Одна запись, снимается при
+        // остановке аккаунта (D2-11).
+        rememberAccount(accountId, {
+          sendChats: resolveAccountSendChats(cfg, accountId),
+          operatorIds: resolveAccountOperatorIds(cfg, accountId),
+        });
         warnAboutHandleAllowlistEntries(cfg, accountId);
 
   const me = await gram.getMe();
@@ -529,6 +517,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         await waitUntilAbort(ctx.abortSignal, async () => {
           client.removeEventHandler(eventHandler, eventBuilder);
           client.removeEventHandler(joinEventHandler, joinEventBuilder);
+          forgetAccount(accountId);
 
           const runtime = runtimes.get(accountId);
           if (!runtime) {
@@ -816,10 +805,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             throw new Error(`clawgram: not-allowed-chat ${listParams.target}`);
           }
 
-          const listGram = runtimes.get(listAccountId);
-          if (!listGram) {
-            throw new Error(`clawgram: runtime not found for account ${listAccountId}`);
-          }
+          const listGram = requireRuntimeFor(listAccountId);
 
           const history = await listGram.listMessages(listParams);
 
@@ -869,10 +855,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             throw new Error(`clawgram: not-allowed-chat ${fetchParams.target}`);
           }
 
-          const fetchGram = runtimes.get(fetchAccountId);
-          if (!fetchGram) {
-            throw new Error(`clawgram: runtime not found for account ${fetchAccountId}`);
-          }
+          const fetchGram = requireRuntimeFor(fetchAccountId);
 
           // Fetching is a read: a dry run answers for real, the same way `read`
           // does. Nothing leaves the machine — the file lands in a temp
@@ -1241,10 +1224,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             });
           }
 
-          const reactionGram = runtimes.get(reactionAccountId);
-          if (!reactionGram) {
-            throw new Error(`clawgram: runtime not found for account ${reactionAccountId}`);
-          }
+          const reactionGram = requireRuntimeFor(reactionAccountId);
 
           await reactionGram.sendReaction(reactionParams);
 
@@ -1530,10 +1510,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             });
           }
 
-          const uploadGram = runtimes.get(uploadAccountId);
-          if (!uploadGram) {
-            throw new Error(`clawgram: runtime not found for account ${uploadAccountId}`);
-          }
+          const uploadGram = requireRuntimeFor(uploadAccountId);
 
           const uploaded = await uploadGram.sendMedia({
             target: uploadTo,
@@ -1695,10 +1672,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           });
         }
 
-        const gram = runtimes.get(resolvedAccountId);
-        if (!gram) {
-          throw new Error(`clawgram: runtime not found for account ${resolvedAccountId}`);
-        }
+        const gram = requireRuntimeFor(resolvedAccountId);
 
         const sent = await gram.sendText({
           target: to,

@@ -69,27 +69,21 @@ export function isChatSendable(target: unknown, sendChats?: unknown): boolean {
 
 
 /**
- * Область отправки каждого аккаунта, запомненная при его старте.
+ * One refusal for every outbound door — `handleAction`, `outbound.resolveTarget`,
+ * `sendText`, `sendMedia` — so the four read the same and log the same.
  *
- * В `outbound.resolveTarget` и `sendText` конфига нет — ядро зовёт их с
- * `{ accountId, to }`, — а тащить её туда параметром значило бы менять
- * контракт ядра ради одной проверки. Тот же приём уже применён к списку
- * операторов (`system-notice.ts`), и по той же причине.
- *
- * Перезапуск канала при правке конфига обновляет запись; аккаунт, о котором
- * ничего не помним, ведёт себя как аккаунт без области — то есть отправка
- * разрешена, но телефонный адресат всё равно отвергнут.
+ * A phone number is personal data: the journal gets the kind of target, not
+ * the value (B5-09). Two of the four doors used to log it anyway (D2-11).
  */
-const sendScopeByAccount = new Map<string, unknown>();
-
-export function rememberSendScope(accountId: string, sendChats: unknown): void {
-  sendScopeByAccount.set(accountId, sendChats);
-}
-
-export function sendScopeFor(accountId: string): unknown {
-  return sendScopeByAccount.get(accountId);
-}
-
-export function forgetSendScope(accountId: string): void {
-  sendScopeByAccount.delete(accountId);
+export function describeSendRefusal(target: string): {
+  reason: "phone-number target" | "chat outside send scope";
+  logFields: Record<string, unknown>;
+  error: Error;
+} {
+  const phone = isPhoneNumberTarget(target);
+  return {
+    reason: phone ? "phone-number target" : "chat outside send scope",
+    logFields: phone ? { targetKind: "phone" } : { target },
+    error: new Error(`clawgram: not-allowed-chat ${target}`),
+  };
 }

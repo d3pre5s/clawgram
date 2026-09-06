@@ -18,7 +18,8 @@ import {
 } from "openclaw/plugin-sdk/direct-dm";
 import { NewMessage, Raw } from "telegram/events";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
-import { isChatSendable, isPhoneNumberTarget, sendScopeFor } from "./send-scope";
+import { describeSendRefusal, isChatSendable } from "./send-scope";
+import { operatorIdsFor, requireRuntime, sendScopeFor } from "./account-registry";
 import {
   appendJoinRecord,
   parseJoinEvent,
@@ -39,7 +40,7 @@ import {
   parseRemoveMemberParams,
   parseTransferOwnershipParams,
 } from "./manage";
-import { operatorIdsFor, shouldSuppressGroupSystemNotice } from "./system-notice";
+import { shouldSuppressGroupSystemNotice } from "./system-notice";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
 import {
@@ -106,15 +107,13 @@ export function createOutbound(runtimes: RuntimeMap) {
         // здесь возвращается результатом, а не броском: бросок в этом хуке
         // роняет весь gateway (грабли 06.08.2026, выше).
         if (!isChatSendable(target, sendScopeFor(ctx.accountId))) {
-          const reason = isPhoneNumberTarget(target)
-            ? "phone-number target"
-            : "chat outside send scope";
+          const refusal = describeSendRefusal(target);
           actionLog.warn("clawgram outbound resolveTarget refused", {
             accountId: ctx.accountId,
-            target,
-            reason,
+            reason: refusal.reason,
+            ...refusal.logFields,
           });
-          return { ok: false as const, error: new Error(`clawgram: not-allowed-chat ${target}`) };
+          return { ok: false as const, error: refusal.error };
         }
 
         return { ok: true as const, to: target };
@@ -160,10 +159,11 @@ export function createOutbound(runtimes: RuntimeMap) {
       // был открыт для любого адресата и телефонного номера (D2-01, A5-12).
       const scopedTarget = normalizeOutboundTarget(ctx.to);
       if (!isChatSendable(scopedTarget, sendScopeFor(ctx.accountId))) {
+        const refusal = describeSendRefusal(scopedTarget);
         actionLog.warn("clawgram outbound sendText refused", {
           accountId: ctx.accountId,
-          target: scopedTarget,
-          reason: isPhoneNumberTarget(scopedTarget) ? "phone-number target" : "chat outside send scope",
+          reason: refusal.reason,
+          ...refusal.logFields,
         });
         return { skipped: "not-allowed" as const };
       }
@@ -190,10 +190,7 @@ export function createOutbound(runtimes: RuntimeMap) {
         return { skipped: "system-notice" as const };
       }
 
-      const gram = runtimes.get(ctx.accountId);
-      if (!gram) {
-        throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
-      }
+      const gram = requireRuntime(runtimes, ctx.accountId);
 
       // The agent already answered this message with its own `send`, and this
       // is core delivering the same turn's final text. Two messages for one
@@ -268,10 +265,7 @@ export function createOutbound(runtimes: RuntimeMap) {
       mediaReadFile?: (filePath: string) => Promise<Buffer>;
       mediaAccess?: { localRoots?: readonly string[]; readFile?: (filePath: string) => Promise<Buffer> };
     }) {
-      const gram = runtimes.get(ctx.accountId);
-      if (!gram) {
-        throw new Error(`clawgram: runtime not found for account ${ctx.accountId}`);
-      }
+      const gram = requireRuntime(runtimes, ctx.accountId);
 
       // Same rule as the action path: a local file outside the declared
       // roots is refused before anything is uploaded.
@@ -305,10 +299,11 @@ export function createOutbound(runtimes: RuntimeMap) {
       // Область отправки: файл наружу — такое же исходящее, как текст.
       // `resolveTarget` ядро зовёт не на каждом пути, поэтому проверяем и тут.
       if (!isChatSendable(mediaTarget, sendScopeFor(ctx.accountId))) {
+        const refusal = describeSendRefusal(mediaTarget);
         actionLog.warn("clawgram outbound sendMedia refused", {
           accountId: ctx.accountId,
-          target: mediaTarget,
-          reason: isPhoneNumberTarget(mediaTarget) ? "phone-number target" : "chat outside send scope",
+          reason: refusal.reason,
+          ...refusal.logFields,
         });
         return { skipped: "not-allowed" as const };
       }

@@ -112,24 +112,3 @@ export function isOperatorRecipient(
   const target = String(to).trim().replace(/^@/, "").toLowerCase();
   return operatorIds.some((id) => String(id).trim().replace(/^@/, "").toLowerCase() === target);
 }
-
-/**
- * Кто оператор у каждого аккаунта.
- *
- * Список запоминается при старте аккаунта: в `outbound.sendText` конфига нет,
- * а тащить её туда параметром значило бы менять контракт ради одной проверки.
- * Перезапуск канала при правке конфига обновляет запись.
- */
-const operatorIdsByAccount = new Map<string, readonly string[]>();
-
-export function rememberOperatorIds(accountId: string, ids: readonly string[]): void {
-  operatorIdsByAccount.set(accountId, [ ...ids ]);
-}
-
-export function operatorIdsFor(accountId: string): readonly string[] {
-  return operatorIdsByAccount.get(accountId) ?? [];
-}
-
-export function forgetOperatorIds(accountId: string): void {
-  operatorIdsByAccount.delete(accountId);
-}

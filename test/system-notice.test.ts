@@ -5,9 +5,10 @@ import path from "node:path";
 
 import { createChannelPlugin, resolveAccountOperatorIds } from "../src/channel";
 import {
-  classifySystemNotice, forgetOperatorIds, rememberOperatorIds, shouldSuppressGroupSystemNotice,
+  classifySystemNotice, shouldSuppressGroupSystemNotice,
 } from "../src/system-notice";
 import type { RuntimeMap } from "../src/types";
+import { forgetAccount, rememberAccount } from "../src/account-registry";
 
 /**
  * The three notices below are core's real output, captured verbatim from the
@@ -127,7 +128,7 @@ describe("the outbound path suppresses core notices for groups", () => {
 
   it("the same notice reaches a DM only when that person is the named operator", async () => {
     const { sent, channel } = makeChannel();
-    rememberOperatorIds("default", [ "100200300" ]);
+    rememberAccount("default", { sendChats: undefined, operatorIds: [ "100200300" ] });
     try {
       const toOperator = await channel.outbound.sendText({
         accountId: "default",
@@ -146,7 +147,7 @@ describe("the outbound path suppresses core notices for groups", () => {
       assert.equal(sent.length, 1, "уведомление ушло постороннему");
       assert.equal((toStranger as any)?.skipped, "system-notice");
     } finally {
-      forgetOperatorIds("default");
+      forgetAccount("default");
     }
   });
 

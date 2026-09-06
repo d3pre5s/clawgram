@@ -38,7 +38,7 @@ import { NewMessage, Raw } from "telegram/events";
 import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 import { normalizeTelegramEvent } from "./normalize";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
-import { isChatSendable, isPhoneNumberTarget, rememberSendScope, sendScopeFor } from "./send-scope";
+import { isChatSendable, isPhoneNumberTarget } from "./send-scope";
 import {
   appendJoinRecord,
   parseJoinEvent,
@@ -60,7 +60,8 @@ import {
   parseTransferOwnershipParams,
 } from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
-import { operatorIdsFor, shouldSuppressGroupSystemNotice } from "./system-notice";
+import { shouldSuppressGroupSystemNotice } from "./system-notice";
+import { operatorIdsFor } from "./account-registry";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
 import {
