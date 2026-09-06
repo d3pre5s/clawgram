@@ -52,7 +52,7 @@ const CHANNEL_CAPABILITIES: ChannelCapabilities = {
 import {
   describeMedia,
   downloadMessageMediaToFile,
-  pruneFetchedMedia, loadOutboundMedia } from "./media";
+  pruneFetchedMedia, assertLocalMediaWithinRoots, loadOutboundMedia } from "./media";
 import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
@@ -1448,9 +1448,8 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           }
 
           // Before anything else about the message is considered: an
-          // out-of-scope path is refused, not sent and then regretted; a
-          // local file is read through core's scoped reader when it gave one.
-          const file = await loadOutboundMedia(attachedFile, allowedMediaRoots, readMedia);
+          // out-of-scope path is refused, not sent and then regretted.
+          assertLocalMediaWithinRoots(attachedFile, allowedMediaRoots);
 
           const captionText = readMessageText(params) || (readStringParam(params, "caption") ?? "");
           // A caption is optional, but the silent-reply sentinel must never
@@ -1482,6 +1481,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           }
 
           const uploadGram = requireRuntimeFor(uploadAccountId);
+          // Read last, through core's scoped reader when it gave one: a dry
+          // run or a refusal above must not open the file.
+          const file = await loadOutboundMedia(attachedFile, allowedMediaRoots, readMedia);
 
           const uploaded = await uploadGram.sendMedia({
             target: uploadTo,

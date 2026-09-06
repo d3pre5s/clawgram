@@ -5,6 +5,8 @@ import path from "node:path";
 import test, { describe } from "node:test";
 
 import { createChannelPlugin } from "../src/channel";
+import { forgetAccount, rememberAccount } from "../src/account-registry";
+import { parseResult } from "./helpers";
 import { assertLocalMediaWithinRoots, isLocalMediaPath } from "../src/media";
 import type { RuntimeMap } from "../src/types";
 
@@ -153,6 +155,55 @@ describe("outbound local files stay inside the declared roots", () => {
     assert.deepEqual(reads, [ allowed ]);
     assert.equal(sends.length, 1);
     assert.deepEqual(sends[ 0 ].file, { buffer: Buffer.from("via-core"), fileName: "chart.png" });
+  });
+
+  test("a dry run and a refused target never open the file", async () => {
+    const sends: Array<Record<string, unknown>> = [];
+    const runtimes = new Map([ [ "default", {
+      sendMedia: async (args: Record<string, unknown>) => {
+        sends.push(args);
+        return { id: 1 };
+      },
+    } ] ]) as unknown as RuntimeMap;
+    const channel = createChannelPlugin(runtimes) as any;
+    const readFile = async () => { throw new Error("the reader must not run before the dry-run answer or a refusal"); };
+
+    const rehearsal = await channel.actions.handleAction({
+      action: "upload-file",
+      params: { to: "-100123", filePath: "/nonexistent/chart.png" },
+      cfg: { channels: { clawgram: { accounts: { default: {} } } } },
+      accountId: "default",
+      dryRun: true,
+      mediaReadFile: readFile,
+    });
+    assert.equal(parseResult(rehearsal).dryRun, true);
+    assert.equal(sends.length, 0);
+
+    await assert.rejects(
+      channel.actions.handleAction({
+        action: "upload-file",
+        params: { to: "-100999", filePath: "/nonexistent/chart.png" },
+        cfg: { channels: { clawgram: { accounts: { default: { sendChats: [ "-100123" ] } } } } },
+        accountId: "default",
+        mediaReadFile: readFile,
+      }),
+      /not-allowed-chat/,
+    );
+
+    // The core delivery path keeps its scope in the account registry.
+    rememberAccount("default", { sendChats: [ "-100123" ], operatorIds: [] });
+    try {
+      const refused = await channel.outbound.sendMedia({
+        accountId: "default",
+        to: "-100999",
+        filePath: "/nonexistent/chart.png",
+        mediaReadFile: readFile,
+      });
+      assert.equal((refused as any)?.skipped, "not-allowed");
+    } finally {
+      forgetAccount("default");
+    }
+    assert.equal(sends.length, 0);
   });
 
   test("a URL is never handed to core's file reader", async () => {

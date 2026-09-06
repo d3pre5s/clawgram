@@ -289,7 +289,6 @@ export function createOutbound(runtimes: RuntimeMap) {
       if (!named) {
         throw new Error("clawgram: sendMedia requires filePath or mediaUrl");
       }
-      const file = await loadOutboundMedia(named, outboundRoots, ctx.mediaReadFile ?? ctx.mediaAccess?.readFile);
 
       // Ниже — проверки, которые у `sendText` были, а здесь не было ни
       // одной: путь доставки медиа писался отдельно и обзавёлся только
@@ -340,6 +339,9 @@ export function createOutbound(runtimes: RuntimeMap) {
       // exactly how a synthesized group reply died on 2026-08-08, silently
       // enough that the transcript fallback posted it as raw text instead.
       const target = normalizeOutboundTarget(ctx.to);
+      // Read last, through core's scoped reader when it gave one: every
+      // refusal above must have passed before the file is opened.
+      const file = await loadOutboundMedia(named, outboundRoots, ctx.mediaReadFile ?? ctx.mediaAccess?.readFile);
 
       const sent = await gram.sendMedia({
         target,
