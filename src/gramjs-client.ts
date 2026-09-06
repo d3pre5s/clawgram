@@ -9,7 +9,7 @@ import { normalizeParseMode } from "./helpers";
 import { renderTelegramHtml } from "./html-render";
 import { buildTelegramClientOptions, describeProxy, type TelegramProxyConfig } from "./proxy-config";
 import { hasUnresolvedSecretRef } from "./secret-refs";
-import { buildHistoryQuery, collectHistoryWindow, normalizeParticipants, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams, type Participant } from "./history";
+import { buildHistoryQuery, collectHistoryWindow, normalizeParticipants, parseTargetWithThread, type HistoryMessage, type ListMessagesParams, type ListParticipantsParams, type Participant } from "./history";
 import { normalizeForumTopics, type ForumTopic, type TopicsParams } from "./topics";
 import { normalizeDialogs, type DialogSummary, type DialogsParams } from "./dialogs";
 import {
@@ -75,36 +75,6 @@ function uniqueCandidates(values: unknown[]): unknown[] {
   }
 
   return result;
-}
-
-function parseTargetWithThread(rawTarget: string): {
-  raw: string;
-  chatId: string;
-  messageThreadId?: number;
-} {
-  const raw = rawTarget.trim();
-  const topicMatch = /^(.+?):topic:(\d+)$/.exec(raw);
-  if (topicMatch) {
-    return {
-      raw,
-      chatId: topicMatch[1],
-      messageThreadId: Number.parseInt(topicMatch[2], 10),
-    };
-  }
-
-  const colonMatch = /^(.+):(\d+)$/.exec(raw);
-  if (colonMatch && /^-?\d+$/.test(colonMatch[1])) {
-    return {
-      raw,
-      chatId: colonMatch[1],
-      messageThreadId: Number.parseInt(colonMatch[2], 10),
-    };
-  }
-
-  return {
-    raw,
-    chatId: raw,
-  };
 }
 
 /**

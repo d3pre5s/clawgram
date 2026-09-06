@@ -9,6 +9,15 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`-1001234:5` is the same chat to the scope gates as to the resolver.**
+  `parseTargetWithThread` accepted the short topic spelling and the gates did
+  not: `chatKeyCandidates` stripped `:topic:N` with a regex of its own, so a
+  listed chat addressed as `-1001234:5` was refused as `not-allowed-chat`
+  while `clawgram:-1001234:topic:5` passed (audit B5-08). One parser now,
+  exported from `history.ts`; nine probe outcomes changed, all that spelling.
+
 ### Changed
 
 - **The behavioural probe behind the 2.22.0 split lives in the repository.**

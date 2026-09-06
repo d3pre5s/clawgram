@@ -339,11 +339,51 @@ export function normalizeChatKey(value: unknown): string {
  * `-1001234:topic:5` сегодня работает как область в одну тему, и сведение
  * всего к чату молча расширило бы её на весь чат.
  */
+/**
+ * One target address, split into the chat and the forum topic it may name.
+ *
+ * Two spellings carry a topic: `-1001234:topic:5` and the short `-1001234:5`
+ * (a numeric chat, a colon, a number). This is the parser the resolver in
+ * `gramjs-client` uses, and since B5-08 the only one: the gates used to strip
+ * `:topic:N` with a regex of their own and did not know the short form, so
+ * `-1001234:5` passed the resolver as a topic of a listed chat and failed the
+ * gate as an unknown one.
+ */
+export function parseTargetWithThread(rawTarget: string): {
+  raw: string;
+  chatId: string;
+  messageThreadId?: number;
+} {
+  const raw = rawTarget.trim();
+  const topicMatch = /^(.+?):topic:(\d+)$/.exec(raw);
+  if (topicMatch) {
+    return {
+      raw,
+      chatId: topicMatch[1],
+      messageThreadId: Number.parseInt(topicMatch[2], 10),
+    };
+  }
+
+  const colonMatch = /^(.+):(\d+)$/.exec(raw);
+  if (colonMatch && /^-?\d+$/.test(colonMatch[1])) {
+    return {
+      raw,
+      chatId: colonMatch[1],
+      messageThreadId: Number.parseInt(colonMatch[2], 10),
+    };
+  }
+
+  return {
+    raw,
+    chatId: raw,
+  };
+}
+
 export function chatKeyCandidates(target: unknown): string[] {
   const raw = String(target ?? "").trim();
   const withoutChannel = raw.replace(/^(?:clawgram|tguserbot|telegram|tg):/i, "");
   const withoutKind = withoutChannel.replace(/^(?:user|channel|group|conversation|room|dm):/i, "");
-  const chatOnly = withoutKind.replace(/:topic:\d+$/i, "");
+  const chatOnly = parseTargetWithThread(withoutKind).chatId;
 
   const candidates = [ raw, withoutKind, chatOnly ]
     .map(normalizeChatKey)

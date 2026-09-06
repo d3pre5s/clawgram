@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 
-import { chatKeyCandidates, isChatReadable } from "../src/history";
+import { chatKeyCandidates, isChatReadable, parseTargetWithThread } from "../src/history";
 import { isChatManageable } from "../src/manage";
 import { isChatSendable } from "../src/send-scope";
 
@@ -23,9 +23,25 @@ describe("chat key candidates", () => {
       "group:-1001234",
       " -1001234 ",
       "-1001234:topic:5",
+      "-1001234:5",
+      "clawgram:-1001234:5",
     ]) {
       assert.ok(chatKeyCandidates(spelling).includes("-1001234"), spelling);
     }
+  });
+
+  // The resolver accepts `-1001234:5` as topic 5 of chat -1001234; the gates
+  // used to see an unknown chat named "-1001234:5" and refuse a listed one
+  // (finding B5-08). Twin of the resolver's own reading, through the gates.
+  test("the short topic spelling is the same chat to the gates as to the resolver", () => {
+    const scope = [ "-1001234" ];
+    assert.deepEqual(parseTargetWithThread("-1001234:5"), { raw: "-1001234:5", chatId: "-1001234", messageThreadId: 5 });
+    assert.equal(isChatReadable("-1001234:5", scope), true);
+    assert.equal(isChatManageable("-1001234:5", scope), true);
+    assert.equal(isChatSendable("-1001234:5", scope), true);
+    // A non-numeric chat keeps its colon: `@name:5` is not a topic spelling.
+    assert.deepEqual(chatKeyCandidates("@name:5"), [ "name:5" ]);
+    assert.equal(isChatReadable("-1005678:5", scope), false);
   });
 
   test("all three gates admit a listed chat under any spelling", () => {
