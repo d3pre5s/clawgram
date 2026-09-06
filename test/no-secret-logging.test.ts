@@ -90,7 +90,13 @@ function collectLogCalls(source: string): LogCall[] {
 }
 
 describe("no message bodies or credentials in logs", () => {
-  for (const file of [ "channel.ts", "gramjs-client.ts", "history.ts", "joins.ts", "normalize.ts" ]) {
+  // Список файлов, а не один channel.ts: правило про запрещённые поля в логах
+// обязано ехать за кодом. Когда исходящий контур переехал в outbound.ts,
+// проверка осталась бы зелёной, охраняя пустое место (A6-11).
+for (const file of [
+  "channel.ts", "outbound.ts", "attachments.ts", "actions.ts",
+  "gramjs-client.ts", "history.ts", "joins.ts", "normalize.ts",
+]) {
     test(`${file} log calls carry no content or credential keys`, () => {
       const offenders = collectLogCalls(read(file))
         .map((call) => ({ ...call, bad: call.keys.filter(isForbiddenLogKey) }))
@@ -102,7 +108,7 @@ describe("no message bodies or credentials in logs", () => {
   }
 
   test("outbound send logs the text length, not the text", () => {
-    const source = read("channel.ts");
+    const source = read("outbound.ts");
     assert.match(source, /textLength: ctx\.text\.length/);
     assert.doesNotMatch(source, /actionLog\.info\("clawgram outbound sendText",[\s\S]{0,300}?\btext: ctx\.text\b/);
   });

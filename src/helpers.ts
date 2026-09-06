@@ -1107,3 +1107,28 @@ export {
 };
 
 export type { GroupPromptSettings, ResolvedGroupConfig };
+
+
+/**
+ * `messageThreadId` из параметров: число, строка из цифр — или ничего.
+ *
+ * Живёт здесь, а не в channel.ts: им пользуется и диспетчер, и исходящий
+ * контур, а импорт из channel.ts в outbound.ts замкнул бы круг.
+ */
+export function parseOptionalThreadId(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.trunc(value) : undefined;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
