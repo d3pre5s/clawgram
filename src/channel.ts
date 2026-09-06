@@ -128,6 +128,14 @@ import {
 } from './helpers';
 import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
+import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions";
+import { createOutbound } from "./outbound";
+import { handleInboundEvent } from "./inbound-pipeline";
+import { INBOUND_MEDIA_MAX_BYTES, understandAttachmentFile } from "./attachments";
+
+// Словарь имён живёт в ./actions. Реэкспорт — ради вызывающих снаружи:
+// тесты и другие модули знают его по этому файлу с 2.19.4.
+export { CORE_ACTION_SYNONYMS, canonicalAction };
 
 const actionLog = createSubsystemLogger("channels/clawgram");
 
@@ -144,11 +152,6 @@ function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefi
   return readAccountReadChats(cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]);
 }
 
-/**
- * Outbound scope as configured. Handed to `isChatSendable` raw: an absent
- * value means "unrestricted" and an empty list means "deny", and only the
- * raw value tells those apart — same shape as `readChats`.
- */
 /**
  * Хэндл в `allowFrom` — обещание, которое Telegram не держит.
  *
@@ -177,6 +180,11 @@ function warnAboutHandleAllowlistEntries(cfg: any, accountId: string): void {
   });
 }
 
+/**
+ * Outbound scope as configured. Handed to `isChatSendable` raw: an absent
+ * value means "unrestricted" and an empty list means "deny", and only the
+ * raw value tells those apart — same shape as `readChats`.
+ */
 function resolveAccountSendChats(cfg: any, accountId: string): unknown {
   return cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ]?.sendChats;
 }
@@ -232,32 +240,6 @@ function resolveAccountManageChats(cfg: any, accountId: string): unknown {
 function readAccountManageChats(account: any): string[] | undefined {
   return normalizeScopeList(account?.manageChats);
 }
-
-import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions";
-
-// Словарь имён живёт в ./actions. Реэкспорт — ради вызывающих снаружи:
-// тесты и другие модули знают его по этому файлу с 2.19.4.
-export { CORE_ACTION_SYNONYMS, canonicalAction };
-import { createOutbound } from "./outbound";
-import { handleInboundEvent } from "./inbound-pipeline";
-
-/**
- * Turns an inbound attachment into text the agent can read.
- *
- * The work is deliberately delegated: `runtime.mediaUnderstanding` already
- * knows which backend this installation uses for speech and for images, so
- * the channel stays out of that choice — a local model today, something else
- * tomorrow, without touching this file.
- *
- * Failure is not an error worth dropping the message over. An attachment that
- * could not be read still happened, and the assistant is better off saying
- * "you sent something I could not read" than staying silent, which is
- * indistinguishable from being offline.
- */
-import {
-  INBOUND_MEDIA_MAX_BYTES,
-  understandAttachmentFile,
-} from "./attachments";
 
 export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: PluginRuntime) => {
   const resolveRuntimeAccountId = (cfg: any, preferred?: string | null): string | undefined => {
