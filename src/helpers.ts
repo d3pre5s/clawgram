@@ -1002,8 +1002,11 @@ function resolveReplyParseMode(
   cfg: unknown,
   accountId: string,
 ): "markdown" | "html" | "none" | undefined {
-  const channel = (cfg as any)?.channels?.["clawgram"];
-  const account = channel?.accounts?.[accountId] ?? channel;
+  // Account level only: the schema has never allowed `replyParseMode` on the
+  // channel itself, so the old fallback to `channels.clawgram.replyParseMode`
+  // read a key `openclaw config validate` rejects — a setting that could not
+  // exist was read, and a test pinned it (audit B5-10).
+  const account = (cfg as any)?.channels?.["clawgram"]?.accounts?.[accountId];
   return normalizeParseMode(account?.replyParseMode);
 }
 

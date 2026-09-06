@@ -49,8 +49,8 @@ describe("resolveReplyParseMode (reply pipeline, 2.3.1)", () => {
     assert.equal(resolveReplyParseMode(withMode("html"), "default"), "html");
   });
 
-  it("falls back to the channel level when no account entry exists", () => {
-    assert.equal(resolveReplyParseMode({ channels: { clawgram: { replyParseMode: "html" } } }, "default"), "html");
+  it("ignores a channel-level key the schema does not allow (B5-10)", () => {
+    assert.equal(resolveReplyParseMode({ channels: { clawgram: { replyParseMode: "html" } } }, "default"), undefined);
   });
 
   it("throws on an invalid value at config-read time", () => {
