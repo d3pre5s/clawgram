@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.22.0] — 2026-09-06
+
 ### Changed
 
 - **One table decides what an action name means.** The synonyms lived in
@@ -31,8 +33,6 @@ recorded in `git log` only.
 - Dead code removed: the CLI's "Specify one flag" branch was unreachable —
   by that point argv is non-empty and contains only known flags. Two constants
   with no readers outside their module lost their `export`.
-
-## [2.22.0] — 2026-09-05
 
 ### Fixed
 
