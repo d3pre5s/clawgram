@@ -9,6 +9,38 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.24.0] — 2026-09-06
+
+### Changed
+
+- **The inbound pipeline is its own module.** 856 lines inside
+  `gateway.startAccount` carried every incoming message, and nothing tested
+  them: `startAccount` builds its own Telegram client, so there was no seam to
+  put a fake behind, and the action probe never enters that path.
+  `channel.ts` is 1783 lines now, from 3274 where this began.
+
+  The free variables were enumerated by the compiler rather than by reading:
+  the body was temporarily extracted as a parameterless function and the
+  "Cannot find name" errors are the list. That found nine; the build found
+  three more that appear only as shorthand properties (`{ client }`).
+
+  The body is moved verbatim — 803 non-blank lines, zero differences against
+  the block it came from.
+
+### Added
+
+- The inbound path's first test. It covers what it covers and says so: six
+  malformed event shapes do not throw (a throw there is an unhandled
+  rejection on every incoming message), a normalizable event reaches sender
+  resolution while an unnormalizable one touches nothing, and the twelve
+  context names agree across the pipeline, its type and the caller.
+
+  Not covered, deliberately: the allowlist gate and everything past sender
+  resolution. The first version of that test asserted "answers nobody when
+  allowFrom is empty" and passed — because the pipeline returned before
+  reaching the gate. It passed for the wrong reason and was removed rather
+  than kept as decoration.
+
 ## [2.23.0] — 2026-09-06
 
 ### Changed
