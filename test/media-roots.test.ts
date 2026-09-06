@@ -117,4 +117,84 @@ describe("outbound local files stay inside the declared roots", () => {
     assert.equal(sends.length, 1);
     assert.equal(sends[ 0 ].file, allowed);
   });
+
+  // Core's `mediaReadFile` is the reader that enforces the roots inside core;
+  // bundled channels read through it, this one opened the path itself and the
+  // reader was never called (finding B5-14).
+  test("upload-file reads a local file through core's reader when core gives one", async () => {
+    const sends: Array<Record<string, unknown>> = [];
+    const reads: string[] = [];
+    const runtimes = new Map([ [ "default", {
+      sendMedia: async (args: Record<string, unknown>) => {
+        sends.push(args);
+        return { id: 1 };
+      },
+    } ] ]) as unknown as RuntimeMap;
+    const channel = createChannelPlugin(runtimes) as any;
+    const cfg = { channels: { clawgram: { accounts: { default: {} } } } };
+    const root = await mkdtemp(path.join(tmpdir(), "clawgram-roots-"));
+    const allowed = path.join(root, "chart.png");
+    await writeFile(allowed, "on-disk");
+
+    await channel.actions.handleAction({
+      action: "upload-file",
+      params: { to: "-100123", filePath: allowed },
+      cfg,
+      accountId: "default",
+      mediaAccess: {
+        localRoots: [ root ],
+        readFile: async (filePath: string) => {
+          reads.push(filePath);
+          return Buffer.from("via-core");
+        },
+      },
+    });
+
+    assert.deepEqual(reads, [ allowed ]);
+    assert.equal(sends.length, 1);
+    assert.deepEqual(sends[ 0 ].file, { buffer: Buffer.from("via-core"), fileName: "chart.png" });
+  });
+
+  test("a URL is never handed to core's file reader", async () => {
+    const sends: Array<Record<string, unknown>> = [];
+    const runtimes = new Map([ [ "default", {
+      sendMedia: async (args: Record<string, unknown>) => {
+        sends.push(args);
+        return { id: 1 };
+      },
+    } ] ]) as unknown as RuntimeMap;
+    const channel = createChannelPlugin(runtimes) as any;
+    await channel.actions.handleAction({
+      action: "upload-file",
+      params: { to: "-100123", mediaUrl: "https://example.invalid/a.png" },
+      cfg: { channels: { clawgram: { accounts: { default: {} } } } },
+      accountId: "default",
+      mediaReadFile: async () => { throw new Error("must not be called for a URL"); },
+    });
+    assert.equal(sends[ 0 ].file, "https://example.invalid/a.png");
+  });
+
+  test("outbound.sendMedia reads through core's reader as well", async () => {
+    const sends: Array<Record<string, unknown>> = [];
+    const runtimes = new Map([ [ "default", {
+      sendMedia: async (args: Record<string, unknown>) => {
+        sends.push(args);
+        return { id: 1 };
+      },
+    } ] ]) as unknown as RuntimeMap;
+    const channel = createChannelPlugin(runtimes) as any;
+    const root = await mkdtemp(path.join(tmpdir(), "clawgram-roots-"));
+    const allowed = path.join(root, "voice.ogg");
+    await writeFile(allowed, "on-disk");
+
+    await channel.outbound.sendMedia({
+      accountId: "default",
+      to: "-100123",
+      filePath: allowed,
+      mediaLocalRoots: [ root ],
+      mediaReadFile: async () => Buffer.from("via-core"),
+    });
+
+    assert.deepEqual(sends[ 0 ].file, { buffer: Buffer.from("via-core"), fileName: "voice.ogg" });
+  });
 });

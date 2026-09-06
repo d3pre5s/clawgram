@@ -9,7 +9,7 @@ import {
   createSubsystemLogger,
   } from "openclaw/plugin-sdk/core";
 import {
-  assertLocalMediaWithinRoots } from "./media";
+  assertLocalMediaWithinRoots, loadOutboundMedia } from "./media";
 import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
 import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
 import {
@@ -264,7 +264,9 @@ export function createOutbound(runtimes: RuntimeMap) {
       audioAsVoice?: boolean;
       /** The roots the agent may read from, when core scoped this call. */
       mediaLocalRoots?: readonly string[];
-      mediaAccess?: { localRoots?: readonly string[] };
+      /** Core's scoped reader for local files; used when given (B5-14). */
+      mediaReadFile?: (filePath: string) => Promise<Buffer>;
+      mediaAccess?: { localRoots?: readonly string[]; readFile?: (filePath: string) => Promise<Buffer> };
     }) {
       const gram = runtimes.get(ctx.accountId);
       if (!gram) {
@@ -289,10 +291,11 @@ export function createOutbound(runtimes: RuntimeMap) {
         asVoice: ctx.audioAsVoice === true,
       });
 
-      const file = ctx.filePath ?? ctx.mediaUrl;
-      if (!file) {
+      const named = ctx.filePath ?? ctx.mediaUrl;
+      if (!named) {
         throw new Error("clawgram: sendMedia requires filePath or mediaUrl");
       }
+      const file = await loadOutboundMedia(named, outboundRoots, ctx.mediaReadFile ?? ctx.mediaAccess?.readFile);
 
       // Ниже — проверки, которые у `sendText` были, а здесь не было ни
       // одной: путь доставки медиа писался отдельно и обзавёлся только

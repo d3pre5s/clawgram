@@ -108,9 +108,16 @@ export type SendTextArgs = {
   parseMode?: "markdown" | "html" | "none";
 };
 
+/**
+ * An outbound file: a path or URL GramJS opens itself, or bytes core already
+ * read through its scoped reader (`mediaReadFile`) with the name Telegram
+ * should show.
+ */
+export type OutboundMediaFile = string | { buffer: Buffer; fileName: string };
+
 export type SendMediaArgs = {
   target: unknown;
-  file: string;
+  file: OutboundMediaFile;
   caption?: string;
   /** Caption format, same semantics as {@link SendTextArgs.parseMode} (2.15.0). */
   parseMode?: "markdown" | "html" | "none";

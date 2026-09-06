@@ -14,6 +14,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { readNumber } from "./util";
+import type { OutboundMediaFile } from "./types";
 
 export type HistoryMediaKind =
   | "photo"
@@ -360,4 +361,31 @@ export function assertLocalMediaWithinRoots(
     // the host's layout.
     throw new Error(`clawgram: ${file} is outside the media roots this agent may read`);
   }
+}
+
+/**
+ * The file an outbound send should hand to GramJS.
+ *
+ * Core scopes a call in two ways: `mediaLocalRoots` names the directories the
+ * agent may read from, and `mediaReadFile` is a reader that enforces them
+ * inside core. Bundled channels read local files through that reader; this
+ * one opened the path itself as the gateway process — the roots were checked
+ * here, the reader ignored, so a call core scoped with a reader and no roots
+ * (the default on the RPC and TTS paths) was not scoped at all (audit B5-14).
+ *
+ * Roots are still checked first, symlinks resolved. A local path is then read
+ * through core's reader when one is given, and sent as bytes under the file's
+ * own name; without a reader, or for a URL, the file goes to GramJS as before.
+ */
+export async function loadOutboundMedia(
+  file: string,
+  roots: readonly string[] | undefined,
+  readFile?: (filePath: string) => Promise<Buffer>,
+): Promise<OutboundMediaFile> {
+  assertLocalMediaWithinRoots(file, roots);
+  if (!readFile || !isLocalMediaPath(file)) {
+    return file;
+  }
+
+  return { buffer: await readFile(file), fileName: path.basename(file) };
 }

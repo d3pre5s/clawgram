@@ -52,7 +52,7 @@ const CHANNEL_CAPABILITIES: ChannelCapabilities = {
 import {
   describeMedia,
   downloadMessageMediaToFile,
-  pruneFetchedMedia, assertLocalMediaWithinRoots } from "./media";
+  pruneFetchedMedia, loadOutboundMedia } from "./media";
 import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
 import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
@@ -770,6 +770,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // verbatim, so a path naming the secret store or the config holding
         // `sessionString` was uploaded like any attachment.
         mediaLocalRoots,
+        mediaReadFile,
         mediaAccess,
       }: {
         action: string;
@@ -782,9 +783,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           currentMessageId?: string | number;
         };
         mediaLocalRoots?: readonly string[];
-        mediaAccess?: { localRoots?: readonly string[] };
+        mediaReadFile?: (filePath: string) => Promise<Buffer>;
+        mediaAccess?: { localRoots?: readonly string[]; readFile?: (filePath: string) => Promise<Buffer> };
       }) => {
         const allowedMediaRoots = mediaLocalRoots ?? mediaAccess?.localRoots;
+        const readMedia = mediaReadFile ?? mediaAccess?.readFile;
         // Core passes the flag beside `params`; callers write it inside.
         // Both count, because a rehearsal flag that is silently ignored puts
         // a real message in a real chat — twice, so far (2.13.1).
@@ -1489,14 +1492,14 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             refuseOutboundOutsideScope("upload-file", uploadAccountId, uploadTo);
           }
 
-          const file = attachedFile;
-          if (!file) {
+          if (!attachedFile) {
             throw new Error("clawgram: upload-file requires filePath, path, media, or mediaUrl");
           }
 
           // Before anything else about the message is considered: an
-          // out-of-scope path is refused, not sent and then regretted.
-          assertLocalMediaWithinRoots(file, allowedMediaRoots);
+          // out-of-scope path is refused, not sent and then regretted; a
+          // local file is read through core's scoped reader when it gave one.
+          const file = await loadOutboundMedia(attachedFile, allowedMediaRoots, readMedia);
 
           const captionText = readMessageText(params) || (readStringParam(params, "caption") ?? "");
           // A caption is optional, but the silent-reply sentinel must never

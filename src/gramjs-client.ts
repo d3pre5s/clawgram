@@ -1,6 +1,7 @@
 import { chunkTelegramText, TELEGRAM_CAPTION_LIMIT, TELEGRAM_TEXT_LIMIT } from "./chunk";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
+import { CustomFile } from "telegram/client/uploads";
 // Deep import, but the documented one: GramJS ships its SRP helper here and
 // the package has no `exports` field to forbid it.
 import { computeCheck } from "telegram/Password";
@@ -912,7 +913,11 @@ export class GramJsClientManager {
     }
 
     return this.client.sendFile(resolved.peer as any, {
-      file: args.file,
+      // Bytes core read through its scoped reader keep the file's own name;
+      // a bare Buffer would reach Telegram as "unnamed" (B5-14).
+      file: typeof args.file === "string"
+        ? args.file
+        : new CustomFile(args.file.fileName, args.file.buffer.length, "", args.file.buffer),
       // Captions are agent prose too — the outbound path sends `caption ??
       // text` — so they render exactly like sendText does. Before 2.15.0
       // captions carried no mode at all, which meant GramJS's default

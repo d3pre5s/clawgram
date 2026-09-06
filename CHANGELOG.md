@@ -17,6 +17,14 @@ recorded in `git log` only.
   listed chat addressed as `-1001234:5` was refused as `not-allowed-chat`
   while `clawgram:-1001234:topic:5` passed (audit B5-08). One parser now,
   exported from `history.ts`; nine probe outcomes changed, all that spelling.
+- **A local file is read through core's scoped reader when core gives one.**
+  Core hands outbound calls `mediaReadFile` beside `mediaLocalRoots`; bundled
+  channels read through it, clawgram opened the path itself as the gateway
+  process and the reader was ignored — on paths core scopes with a reader
+  and no roots, not scoped at all (audit B5-14). Both outbound paths
+  (`upload-file`/`send` with a file, and `outbound.sendMedia`) now read
+  through the reader and upload the bytes under the file's own name; without
+  a reader the behaviour is unchanged.
 
 ### Changed
 
