@@ -13,22 +13,15 @@
 // каждая следующая осталась той же самой: это проверяется сравнением с
 // исходным блоком, а не глазами.
 import {
-  buildChannelOutboundSessionRoute,
   createSubsystemLogger,
-  jsonResult,
-} from "openclaw/plugin-sdk/core";
-import os from "node:os";
-import path from "node:path";
-import { existsSync } from "node:fs";
+  } from "openclaw/plugin-sdk/core";
 import {
   describeMedia,
   downloadInboundMediaToTempFile,
   downloadMessageMediaToFile,
   pruneFetchedMedia, assertLocalMediaWithinRoots } from "./media";
 import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
-import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
 import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
-import { extractToolSend } from "openclaw/plugin-sdk/tool-send";
 import {
   dispatchInboundDirectDmWithRuntime,
   resolveInboundDirectDmAccessWithRuntime,
@@ -39,13 +32,10 @@ import {
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-sdk/inbound-envelope";
 import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
-import type { ChannelCapabilities } from "openclaw/plugin-sdk";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
-import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
 import { NewMessage, Raw } from "telegram/events";
 import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
-import { GramJsClientManager } from "./gramjs-client";
 import { normalizeTelegramEvent } from "./normalize";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
 import { isChatSendable, isPhoneNumberTarget, rememberSendScope, sendScopeFor } from "./send-scope";
@@ -57,7 +47,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
+import { resolveAgentReactionGuidance } from "./reactions";
 import {
   isChatManageable,
   isManagementEnabled,
@@ -70,21 +60,16 @@ import {
   parseTransferOwnershipParams,
 } from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
-import { operatorIdsFor, rememberOperatorIds, shouldSuppressGroupSystemNotice } from "./system-notice";
-import { resolveStateDir } from "./state-dir";
+import { operatorIdsFor, shouldSuppressGroupSystemNotice } from "./system-notice";
 import { describeChat, parseChatInfoParams } from "./chat-info";
-import { parseTopicsParams } from "./topics";
 import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
-import { resolveClawgramGroupToolPolicy } from "./group-tool-policy";
 import {
   applyAccountSecrets,
   collectAccountSecretRefs,
   readSecretInput,
 } from "./secret-refs";
-import { resolveSecretRefValues } from "openclaw/plugin-sdk/secret-ref-runtime";
-import type { SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { PluginConfig, RuntimeMap } from "./types";
-import { consumeGroupReplyAddress, peekGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
+import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
 import {
   hadTurnSendJustNow,
   hasRecentVisibleGroupReply,
@@ -92,49 +77,32 @@ import {
   rememberVisibleGroupReply,
 } from "./group-visible-reply-guard";
 import {
-  normalizeOutboundTarget,
-  resolveConfiguredAccountId,
-  inferOutboundTargetKind,
-  routeKindFromChatType,
   buildConversationTarget,
   buildScopedGroupPeerId,
   readLatestAssistantFallbackFromTranscript,
-  resolveActionTarget,
-  resolveReplyToMessageIdForTarget,
-  readMessageText,
-  readVoiceNoteFlag,
   resolveAccountScopes,
   resolveAddressableText,
   resolveGroupConfig,
-  resolveActiveUsername,
   isSenderAllowed,
   hasTelegramMention,
   hasExplicitTelegramMention,
-  toDisplayName,
   prefixReplyTextToAddress,
   stripSilentReplyToken,
   stripTtsDirectives,
-  isSilentReplyText,
   resolveReplyTarget,
   resolveChatTarget,
   resolveReplyParent,
   resolveSenderProfile,
   resolveSenderProfileWithTimeout,
-  resolveOutboundParseMode,
-  resolveDryRun,
   parseOptionalThreadId,
   readAccountReactionLevel,
   readAccountReactionModel,
 } from './helpers';
-import { resolveProxyConfig } from './proxy-config';
 import { CHANNEL_ID } from './constants';
 import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions";
-import { createOutbound } from "./outbound";
 import {
-  INBOUND_MEDIA_MAX_BYTES,
   readInboundAttachment,
-  understandAttachmentFile,
-} from "./attachments";
+  } from "./attachments";
 
 /**
  * Wires `reactToSilentMention` to this account's runtime, config and log.
@@ -245,36 +213,6 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
               return;
             }
 
-            const directReplyTarget = normalized.chatType === "direct"
-              ? undefined
-              : await resolveReplyTarget(rawMessage);
-            const senderProfile = normalized.chatType === "direct"
-              ? await resolveSenderProfileWithTimeout(rawMessage, {
-                  senderId: normalized.senderId,
-                  client,
-                }, 1500)
-              : await resolveSenderProfile(rawMessage, {
-                  senderId: normalized.senderId,
-                  client,
-                });
-
-            const replyTarget =
-              normalized.chatType === "direct"
-                ? normalized.chatId
-                : await resolveChatTarget(rawMessage);
-
-            if (replyTarget) {
-              normalized.replyTarget = replyTarget;
-            }
-
-            if (!normalized.senderUsername && senderProfile.username) {
-              normalized.senderUsername = senderProfile.username;
-            }
-
-            if (!normalized.senderDisplay && senderProfile.display) {
-              normalized.senderDisplay = senderProfile.display;
-            }
-
             if (normalized.isOutgoing) {
               if (normalized.chatType === "direct") {
                 log?.info?.("clawgram skipping outgoing direct event", {
@@ -295,6 +233,65 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                 messageId: normalized.messageId,
               });
               return;
+            }
+
+            // Ворота — ДО сети. До 2.25.0 на каждое сообщение из любой группы,
+            // где сидит аккаунт, — включая группы вне `groups` — плагин делал
+            // до семи запросов к Telegram (профиль отправителя, адрес ответа,
+            // цель чата) и только потом отбрасывал сообщение как чужое.
+            // Посторонний, флудящий в такой группе, тратил соединение и
+            // rate-limit аккаунта (B5-04, остаток A5-06). Группа вне конфига
+            // и выключенная группа заканчиваются здесь, без единого вызова.
+            const earlyScopes = resolveAccountScopes(cfg, accountId);
+            const earlyGroupConfig = normalized.chatType === "group"
+              ? resolveGroupConfig(earlyScopes.groups, normalized.chatId)
+              : undefined;
+            if (normalized.chatType === "group") {
+              if (!earlyGroupConfig) {
+                log?.info?.("clawgram skipping group not present in groups config", {
+                  accountId,
+                  chatId: normalized.chatId,
+                  messageId: normalized.messageId,
+                });
+                return;
+              }
+              if (earlyGroupConfig.enabled === false) {
+                log?.info?.("clawgram skipping disabled group", {
+                  accountId,
+                  chatId: normalized.chatId,
+                  messageId: normalized.messageId,
+                });
+                return;
+              }
+            }
+
+            // Профиль отправителя нужен воротам только когда allowFrom
+            // называет кого-то по @handle, а сообщение handle не принесло;
+            // числовые id сверяются без сети.
+            const gateAllowFrom = normalized.chatType === "group"
+              ? earlyGroupConfig?.allowFrom
+              : earlyScopes.allowFrom;
+            const allowFromNeedsHandle = Array.isArray(gateAllowFrom)
+              && gateAllowFrom.some((entry) => String(entry).trim().startsWith("@"));
+            const needsProfile = !normalized.senderUsername && allowFromNeedsHandle;
+            const senderProfile: { username?: string; display?: string } = needsProfile
+              ? (normalized.chatType === "direct"
+                ? await resolveSenderProfileWithTimeout(rawMessage, {
+                    senderId: normalized.senderId,
+                    client,
+                  }, 1500)
+                : await resolveSenderProfile(rawMessage, {
+                    senderId: normalized.senderId,
+                    client,
+                  }))
+              : {};
+
+            if (!normalized.senderUsername && senderProfile.username) {
+              normalized.senderUsername = senderProfile.username;
+            }
+
+            if (!normalized.senderDisplay && senderProfile.display) {
+              normalized.senderDisplay = senderProfile.display;
             }
 
             let text = normalized.text?.trim();
@@ -336,6 +333,17 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
             // voice note and a screenshot alike, the attachment *is* the
             // message. A caption is kept and the reading appended, because
             // "look at this" plus the picture is one thought, not two.
+            // Адрес ответа и цель чата — сеть, и нужны только тому, кому
+            // отвечают: считаются после ворот (B5-04).
+            const directReplyTarget = normalized.chatType === "direct" ? undefined
+              : senderMayReachAgent ? await resolveReplyTarget(rawMessage) : undefined;
+            const replyTarget = normalized.chatType === "direct"
+              ? normalized.chatId
+              : senderMayReachAgent ? await resolveChatTarget(rawMessage) : undefined;
+            if (replyTarget) {
+              normalized.replyTarget = replyTarget;
+            }
+
             const attachment = senderMayReachAgent ? await readInboundAttachment({
               gram,
               event,

@@ -68,18 +68,10 @@ describe("the inbound pipeline survives what the network hands it", () => {
     });
   }
 
-  it("a normalizable event reaches sender resolution; an unnormalizable one does not", async () => {
-    // How far it gets, not what it decides. A message with a chat id, a
-    // message id and a sender normalizes and the pipeline goes on to ask the
-    // client who that sender is; one without a message id does not normalize
-    // and nothing is touched.
-    //
-    // Deliberately not asserted here: whether a stranger is answered. The
-    // allowlist gate sits past sender resolution, and reaching it needs a
-    // faithful fake of the GramJS entity surface — a piece of work in its
-    // own right. An assertion that looked like it covered the gate but
-    // returned before reaching it would pass for the wrong reason, which is
-    // the failure this whole audit kept finding.
+  it("the gate runs before the network: foreign groups and numeric allowFrom touch no client at all (B5-04)", async () => {
+    // What used to be "reaches sender resolution" — every normalizable event
+    // resolved the sender through the client before any check. Now the
+    // cheap checks go first and the client is asked only when needed.
     const touched: string[] = [];
     const client = new Proxy({}, {
       get: (_t, k) => {
@@ -89,10 +81,19 @@ describe("the inbound pipeline survives what the network hands it", () => {
       },
     });
 
-    const normalizable = { message: { id: 7, peerId: { userId: 500 }, senderId: 500, message: "статус?" } };
-    await handleInboundEvent(normalizable, fakeContext({ client }).ctx as never);
-    assert.ok(touched.includes("getEntity"),
-      `pipeline stopped before sender resolution; touched: ${touched.join(", ") || "nothing"}`);
+    // A group the config does not know: dropped without a single call.
+    const foreignGroup = { message: { id: 7, peerId: { channelId: 4242 }, senderId: 500, message: "статус?" } };
+    await handleInboundEvent(foreignGroup, fakeContext({ client }).ctx as never);
+    assert.deepEqual(touched, [], `a foreign group touched the client: ${touched.join(", ")}`);
+
+    // A DM with a numeric-only allowFrom: the id is compared locally.
+    const dm = { message: { id: 8, peerId: { userId: 500 }, senderId: 500, message: "статус?" } };
+    await handleInboundEvent(dm, fakeContext({ client, cfg: { channels: { clawgram: { accounts: { default: { allowFrom: [ "999" ] } } } } } }).ctx as never);
+    assert.deepEqual(touched, [], `a numeric allowFrom touched the client: ${touched.join(", ")}`);
+
+    // allowFrom by @handle and the message carries none: the profile is fetched.
+    await handleInboundEvent(dm, fakeContext({ client, cfg: { channels: { clawgram: { accounts: { default: { allowFrom: [ "@someone" ] } } } } } }).ctx as never);
+    assert.ok(touched.includes("getEntity"), `an @handle allowFrom should resolve the profile; touched: ${touched.join(", ") || "nothing"}`);
 
     touched.length = 0;
     await handleInboundEvent({ message: { peerId: { userId: 500 }, message: "нет id" } },

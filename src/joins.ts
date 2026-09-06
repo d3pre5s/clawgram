@@ -9,7 +9,6 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolveStateDir } from "./state-dir";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { toPeerChannelId, toPeerChatId, toStringId } from "./normalize.js";

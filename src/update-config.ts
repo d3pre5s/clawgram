@@ -54,15 +54,6 @@ function buildAccountPayload(auth: TelegramAuthResult): Record<string, unknown> 
   };
 }
 
-/** Первый конфиг закрыт: см. одноимённую функцию в cli-core.ts. */
-function buildAccountConfigFragment(auth: TelegramAuthResult): Record<string, unknown> {
-  return {
-    ...buildAccountPayload(auth),
-    allowFrom: auth.selfId ? [ auth.selfId ] : [],
-    readChats: [],
-  };
-}
-
 /**
  * Credentials already moved into the secret store must survive re-auth.
  *

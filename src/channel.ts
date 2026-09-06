@@ -5,7 +5,6 @@ import {
 } from "openclaw/plugin-sdk/core";
 import os from "node:os";
 import path from "node:path";
-import { existsSync } from "node:fs";
 
 /**
  * How long a file fetched by `fetch-media` stays on disk.
@@ -52,7 +51,6 @@ const CHANNEL_CAPABILITIES: ChannelCapabilities = {
 };
 import {
   describeMedia,
-  downloadInboundMediaToTempFile,
   downloadMessageMediaToFile,
   pruneFetchedMedia, assertLocalMediaWithinRoots } from "./media";
 import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
@@ -63,22 +61,13 @@ import {
   dispatchInboundDirectDmWithRuntime,
   resolveInboundDirectDmAccessWithRuntime,
 } from "openclaw/plugin-sdk/direct-dm";
-import {
-  resolveInboundMentionDecision,
-} from "openclaw/plugin-sdk/channel-inbound";
-import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
-import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-sdk/inbound-envelope";
-import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
 import type { ChannelCapabilities } from "openclaw/plugin-sdk";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
-import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { createChannelPairingController } from "openclaw/plugin-sdk/channel-pairing";
 import { NewMessage, Raw } from "telegram/events";
-import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 import { GramJsClientManager } from "./gramjs-client";
-import { normalizeTelegramEvent } from "./normalize";
 import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
-import { isChatSendable, isPhoneNumberTarget, rememberSendScope, sendScopeFor } from "./send-scope";
+import { isChatSendable, isPhoneNumberTarget, rememberSendScope} from "./send-scope";
 import {
   appendJoinRecord,
   parseJoinEvent,
@@ -87,7 +76,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
+import { parseReactionParams} from "./reactions";
 import {
   isChatManageable,
   isManagementEnabled,
@@ -99,8 +88,7 @@ import {
   parseRemoveMemberParams,
   parseTransferOwnershipParams,
 } from "./manage";
-import { reactToSilentMention } from "./silent-reaction";
-import { operatorIdsFor, rememberOperatorIds, shouldSuppressGroupSystemNotice } from "./system-notice";
+import { rememberOperatorIds} from "./system-notice";
 import { resolveStateDir } from "./state-dir";
 import { describeChat, parseChatInfoParams } from "./chat-info";
 import { parseTopicsParams } from "./topics";
@@ -114,9 +102,8 @@ import {
 import { resolveSecretRefValues } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { SecretRef } from "openclaw/plugin-sdk/secret-ref-runtime";
 import type { PluginConfig, RuntimeMap } from "./types";
-import { consumeGroupReplyAddress, peekGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
+import { consumeGroupReplyAddress, peekGroupReplyAddress} from "./group-reply-address";
 import {
-  hadTurnSendJustNow,
   hasRecentVisibleGroupReply,
   rememberTurnSend,
   rememberVisibleGroupReply,
@@ -126,30 +113,16 @@ import {
   resolveConfiguredAccountId,
   inferOutboundTargetKind,
   routeKindFromChatType,
-  buildConversationTarget,
   buildScopedGroupPeerId,
-  readLatestAssistantFallbackFromTranscript,
   resolveActionTarget,
   resolveReplyToMessageIdForTarget,
   readMessageText,
   readVoiceNoteFlag,
   resolveAccountScopes,
-  resolveAddressableText,
-  resolveGroupConfig,
   resolveActiveUsername,
-  isSenderAllowed,
-  hasTelegramMention,
-  hasExplicitTelegramMention,
   toDisplayName,
   prefixReplyTextToAddress,
-  stripSilentReplyToken,
-  stripTtsDirectives,
   isSilentReplyText,
-  resolveReplyTarget,
-  resolveChatTarget,
-  resolveReplyParent,
-  resolveSenderProfile,
-  resolveSenderProfileWithTimeout,
   resolveOutboundParseMode,
   resolveDryRun,
   parseOptionalThreadId,
@@ -295,7 +268,6 @@ import { handleInboundEvent } from "./inbound-pipeline";
  */
 import {
   INBOUND_MEDIA_MAX_BYTES,
-  readInboundAttachment,
   understandAttachmentFile,
 } from "./attachments";
 

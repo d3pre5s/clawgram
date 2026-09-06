@@ -27,8 +27,30 @@ recorded in `git log` only.
   Absent, empty or `*` now means "no operator named" and the notices are
   dropped everywhere; set `operatorIds` explicitly to keep them (D2-03).
 
+### Fixed
+
+- **Long messages are split, not dropped.** Core chunks only the replies it
+  dispatches; a `send` from the message tool — how the guard scripts deliver
+  reports — reached GramJS whole and failed with MESSAGE_TOO_LONG while the
+  agent saw "✉️ Message failed". Text is split at paragraph, line or word
+  boundaries under 4096 code points; a caption over 1024 goes as the file
+  plus follow-up text (B5-03).
+- **The inbound gate runs before the network.** Every message from every
+  group the account sits in — configured or not — cost up to seven Telegram
+  calls (sender profile, reply address, chat target) before the message was
+  dropped as foreign. A group outside `groups` or disabled now ends before
+  any call; the sender profile is fetched only when `allowFrom` names an
+  `@handle` the message did not carry; reply targets are resolved only for
+  senders who may reach the agent (B5-04, the rest of A5-06).
+
 ### Changed
 
+- 132 unused imports and one dead helper left behind by the 2.22–2.24 split
+  are gone; `npx tsc --noEmit --noUnusedLocals` is clean (D2-09).
+- The proxy verification scripts are tracked under `scripts/verify/` and
+  runnable as `npm run verify:proxy` (the SOCKS simulation needs a local
+  proxy and stays manual); they were only in the untracked `.claude/`
+  before (B5-06).
 - The tool hint no longer advertises phone/contact targets: send-scope has
   refused them since 2.18.0, and the hint taught a call that always ended in
   `not-allowed-chat` (D2-06).

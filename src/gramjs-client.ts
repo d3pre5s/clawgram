@@ -1,3 +1,4 @@
+import { chunkTelegramText, TELEGRAM_CAPTION_LIMIT, TELEGRAM_TEXT_LIMIT } from "./chunk";
 import { Api, TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions";
 // Deep import, but the documented one: GramJS ships its SRP helper here and
@@ -498,6 +499,18 @@ export class GramJsClientManager {
     const messageThreadId = args.messageThreadId ?? resolved.messageThreadId;
     const replyParams = buildForumReplyParams(messageThreadId, args.replyToMessageId);
 
+    // Длиннее лимита Telegram — несколько сообщений подряд, а не
+    // MESSAGE_TOO_LONG (B5-03). Нарезка — по тексту агента, до рендера.
+    const chunks = chunkTelegramText(args.text, TELEGRAM_TEXT_LIMIT);
+    if (chunks.length > 1) {
+      let last: unknown;
+      for (const [ index, chunk ] of chunks.entries()) {
+        last = await this.sendText({ ...args, text: chunk,
+          ...(index > 0 ? { replyToMessageId: undefined } : {}) });
+      }
+      return last as Awaited<ReturnType<typeof this.client.sendMessage>>;
+    }
+
     return this.client.sendMessage(resolved.peer as any, {
       // In html mode the text is rendered first: the agent writes markdown,
       // Telegram HTML, or both, and GramJS's HTML parser alone would ship
@@ -915,6 +928,17 @@ export class GramJsClientManager {
     const resolved = await this.resolvePeer(args.target);
     const messageThreadId = args.messageThreadId ?? resolved.messageThreadId;
     const replyParams = buildForumReplyParams(messageThreadId, args.replyToMessageId);
+
+    // Подпись длиннее 1024 — файл с первой частью, остальное текстом следом
+    // (B5-03); раньше вся подпись уезжала целиком и падала на лимите.
+    const captionChunks = args.caption ? chunkTelegramText(args.caption, TELEGRAM_CAPTION_LIMIT) : [];
+    if (captionChunks.length > 1) {
+      const sent = await this.sendMedia({ ...args, caption: captionChunks[0] });
+      for (const chunk of captionChunks.slice(1)) {
+        await this.sendText({ target: args.target, text: chunk, parseMode: args.parseMode, messageThreadId } as SendTextArgs);
+      }
+      return sent;
+    }
 
     return this.client.sendFile(resolved.peer as any, {
       file: args.file,
