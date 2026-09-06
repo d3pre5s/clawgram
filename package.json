@@ -5,6 +5,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "verify:proxy": "node scripts/verify/gramjs-wiring.cjs && node scripts/verify/auth-preserves-proxy.cjs",
+    "verify:actions": "node scripts/verify/action-probe.cjs",
     "build": "tsc -p tsconfig.json",
     "build:test": "tsc -p tsconfig.test.json",
     "test": "npm run build:test && node test/ensure-compiled.mjs && node --test \"dist-test/test/*.test.js\"",

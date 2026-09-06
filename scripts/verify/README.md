@@ -1,7 +1,8 @@
 # Verification scripts
 
-Reproducible checks for the SOCKS proxy feature. Tracked since 2.25.0 (audit B5-06); they are not part of
-the shipped package and not part of `npm test`.
+Reproducible checks that need no credentials: the SOCKS proxy feature and the behavioural
+probe of `handleAction`. Tracked since 2.25.0 (audit B5-06); they are not part of the shipped
+package and not part of `npm test`.
 
 Every script prints `PASS`/`FAIL` per assertion and exits non-zero on failure. All read from `dist/`,
 so **build first**:
@@ -15,11 +16,13 @@ npm run build
 | `gramjs-wiring.cjs` | proxy reaches `TelegramClient`; no `MTProxy`/`secret` key; MTProxy transport not selected; invalid proxy throws without leaking the password | no |
 | `auth-preserves-proxy.cjs` | `--auth` updates credentials without erasing an existing `proxy` block, JSON5 comments intact | no |
 | `socks-proxy-sim.cjs` | GramJS really dials Telegram through a live local SOCKS4/SOCKS5 server; credentials go over RFC 1929; control case sends nothing | loopback only |
+| `action-probe.cjs` | every action spelling × parameter set × three account configs, on recording fake runtimes; each outcome (answer or error, plus runtime calls) is compared with `action-probe.snapshot.json`. Zero differences = a refactor of `channel.ts` changed no behaviour. `--write` re-records after an intended change (D2-05) | no |
 
 ```bash
 node scripts/verify/gramjs-wiring.cjs
 node scripts/verify/auth-preserves-proxy.cjs
 node scripts/verify/socks-proxy-sim.cjs
+node scripts/verify/action-probe.cjs          # or: npm run verify:actions
 ```
 
 Notes:

@@ -9,6 +9,15 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Changed
+
+- **The behavioural probe behind the 2.22.0 split lives in the repository.**
+  `scripts/verify/action-probe.cjs` drives every action spelling through the
+  built channel on recording fake runtimes over three account configurations
+  and compares each outcome with `action-probe.snapshot.json`; the 2.22.0
+  claim of "354 outcomes, zero differences" could not be re-run by anyone
+  but its author (audit D2-05). `npm run verify:actions`.
+
 ## [2.25.0] — 2026-09-06
 
 ### Security
@@ -146,7 +155,9 @@ block (`0815c6c`); `sendChats` outbound scope and phone-number refusal
 Behaviour is unchanged and was measured, not assumed: 354 outcomes — every
 action spelling × three account configurations × dry-run and live — captured
 from a build of the previous release and compared after each step, zero
-differences every time, refusal messages included.
+differences every time, refusal messages included. That probe was not in the
+repository; its successor is `scripts/verify/action-probe.cjs` with a tracked
+snapshot (see Unreleased).
 
 ## [2.22.0] — 2026-09-06
 
