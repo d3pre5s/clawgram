@@ -327,6 +327,20 @@ export function normalizeChatKey(value: unknown): string {
 }
 
 /**
+ * A configured chat scope (`readChats`, `sendChats`, `manageChats`) as a list
+ * of chat keys — or `undefined` when the key is absent, because every gate
+ * tells "not configured" from "configured empty" by that difference.
+ *
+ * Four copies of this normalizer used to live in three files, two of them
+ * trimming only and two lowercasing, so the same entry could pass one gate
+ * and fail another (audit B5-13). One now.
+ */
+export function normalizeScopeList(raw: unknown): string[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  return (Array.isArray(raw) ? raw : [ raw ]).map(normalizeChatKey).filter(Boolean);
+}
+
+/**
  * Все написания одной цели, по которым её ищут в списке доступа.
  *
  * Ворота сравнивали сырое написание, а адрес приходит в нескольких формах:
@@ -415,11 +429,8 @@ export function isChatReadable(target: unknown, readChats?: unknown): boolean {
   const candidates = chatKeyCandidates(target);
   if (candidates.includes(TELEGRAM_SERVICE_CHAT_ID)) return false;
 
-  if (readChats === undefined || readChats === null) return true;
-
-  const entries = (Array.isArray(readChats) ? readChats : [ readChats ])
-    .map(normalizeChatKey)
-    .filter(Boolean);
+  const entries = normalizeScopeList(readChats);
+  if (entries === undefined) return true;
 
   // An empty list is a configured empty list — deny, rather than silently
   // reading everything because someone left brackets behind.

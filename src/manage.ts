@@ -17,7 +17,7 @@
  * not something a fresh install may do because nobody said no.
  */
 
-import { chatKeyCandidates, normalizeChatKey } from "./history";
+import { chatKeyCandidates, normalizeScopeList } from "./history";
 import { readChatTargetParam } from "./helpers";
 import { readString } from "./util";
 
@@ -301,13 +301,7 @@ export function parseInviteLinkParams(
 }
 
 function normalizeScope(manageChats: unknown): string[] {
-  if (manageChats === undefined || manageChats === null) {
-    return [];
-  }
-
-  return (Array.isArray(manageChats) ? manageChats : [ manageChats ])
-    .map(normalizeChatKey)
-    .filter(Boolean);
+  return normalizeScopeList(manageChats) ?? [];
 }
 
 /** True while the account is allowed to manage anything at all. */

@@ -176,6 +176,63 @@ export type InboundContext = {
   selfLabel: string | undefined;
 };
 
+/**
+ * The text a reply may carry into a chat, after the filters every reply path
+ * shares — or `undefined` when nothing should go out.
+ *
+ * Three doors deliver an agent's words: the group `deliver` closure, the
+ * direct-message `deliver` closure and the transcript fallback. Each carried
+ * its own copy of the same two checks — drop the silent token, drop core's
+ * telemetry — and the copies drifted: the DM path had no notice filter at
+ * all until B5-01 (audit B5-13). One function now; the log lines keep their
+ * historical wording so journals stay greppable.
+ */
+export function visibleReplyText(params: {
+  text: unknown;
+  kind: "group" | "user";
+  where: "group reply" | "direct reply" | "transcript fallback";
+  accountId: string;
+  chatId: string;
+  messageId: string | number;
+  log: any;
+}): string | undefined {
+  // Not destructured: a wiring ratchet in test/inbound-pipeline.test.ts finds
+  // handleInboundEvent's own destructuring of its context by pattern, and
+  // nothing shaped like it may stand in front.
+  const accountId = params.accountId;
+  const chatId = params.chatId;
+  const messageId = params.messageId;
+  const log = params.log;
+  const outboundText = typeof params.text === "string" ? params.text.trim() : "";
+  if (!outboundText) {
+    return undefined;
+  }
+
+  // The agent may decline to answer by returning the shared silent token.
+  // Dropped before addressing: otherwise the reply-address prefix turns it
+  // into a visible message.
+  const visibleText = stripSilentReplyToken(outboundText);
+  if (!visibleText) {
+    log?.info?.(`clawgram suppressing silent ${params.where}`, { accountId, chatId, messageId });
+    return undefined;
+  }
+
+  // Core glues its telemetry to the turn's payload and it arrives here the
+  // same way an answer does. In a group it never goes out; in a DM only the
+  // named operator may receive it (A5-10, A5-11, B5-01).
+  const notice = shouldSuppressGroupSystemNotice(params.kind === "group"
+    ? { targetKind: "group", text: visibleText }
+    : { targetKind: "user", text: visibleText, to: chatId, operatorIds: operatorIdsFor(accountId) });
+  if (notice) {
+    log?.warn?.(`clawgram suppressing system notice in ${params.where}`, {
+      accountId, chatId, messageId, noticeKind: notice, textLength: visibleText.length,
+    });
+    return undefined;
+  }
+
+  return visibleText;
+}
+
 export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
   const { accountId, cfg, channelRuntime, client, gram, log,
     pluginRuntime, runtimes, selfId, selfLabel, selfUsername } = ctx;
@@ -707,40 +764,11 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                         payloadTextLength: outboundText.length,
                         payloadReplyToId: payload.replyToId ?? null,
                       });
-                      if (!outboundText) {
-                        return;
-                      }
-
-                      // The agent may decline to answer by returning the shared
-                      // silent token. Drop it before addressing: otherwise the
-                      // reply-address prefix turns it into a visible message.
-                      const visibleText = stripSilentReplyToken(outboundText);
-                      if (!visibleText) {
-                        log?.info?.("clawgram suppressing silent group reply", {
-                          accountId,
-                          chatId: normalized.chatId,
-                          messageId: normalized.messageId,
-                        });
-                        return;
-                      }
-
-                      // Ядро подклеивает свою телеметрию к полезной нагрузке
-                      // хода, и сюда она приходит тем же путём, что ответ.
-                      // Проверка стояла только в `outbound.sendText`, то есть
-                      // класс инцидента 30.08–01.09 был закрыт для рассылок и
-                      // открыт для обычного ответа на упоминание (A5-10).
-                      const groupNotice = shouldSuppressGroupSystemNotice({
-                        targetKind: "group",
-                        text: visibleText,
+                      const visibleText = visibleReplyText({
+                        text: outboundText, kind: "group", where: "group reply",
+                        accountId, chatId: normalized.chatId, messageId: normalized.messageId, log,
                       });
-                      if (groupNotice) {
-                        log?.warn?.("clawgram suppressing system notice in group reply", {
-                          accountId,
-                          chatId: normalized.chatId,
-                          messageId: normalized.messageId,
-                          noticeKind: groupNotice,
-                          textLength: visibleText.length,
-                        });
+                      if (!visibleText) {
                         return;
                       }
 
@@ -806,19 +834,10 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                     : "";
                   // Тот же фильтр и здесь: последняя реплика в стенограмме
                   // вполне может оказаться именно уведомлением об ошибке.
-                  const fallbackNotice = rawFallback
-                    ? shouldSuppressGroupSystemNotice({ targetKind: "group", text: rawFallback })
-                    : undefined;
-                  if (fallbackNotice) {
-                    log?.warn?.("clawgram suppressing system notice in transcript fallback", {
-                      accountId,
-                      chatId: normalized.chatId,
-                      messageId: normalized.messageId,
-                      noticeKind: fallbackNotice,
-                      textLength: rawFallback.length,
-                    });
-                  }
-                  const visibleFallbackText = fallbackNotice ? "" : rawFallback;
+                  const visibleFallbackText = visibleReplyText({
+                    text: rawFallback, kind: "group", where: "transcript fallback",
+                    accountId, chatId: normalized.chatId, messageId: normalized.messageId, log,
+                  }) ?? "";
                   if (!visibleFallbackText) {
                     if (fallbackText) {
                       log?.info?.("clawgram skipping silent transcript fallback", {
@@ -986,39 +1005,13 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                   NativeChannelId: normalized.chatId,
                 },
                 deliver: async (payload) => {
-                  const outboundText = typeof payload.text === "string" ? payload.text.trim() : "";
-                  if (!outboundText) {
-                    return;
-                  }
-
-                  const visibleText = stripSilentReplyToken(outboundText);
-                  if (!visibleText) {
-                    log?.info?.("clawgram suppressing silent direct reply", {
-                      accountId,
-                      chatId: normalized.chatId,
-                      messageId: normalized.messageId,
-                    });
-                    return;
-                  }
-
-                  // Тот же фильтр, что у группового ответа и у outbound.sendText:
-                  // личный ответ идёт третьим путём, и закрытие A5-11 его не
-                  // покрывало — «⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/…»
-                  // уходил любому из allowFrom, чей ход уронил инструмент (B5-01).
-                  const directNotice = shouldSuppressGroupSystemNotice({
-                    targetKind: "user",
-                    text: visibleText,
-                    to: normalized.chatId,
-                    operatorIds: operatorIdsFor(accountId),
+                  // Тот же фильтр, что у группового ответа: личный ответ идёт
+                  // третьим путём, и закрытие A5-11 его не покрывало (B5-01).
+                  const visibleText = visibleReplyText({
+                    text: payload.text, kind: "user", where: "direct reply",
+                    accountId, chatId: normalized.chatId, messageId: normalized.messageId, log,
                   });
-                  if (directNotice) {
-                    log?.warn?.("clawgram suppressing system notice in direct reply", {
-                      accountId,
-                      chatId: normalized.chatId,
-                      messageId: normalized.messageId,
-                      noticeKind: directNotice,
-                      textLength: visibleText.length,
-                    });
+                  if (!visibleText) {
                     return;
                   }
 

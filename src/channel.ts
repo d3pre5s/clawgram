@@ -65,7 +65,7 @@ import type { ChannelCapabilities } from "openclaw/plugin-sdk";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { NewMessage, Raw } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
-import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
+import { isChatReadable, normalizeScopeList, parseListMessagesParams, parseListParticipantsParams } from "./history";
 import { describeSendRefusal, isChatSendable } from "./send-scope";
 import { forgetAccount, rememberAccount, requireRuntime } from "./account-registry";
 import {
@@ -140,10 +140,7 @@ const actionLog = createSubsystemLogger("channels/clawgram");
  * the first means no restriction, the second denies everything.
  */
 function readAccountReadChats(account: any): string[] | undefined {
-  const raw = account?.readChats;
-  if (raw === undefined || raw === null) return undefined;
-  const entries = Array.isArray(raw) ? raw : [ raw ];
-  return entries.map((entry) => String(entry).trim()).filter(Boolean);
+  return normalizeScopeList(account?.readChats);
 }
 
 function resolveAccountReadChats(cfg: any, accountId: string): string[] | undefined {
@@ -236,10 +233,7 @@ function resolveAccountManageChats(cfg: any, accountId: string): unknown {
 
 /** Same normalization `readChats` gets, for the resolved-account copy. */
 function readAccountManageChats(account: any): string[] | undefined {
-  const raw = account?.manageChats;
-  if (raw === undefined || raw === null) return undefined;
-  const entries = Array.isArray(raw) ? raw : [ raw ];
-  return entries.map((entry) => String(entry).trim()).filter(Boolean);
+  return normalizeScopeList(account?.manageChats);
 }
 
 import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions";

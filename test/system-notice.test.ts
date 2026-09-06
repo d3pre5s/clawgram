@@ -195,8 +195,10 @@ describe("the direct-reply path filters core notices too", () => {
     // direct branch calls it with targetKind "user" and the account's
     // operators, so a future split cannot drop it again (A5-11 did).
     const src = readFileSync(path.join(__dirname, "..", "..", "src", "inbound-pipeline.ts"), "utf8");
-    const directBranch = src.slice(src.indexOf("suppressing silent direct reply"));
-    assert.match(directBranch, /shouldSuppressGroupSystemNotice\(\{\s*targetKind: "user",\s*text: visibleText,\s*to: normalized\.chatId,\s*operatorIds: operatorIdsFor\(accountId\)/);
-    assert.match(directBranch, /suppressing system notice in direct reply/);
+    // Since B5-13 the filters live in one function; each door names it.
+    assert.match(src, /visibleReplyText\(\{\s*text: payload\.text, kind: "user", where: "direct reply"/);
+    assert.match(src, /visibleReplyText\(\{\s*text: outboundText, kind: "group", where: "group reply"/);
+    assert.match(src, /visibleReplyText\(\{\s*text: rawFallback, kind: "group", where: "transcript fallback"/);
+    assert.match(src, /targetKind: "user", text: visibleText, to: chatId, operatorIds: operatorIdsFor\(accountId\)/);
   });
 });

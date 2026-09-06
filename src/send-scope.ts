@@ -1,4 +1,4 @@
-import { chatKeyCandidates, normalizeChatKey } from "./history";
+import { chatKeyCandidates, normalizeScopeList } from "./history";
 
 /**
  * Outbound scope for the account: who this account may write to.
@@ -42,10 +42,7 @@ export function isPhoneNumberTarget(target: unknown): boolean {
 }
 
 function normalizeScope(sendChats: unknown): string[] {
-  if (sendChats === undefined || sendChats === null) return [];
-  return (Array.isArray(sendChats) ? sendChats : [ sendChats ])
-    .map(normalizeChatKey)
-    .filter(Boolean);
+  return normalizeScopeList(sendChats) ?? [];
 }
 
 /** True while the account has a declared outbound scope at all. */

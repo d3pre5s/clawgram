@@ -46,6 +46,15 @@ recorded in `git log` only.
   (`describeSendRefusal`) for all four outbound doors — two of which logged a
   phone number the others hid (B5-09) — and the seven remaining copies of
   the runtime lookup use `requireRuntime` (audit D2-11).
+- **One reply filter for the three doors an answer can leave through.**
+  The group `deliver`, the direct `deliver` and the transcript fallback each
+  carried a copy of "drop the silent token, drop core's telemetry", and the
+  copies drifted (B5-01 was the price). `visibleReplyText` is the single
+  copy; log lines keep their wording. `normalizeScopeList` replaces the four
+  normalizers of `readChats`/`sendChats`/`manageChats`, two of which trimmed
+  and two lowercased (audit B5-13, first two parts; extracting the action
+  branches out of `channel.ts` is deferred — the diff would not be
+  reviewable against the probe).
 
 ## [2.25.0] — 2026-09-06
 
