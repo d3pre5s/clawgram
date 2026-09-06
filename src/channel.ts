@@ -665,6 +665,22 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
     return configured ?? runtimes.keys().next().value;
   };
 
+  /**
+   * The connected runtime for an account, or a refusal naming it.
+   *
+   * One helper instead of the eleven copies of this three-liner that used to
+   * sit inside each dispatch branch — the same repetition that made every new
+   * action cost a scaffold (finding A6-11).
+   */
+  const requireRuntimeFor = (id: string) => {
+    const gram = runtimes.get(id);
+    if (!gram) {
+      throw new Error(`clawgram: runtime not found for account ${id}`);
+    }
+
+    return gram;
+  };
+
   return {
     id: "clawgram",
 
@@ -2242,48 +2258,98 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           });
         }
 
+        /**
+         * The scaffold every chat-shaped read shares.
+         *
+         * `participants`, `topics`, `dialogs`, `joins` and `chatInfo` each
+         * spelled out the same sequence: parse, resolve the account, check a
+         * scope, fetch the runtime, call it, log counts, answer. Roughly
+         * forty lines apiece, differing in four places — which is how a new
+         * action came to cost sixty lines of scaffold and how the two gates
+         * drifted apart (finding A6-11).
+         *
+         * The gate follows from the shape rather than being restated: an
+         * action that names a chat is gated by `readChats`, `dialogs` has its
+         * own discovery gate precisely because its point is to find chats
+         * that are not in scope yet, and `joins` has none — the journal only
+         * ever holds chats this account was put into.
+         *
+         * The runtime is a getter, not a value: `joins` reads a file and must
+         * not fail merely because no runtime is connected.
+         */
+        const runRead = async <P, R>(spec: {
+          name: string;
+          parse: () => P;
+          /** The chat being read; absent means the action is not chat-scoped. */
+          target?: (parsed: P) => string;
+          /** Only `dialogs`: gated by discovery instead of by read scope. */
+          discovery?: boolean;
+          run: (ctx: {
+            parsed: P;
+            accountId: string;
+            gram: () => ReturnType<typeof requireRuntimeFor>;
+          }) => Promise<R>;
+          after: (parsed: P, result: R) => Record<string, unknown>;
+          result: (parsed: P, result: R) => Record<string, unknown>;
+        }) => {
+          const parsed = spec.parse();
+          const readAccountId = resolveRuntimeAccountId(cfg, accountId);
+          if (!readAccountId) {
+            throw new Error("clawgram: no configured account found");
+          }
+
+          const target = spec.target?.(parsed);
+          if (target !== undefined) {
+            if (!isChatReadable(target, resolveAccountReadChats(cfg, readAccountId))) {
+              actionLog.warn(`clawgram ${spec.name} refused: chat outside read scope`, {
+                accountId: readAccountId,
+                target,
+              });
+              throw new Error(`clawgram: not-allowed-chat ${target}`);
+            }
+          } else if (spec.discovery) {
+            if (!isChatDiscoveryEnabled(resolveAccountDiscoverChats(cfg, readAccountId))) {
+              actionLog.warn(`clawgram ${spec.name} refused: chat-discovery is not enabled`, {
+                accountId: readAccountId,
+              });
+              throw new Error("clawgram: chat-discovery is not enabled");
+            }
+          }
+
+          const gram = () => requireRuntimeFor(readAccountId);
+          const result = await spec.run({ parsed, accountId: readAccountId, gram });
+
+          actionLog.info(`clawgram handleAction ${spec.name} completed`, {
+            accountId: readAccountId,
+            ...spec.after(parsed, result),
+          });
+
+          return jsonResult({ ok: true, accountId: readAccountId, ...spec.result(parsed, result) });
+        };
+
         // Membership is a read, so the same `readChats` scope that gates history
         // gates it too: this cannot become a way to enumerate chats the account
         // was never allowed to read.
         if (canonical === "participants") {
-          const participantsParams = parseListParticipantsParams(params);
-          const participantsAccountId = resolveRuntimeAccountId(cfg, accountId);
-          if (!participantsAccountId) {
-            throw new Error("clawgram: no configured account found");
-          }
-
-          if (!isChatReadable(participantsParams.target, resolveAccountReadChats(cfg, participantsAccountId))) {
-            actionLog.warn("clawgram participants refused: chat outside read scope", {
-              accountId: participantsAccountId,
-              target: participantsParams.target,
-            });
-            throw new Error(`clawgram: not-allowed-chat ${participantsParams.target}`);
-          }
-
-          const participantsGram = runtimes.get(participantsAccountId);
-          if (!participantsGram) {
-            throw new Error(`clawgram: runtime not found for account ${participantsAccountId}`);
-          }
-
-          const membership = await participantsGram.listParticipants(participantsParams);
-
-          // Counts only. Member ids are personal data and have no business in a
-          // log that is read while debugging something else.
-          actionLog.info("clawgram handleAction participants completed", {
-            accountId: participantsAccountId,
-            target: participantsParams.target,
-            limit: participantsParams.limit,
-            returned: membership.participants.length,
-            truncated: membership.truncated,
-          });
-
-          return jsonResult({
-            ok: true,
-            accountId: participantsAccountId,
-            chatId: membership.chatId ?? participantsParams.target,
-            count: membership.participants.length,
-            truncated: membership.truncated,
-            participants: membership.participants,
+          return await runRead({
+            name: "participants",
+            parse: () => parseListParticipantsParams(params),
+            target: (p) => p.target,
+            run: ({ parsed, gram }) => gram().listParticipants(parsed),
+            // Counts only. Member ids are personal data and have no business in
+            // a log that is read while debugging something else.
+            after: (p, m) => ({
+              target: p.target,
+              limit: p.limit,
+              returned: m.participants.length,
+              truncated: m.truncated,
+            }),
+            result: (p, m) => ({
+              chatId: m.chatId ?? p.target,
+              count: m.participants.length,
+              truncated: m.truncated,
+              participants: m.participants,
+            }),
           });
         }
 
@@ -2292,42 +2358,23 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // written in yet was unreachable, and one named in words was unfindable.
         // Titles say what a chat is working on, so the read scope gates them.
         if (canonical === "topics") {
-          const topicsParams = parseTopicsParams(params);
-          const topicsAccountId = resolveRuntimeAccountId(cfg, accountId);
-          if (!topicsAccountId) {
-            throw new Error("clawgram: no configured account found");
-          }
-
-          if (!isChatReadable(topicsParams.target, resolveAccountReadChats(cfg, topicsAccountId))) {
-            actionLog.warn("clawgram topics refused: chat outside read scope", {
-              accountId: topicsAccountId,
-              target: topicsParams.target,
-            });
-            throw new Error(`clawgram: not-allowed-chat ${topicsParams.target}`);
-          }
-
-          const topicsGram = runtimes.get(topicsAccountId);
-          if (!topicsGram) {
-            throw new Error(`clawgram: runtime not found for account ${topicsAccountId}`);
-          }
-
-          const forum = await topicsGram.listTopics(topicsParams);
-
-          actionLog.info("clawgram handleAction topics completed", {
-            accountId: topicsAccountId,
-            target: topicsParams.target,
-            limit: topicsParams.limit,
-            returned: forum.topics.length,
-            truncated: forum.truncated,
-          });
-
-          return jsonResult({
-            ok: true,
-            accountId: topicsAccountId,
-            chatId: forum.chatId ?? topicsParams.target,
-            count: forum.topics.length,
-            truncated: forum.truncated,
-            topics: forum.topics,
+          return await runRead({
+            name: "topics",
+            parse: () => parseTopicsParams(params),
+            target: (p) => p.target,
+            run: ({ parsed, gram }) => gram().listTopics(parsed),
+            after: (p, f) => ({
+              target: p.target,
+              limit: p.limit,
+              returned: f.topics.length,
+              truncated: f.truncated,
+            }),
+            result: (p, f) => ({
+              chatId: f.chatId ?? p.target,
+              count: f.topics.length,
+              truncated: f.truncated,
+              topics: f.topics,
+            }),
           });
         }
 
@@ -2335,41 +2382,15 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // point is to find chats that are not in it yet — so it has a gate of
         // its own, is metadata only, and never reports direct chats.
         if (canonical === "dialogs") {
-          const dialogsParams = parseDialogsParams(params);
-          const dialogsAccountId = resolveRuntimeAccountId(cfg, accountId);
-          if (!dialogsAccountId) {
-            throw new Error("clawgram: no configured account found");
-          }
-
-          if (!isChatDiscoveryEnabled(resolveAccountDiscoverChats(cfg, dialogsAccountId))) {
-            actionLog.warn("clawgram dialogs refused: chat-discovery is not enabled", {
-              accountId: dialogsAccountId,
-            });
-            throw new Error("clawgram: chat-discovery is not enabled");
-          }
-
-          const dialogsGram = runtimes.get(dialogsAccountId);
-          if (!dialogsGram) {
-            throw new Error(`clawgram: runtime not found for account ${dialogsAccountId}`);
-          }
-
-          const found = await dialogsGram.listDialogs(dialogsParams);
-
-          // Counts only: which chats a person's account sits in is exactly the
-          // kind of thing that should not be sitting in a log.
-          actionLog.info("clawgram handleAction dialogs completed", {
-            accountId: dialogsAccountId,
-            limit: dialogsParams.limit,
-            returned: found.dialogs.length,
-            truncated: found.truncated,
-          });
-
-          return jsonResult({
-            ok: true,
-            accountId: dialogsAccountId,
-            count: found.dialogs.length,
-            truncated: found.truncated,
-            dialogs: found.dialogs,
+          return await runRead({
+            name: "dialogs",
+            parse: () => parseDialogsParams(params),
+            discovery: true,
+            run: ({ parsed, gram }) => gram().listDialogs(parsed),
+            // Counts only: which chats a person's account sits in is exactly
+            // the kind of thing that should not be sitting in a log.
+            after: (p, f) => ({ limit: p.limit, returned: f.dialogs.length, truncated: f.truncated }),
+            result: (_p, f) => ({ count: f.dialogs.length, truncated: f.truncated, dialogs: f.dialogs }),
           });
         }
 
@@ -2377,30 +2398,23 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // has no scope check of its own: it only ever contains chats this account
         // was put into, which is exactly what the caller is allowed to learn.
         if (canonical === "joins") {
-          const joinsParams = parseJoinsParams(params);
-          const joinsAccountId = resolveRuntimeAccountId(cfg, accountId);
-          if (!joinsAccountId) {
-            throw new Error("clawgram: no configured account found");
-          }
-
-          const journalPath = resolveJoinsJournalPath(
-            cfg?.channels?.[ "clawgram" ]?.accounts?.[ joinsAccountId ],
-            joinsAccountId,
-          );
-          const selected = selectJoinRecords(readJoinRecords(journalPath), joinsParams);
-
-          actionLog.info("clawgram handleAction joins completed", {
-            accountId: joinsAccountId,
-            since: joinsParams.since ?? null,
-            limit: joinsParams.limit,
-            returned: selected.length,
-          });
-
-          return jsonResult({
-            ok: true,
-            accountId: joinsAccountId,
-            count: selected.length,
-            joins: selected,
+          return await runRead({
+            name: "joins",
+            parse: () => parseJoinsParams(params),
+            // No runtime: this reads a file, and must answer with none connected.
+            run: async ({ parsed, accountId: joinsAccountId }) => selectJoinRecords(
+              readJoinRecords(resolveJoinsJournalPath(
+                cfg?.channels?.[ "clawgram" ]?.accounts?.[ joinsAccountId ],
+                joinsAccountId,
+              )),
+              parsed,
+            ),
+            after: (p, selected) => ({
+              since: p.since ?? null,
+              limit: p.limit,
+              returned: selected.length,
+            }),
+            result: (_p, selected) => ({ count: selected.length, joins: selected }),
           });
         }
 
@@ -2408,41 +2422,22 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         // history gates it too — this must not become a way to learn the title
         // and size of a chat the account was never allowed to read.
         if (canonical === "chatInfo") {
-          const chatInfoParams = parseChatInfoParams(params, toolContext);
-          const chatInfoAccountId = resolveRuntimeAccountId(cfg, accountId);
-          if (!chatInfoAccountId) {
-            throw new Error("clawgram: no configured account found");
-          }
-
-          if (!isChatReadable(chatInfoParams.target, resolveAccountReadChats(cfg, chatInfoAccountId))) {
-            actionLog.warn("clawgram chatInfo refused: chat outside read scope", {
-              accountId: chatInfoAccountId,
-              target: chatInfoParams.target,
-            });
-            throw new Error(`clawgram: not-allowed-chat ${chatInfoParams.target}`);
-          }
-
-          const chatInfoGram = runtimes.get(chatInfoAccountId);
-          if (!chatInfoGram) {
-            throw new Error(`clawgram: runtime not found for account ${chatInfoAccountId}`);
-          }
-
-          const { entity, full } = await chatInfoGram.getChatInfo(chatInfoParams.target);
-          const info = describeChat(entity, full);
-
-          // Type and size only. The title of a private chat is as personal as
-          // its contents and has no business in a debugging log.
-          actionLog.info("clawgram handleAction chatInfo completed", {
-            accountId: chatInfoAccountId,
-            type: info.type,
-            memberCount: info.memberCount ?? null,
-            isForum: info.isForum ?? null,
-          });
-
-          return jsonResult({
-            ok: true,
-            accountId: chatInfoAccountId,
-            chat: { ...info, chatId: info.chatId ?? chatInfoParams.target },
+          return await runRead({
+            name: "chatInfo",
+            parse: () => parseChatInfoParams(params, toolContext),
+            target: (p) => p.target,
+            run: async ({ parsed, gram }) => {
+              const { entity, full } = await gram().getChatInfo(parsed.target);
+              return describeChat(entity, full);
+            },
+            // Type and size only. The title of a private chat is as personal as
+            // its contents and has no business in a debugging log.
+            after: (_p, info) => ({
+              type: info.type,
+              memberCount: info.memberCount ?? null,
+              isForum: info.isForum ?? null,
+            }),
+            result: (p, info) => ({ chat: { ...info, chatId: info.chatId ?? p.target } }),
           });
         }
 
@@ -2518,14 +2513,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
             throw new Error("clawgram: no configured account found");
           }
           const manageScope = resolveAccountManageChats(cfg, manageAccountId);
-          const requireRuntime = () => {
-            const gram = runtimes.get(manageAccountId);
-            if (!gram) {
-              throw new Error(`clawgram: runtime not found for account ${manageAccountId}`);
-            }
-
-            return gram;
-          };
+          const requireRuntime = () => requireRuntimeFor(manageAccountId);
 
           /**
            * The scaffold every management action shares.
