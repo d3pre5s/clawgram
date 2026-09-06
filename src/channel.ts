@@ -7,10 +7,6 @@ import os from "node:os";
 import path from "node:path";
 import { existsSync } from "node:fs";
 
-/** Attachments above this are left unread: a long recording or a huge image is
- *  a different conversation from a spoken line or a screenshot, and the
- *  transfer is not free. */
-const INBOUND_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
 /**
  * How long a file fetched by `fetch-media` stays on disk.
  *
@@ -345,141 +341,12 @@ function readAccountManageChats(account: any): string[] | undefined {
   return entries.map((entry) => String(entry).trim()).filter(Boolean);
 }
 
-/**
- * Every accepted spelling of an action, mapped to its canonical name.
- *
- * One table, not three. The synonyms used to live in
- * `CORE_ACTION_SYNONYMS`, again in `MANAGE_ACTION_ALIASES`, and a third time
- * as `action === "…" || …` chains inside the dispatcher — and the dispatcher
- * read only the chains. A name could therefore be added to a table and to the
- * advertised list and still reach nothing, with the suite none the wiser:
- * it only ever dispatched the native spellings (finding A6-10).
- *
- * `canonicalAction` is now the only place a name is resolved, and
- * `CORE_ACTION_SYNONYMS` below is derived from this table rather than kept
- * beside it.
- */
-const ACTION_ALIASES: Record<string, string> = {
-  send: "send",
+import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions";
 
-  read: "read",
-  // `list` is accepted so a caller that guessed the other obvious name is not
-  // silently refused.
-  list: "read",
+// Словарь имён живёт в ./actions. Реэкспорт — ради вызывающих снаружи:
+// тесты и другие модули знают его по этому файлу с 2.19.4.
+export { CORE_ACTION_SYNONYMS, canonicalAction };
 
-  react: "react",
-  joins: "joins",
-
-  "upload-file": "upload-file",
-  sendAttachment: "upload-file",
-
-  "fetch-media": "fetch-media",
-  fetchMedia: "fetch-media",
-  "download-media": "fetch-media",
-  downloadMedia: "fetch-media",
-  getMedia: "fetch-media",
-  "download-file": "fetch-media",
-
-  participants: "participants",
-  members: "participants",
-  "member-info": "participants",
-
-  topics: "topics",
-  forumTopics: "topics",
-  "thread-list": "topics",
-
-  dialogs: "dialogs",
-  chats: "dialogs",
-  "channel-list": "dialogs",
-
-  chatInfo: "chatInfo",
-  getChatInfo: "chatInfo",
-  "channel-info": "chatInfo",
-  chatMetadata: "chatInfo",
-  getChatMetadata: "chatInfo",
-
-  // Chat management. `kick` was already accepted; the rest were advertised
-  // under names core does not know and were therefore never callable from the
-  // tool at all — 2.19.4 gives them core's nearest name. `transferOwnership`
-  // and `inviteLink` have no counterpart in that vocabulary and stay
-  // gateway-only, as does `joins`.
-  createGroup: "createGroup",
-  createChat: "createGroup",
-  "create-group": "createGroup",
-  "channel-create": "createGroup",
-
-  addMembers: "addMembers",
-  addMember: "addMembers",
-  "add-members": "addMembers",
-  addParticipant: "addMembers",
-
-  removeMember: "removeMember",
-  removeMembers: "removeMember",
-  "remove-member": "removeMember",
-  kick: "removeMember",
-
-  promoteAdmin: "promoteAdmin",
-  promote: "promoteAdmin",
-  "promote-admin": "promoteAdmin",
-  setAdmin: "promoteAdmin",
-  "role-add": "promoteAdmin",
-
-  demoteAdmin: "demoteAdmin",
-  demote: "demoteAdmin",
-  "demote-admin": "demoteAdmin",
-  "role-remove": "demoteAdmin",
-
-  transferOwnership: "transferOwnership",
-  transferOwner: "transferOwnership",
-  "transfer-ownership": "transferOwnership",
-
-  inviteLink: "inviteLink",
-  exportInviteLink: "inviteLink",
-  "invite-link": "inviteLink",
-};
-
-/** The canonical action for a spelling; an unknown name stays itself. */
-export function canonicalAction(action: string): string {
-  return ACTION_ALIASES[ action ] ?? action;
-}
-
-/**
- * Core's own name for a clawgram action, and the only thing that makes the
- * action reachable from the agent's `message` tool.
- *
- * Core keys its target policy by `CHANNEL_MESSAGE_ACTION_NAMES`, and an action
- * outside that vocabulary is simultaneously "requires a target" and "does not
- * accept a target" — there is no call that satisfies both. Declaring `chatId`
- * through `messageActionTargetAliases` looks like the fix and is not: core
- * resolves the channel with `getBootstrapChannelPlugin`, which only knows
- * bundled channels, so a plugin channel's declaration is never read. Measured
- * on 2026-08-30 — `thread-list` reached `handleAction` and `topics` did not,
- * from the same caller, on the same chat.
- *
- * Every name on the right maps to core target mode `"none"` except
- * `channel-info`, which is `"channelId"`: the chat arrives in
- * `params.channelId`, a spelling no parser here read until 2.21.0 — so the
- * call fell through to the current chat and answered about the wrong one.
- * `readChatTargetParam` is the single list of accepted spellings now.
- *
- * These spellings are derived from `ACTION_ALIASES` rather than kept beside
- * it; that core actually knows each of them is asserted against the installed
- * core in `core-action-synonyms.test.ts`.
- */
-const CORE_VOCABULARY_SPELLINGS = [
-  "thread-list", "channel-list", "channel-info", "member-info", "download-file",
-  "channel-create", "addParticipant", "kick", "role-add", "role-remove",
-] as const;
-
-export const CORE_ACTION_SYNONYMS: Record<string, string> = Object.fromEntries(
-  CORE_VOCABULARY_SPELLINGS.map((name) => [ name, ACTION_ALIASES[ name ] ]),
-);
-
-/** Canonical actions that go through the chat-management gate. */
-const MANAGE_ACTIONS = new Set([
-  "createGroup", "addMembers", "removeMember",
-  "promoteAdmin", "demoteAdmin", "transferOwnership", "inviteLink",
-]);
 
 function parseOptionalThreadId(value: unknown): number | undefined {
   if (typeof value === "number") {
@@ -513,143 +380,11 @@ function parseOptionalThreadId(value: unknown): number | undefined {
  * "you sent something I could not read" than staying silent, which is
  * indistinguishable from being offline.
  */
-/**
- * Locates the agent directory that image understanding needs.
- *
- * Image models are called with the agent's own credentials, so the pipeline
- * refuses to run without this path — audio does not need it, which is why
- * voice notes worked before images did. The platform exposes no resolver to
- * plugins, so the documented layout is reconstructed here and checked before
- * use: a wrong guess would fail the read anyway, and returning undefined lets
- * the caller degrade instead of throwing.
- */
-function resolveAgentDirForMedia(cfg: any): string | undefined {
-  const stateDir = resolveStateDir();
-  const configuredId = cfg?.agents?.defaults?.id;
-  const agentId = typeof configuredId === "string" && configuredId.trim() ? configuredId.trim() : "main";
-  const dir = path.join(stateDir, "agents", agentId, "agent");
-  return existsSync(dir) ? dir : undefined;
-}
-
-/**
- * Turns a downloaded attachment into text.
- *
- * Shared by the inbound path and by `fetch-media`: the backend choice lives in
- * `runtime.mediaUnderstanding`, and both callers have to make exactly the same
- * call — an image read on arrival and the same image read on request must not
- * become two different readings because two call sites drifted.
- */
-async function understandAttachmentFile(params: {
-  runtime?: PluginRuntime;
-  cfg: any;
-  filePath: string;
-  mimeType?: string;
-  understanding: "transcript" | "description";
-}): Promise<string | undefined> {
-  const media = params.runtime?.mediaUnderstanding;
-  if (!media) return undefined;
-
-  const result = params.understanding === "transcript"
-    ? await media.transcribeAudioFile({
-      filePath: params.filePath,
-      cfg: params.cfg,
-      mime: params.mimeType,
-    })
-    : await media.describeImageFile({
-      filePath: params.filePath,
-      cfg: params.cfg,
-      mime: params.mimeType,
-      agentDir: resolveAgentDirForMedia(params.cfg),
-    });
-
-  const text = typeof result?.text === "string" ? result.text.trim() : "";
-  return text || undefined;
-}
-
-async function readInboundAttachment(params: {
-  gram: any;
-  event: any;
-  cfg: any;
-  runtime?: PluginRuntime;
-  log?: any;
-  accountId: string;
-  chatId: string;
-  messageId: string;
-}): Promise<{ text: string; understanding: "transcript" | "description" } | undefined> {
-  const media = params.runtime?.mediaUnderstanding;
-  const message = params.event?.message;
-  if (!media || !message) {
-    return undefined;
-  }
-
-  let downloaded: Awaited<ReturnType<typeof downloadInboundMediaToTempFile>>;
-  try {
-    downloaded = await downloadInboundMediaToTempFile({
-      client: params.gram.getClient() as any,
-      message,
-      maxBytes: INBOUND_MEDIA_MAX_BYTES,
-      tmpDir: os.tmpdir(),
-    });
-  } catch (err) {
-    params.log?.info?.("clawgram attachment download failed", {
-      accountId: params.accountId,
-      chatId: params.chatId,
-      messageId: params.messageId,
-      error: String(err),
-    });
-    return undefined;
-  }
-
-  if (!downloaded) {
-    return undefined;
-  }
-
-  try {
-    const read = await understandAttachmentFile({
-      runtime: params.runtime,
-      cfg: params.cfg,
-      filePath: downloaded.path,
-      mimeType: downloaded.mimeType,
-      understanding: downloaded.understanding,
-    });
-    if (!read) {
-      params.log?.info?.("clawgram attachment read empty", {
-        accountId: params.accountId,
-        chatId: params.chatId,
-        messageId: params.messageId,
-        understanding: downloaded.understanding,
-      });
-      return undefined;
-    }
-    params.log?.info?.("clawgram attachment read", {
-      accountId: params.accountId,
-      chatId: params.chatId,
-      messageId: params.messageId,
-      understanding: downloaded.understanding,
-      characters: read.length,
-    });
-    return { text: read, understanding: downloaded.understanding };
-  } catch (err) {
-    params.log?.info?.("clawgram attachment read failed", {
-      accountId: params.accountId,
-      chatId: params.chatId,
-      messageId: params.messageId,
-      understanding: downloaded.understanding,
-      error: String(err),
-    });
-    return undefined;
-  } finally {
-    void (async () => {
-      try {
-        const { rm } = await import("node:fs/promises");
-        const { dirname } = await import("node:path");
-        await rm(dirname(downloaded!.path), { recursive: true, force: true });
-      } catch {
-        // Leaving a temp file behind is not worth failing a delivered message.
-      }
-    })();
-  }
-}
+import {
+  INBOUND_MEDIA_MAX_BYTES,
+  readInboundAttachment,
+  understandAttachmentFile,
+} from "./attachments";
 
 export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: PluginRuntime) => {
   const resolveRuntimeAccountId = (cfg: any, preferred?: string | null): string | undefined => {
