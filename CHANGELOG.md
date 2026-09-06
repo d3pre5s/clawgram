@@ -9,6 +9,21 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.26.1] — 2026-09-07
+
+### Changed
+
+- **`handleAction` is a dispatcher again, not a 980-line closure.** The
+  branches moved out unchanged: `actions-read.ts` (`read`, `fetch-media`,
+  `participants`, `topics`, `dialogs`, `joins`, `chatInfo`),
+  `actions-manage.ts` (the seven management actions) and `actions-send.ts`
+  (`react`, `upload-file`, `send`), sharing one `ActionContext`; the
+  per-account config readers went to `account-scopes.ts`. Sizes are not
+  repeated here — `git show v2.26.0:src/channel.ts | wc -l` against
+  `v2.26.1` says it. Behaviour is measured, not assumed: `npm run
+  verify:actions` reports every recorded outcome identical (audit B5-13,
+  part 3 — the part 2.26.0 deferred).
+
 ## [2.26.0] — 2026-09-07
 
 ### Fixed
