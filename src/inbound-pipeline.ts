@@ -1016,6 +1016,27 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
                     return;
                   }
 
+                  // Тот же фильтр, что у группового ответа и у outbound.sendText:
+                  // личный ответ идёт третьим путём, и закрытие A5-11 его не
+                  // покрывало — «⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/…»
+                  // уходил любому из allowFrom, чей ход уронил инструмент (B5-01).
+                  const directNotice = shouldSuppressGroupSystemNotice({
+                    targetKind: "user",
+                    text: visibleText,
+                    to: normalized.chatId,
+                    operatorIds: operatorIdsFor(accountId),
+                  });
+                  if (directNotice) {
+                    log?.warn?.("clawgram suppressing system notice in direct reply", {
+                      accountId,
+                      chatId: normalized.chatId,
+                      messageId: normalized.messageId,
+                      noticeKind: directNotice,
+                      textLength: visibleText.length,
+                    });
+                    return;
+                  }
+
                   await sendTextToConversation({
                     text: visibleText,
                     replyToMessageId: payload.replyToId ? Number(payload.replyToId) : undefined,

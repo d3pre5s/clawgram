@@ -9,6 +9,46 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Security
+
+- **A direct reply no longer carries core's telemetry to whoever is in
+  `allowFrom`.** The system-notice filter (A5-11) stood in
+  `outbound.sendText` and in the group reply path; the ordinary reply to a
+  DM goes a third way — core's dispatcher calling the DM `deliver` closure —
+  and had no filter at all. A colleague whose turn crashed a tool received
+  `⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/…` in private. The DM path
+  now applies the same filter with the account's operators (audit B5-01).
+- **`outbound.sendText` honours `sendChats` and refuses phone numbers.** The
+  scope guarded `handleAction` and `sendMedia`; core's delivery path
+  (`--deliver`, sub-agent announcements) calls `sendText` directly and was
+  the one outbound door left open (D2-01, A5-12).
+- **`operatorIds` no longer defaults to `allowFrom`.** With the fallback,
+  every allowed sender was an operator and received the notices above.
+  Absent, empty or `*` now means "no operator named" and the notices are
+  dropped everywhere; set `operatorIds` explicitly to keep them (D2-03).
+
+### Changed
+
+- The tool hint no longer advertises phone/contact targets: send-scope has
+  refused them since 2.18.0, and the hint taught a call that always ended in
+  `not-allowed-chat` (D2-06).
+- README gains the `sendChats` row that 2.18.0 forgot (D2-08).
+
+### Unrecorded in 2.22.0
+
+Nine commits landed between `v2.21.1` and the 2.22.0 bump without a
+changelog entry (D2-07). For the record, 2.22.0 also brought: apiHash and
+sessionString rendered masked in the manifest (`19729dd`); re-running
+`--auth` keeps SecretRef migrations (`3aed20d`); the first config `--auth`
+writes is closed — `allowFrom: [self]`, `readChats: []`, no wildcard group
+(`a733296`, `55bb2f6`); the group reply path filters system notices and a DM
+is not an operator console (`5007f73`); fetched media moved out of a shared
+`/tmp` into a 0700 directory (`a4e3d32`); dependencies pinned with a
+shipped lockfile and `ip-address` lifted out of three advisories
+(`fb2ffe6`); `--auth` edits one account instead of rewriting the channels
+block (`0815c6c`); `sendChats` outbound scope and phone-number refusal
+(`15389ea`); per-message maps expire (`8e038fc`).
+
 ## [2.24.0] — 2026-09-06
 
 ### Changed

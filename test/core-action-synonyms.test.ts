@@ -116,6 +116,8 @@ describe("advertised actions are reachable", () => {
 describe("the read/target convention is spelled out", () => {
   const channel = createChannelPlugin(new Map() as RuntimeMap) as any;
   const hints: string[] = channel.agentPrompt.messageToolHints();
+  assert.ok(!hints.some((h) => /phone|contact/i.test(h)),
+    "the hint still advertises phone/contact targets, which send-scope refuses unconditionally (D2-06)");
 
   it("tells the agent that read is addressed by target, not chatId", () => {
     const hint = hints.find((h) => h.includes("`read`") && h.includes("`target`"));

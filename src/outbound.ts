@@ -213,6 +213,20 @@ export function createOutbound(runtimes: RuntimeMap) {
         return { skipped: "silent" as const };
       }
 
+      // Область отправки — и здесь. Путь доставки ядра (`--deliver`,
+      // анонсы субагентов) зовёт sendText напрямую, минуя resolveTarget и
+      // handleAction, где барьер уже стоял: третий из трёх исходящих путей
+      // был открыт для любого адресата и телефонного номера (D2-01, A5-12).
+      const scopedTarget = normalizeOutboundTarget(ctx.to);
+      if (!isChatSendable(scopedTarget, sendScopeFor(ctx.accountId))) {
+        actionLog.warn("clawgram outbound sendText refused", {
+          accountId: ctx.accountId,
+          target: scopedTarget,
+          reason: isPhoneNumberTarget(scopedTarget) ? "phone-number target" : "chat outside send scope",
+        });
+        return { skipped: "not-allowed" as const };
+      }
+
       // Core's operational chatter (tool-error warnings, fallback notices)
       // stays out of group chats: it is telemetry for the operator, not a
       // reply to the room, and it has already been seen carrying shell

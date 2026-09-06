@@ -242,10 +242,13 @@ function refuseOutboundOutsideScope(
  *
  * Запоминается при старте аккаунта — см. реестр в system-notice.ts.
  */
-function resolveAccountOperatorIds(cfg: any, accountId: string): string[] {
+export function resolveAccountOperatorIds(cfg: any, accountId: string): string[] {
   const account = cfg?.channels?.[ "clawgram" ]?.accounts?.[ accountId ];
-  const explicit = account?.operatorIds;
-  const raw = explicit !== undefined && explicit !== null ? explicit : account?.allowFrom;
+  // Только явный список. Умолчание «operatorIds = allowFrom» делало
+  // оператором каждого допущенного собеседника — и телеметрию с путями
+  // secret-store получал любой из них (D2-03, A5-11). Не назван — не
+  // назван: уведомления подавляются везде.
+  const raw = account?.operatorIds;
   if (raw === undefined || raw === null) return [];
   const entries = Array.isArray(raw) ? raw : [ raw ];
   return entries.map((entry: unknown) => String(entry).trim()).filter(Boolean);
@@ -371,7 +374,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
       messageToolHints: () => [
         "Use clawgram to send Telegram replies from the connected personal account.",
         "When replying in the current Telegram chat, omit `to`/`target` and clawgram will send to the current conversation automatically.",
-        "Explicit targets may be @username, numeric Telegram user id, phone/contact resolvable by Telegram, group chat ids, or clawgram:<target>.",
+        "Explicit targets may be @username, numeric Telegram user id, group chat ids, or clawgram:<target>.",
         "For Telegram forum topics, send to the group chat id and pass the topic id separately as `threadId`.",
         "Use the `react` action to acknowledge a message with an emoji instead of sending a reply; pass an empty `emoji` (or `remove: true`) to take the reaction back.",
         "Use the `channel-info` action to learn what a chat is — title, type, member count, description, pinned message — instead of guessing from its id. Name the chat with `chatId` and do not pass `target`: core refuses it for this action, and the descriptive spelling `chatInfo` is not callable from this tool at all.",

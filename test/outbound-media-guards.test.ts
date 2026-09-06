@@ -88,3 +88,27 @@ describe("outbound sendMedia guards", () => {
     assert.equal(sent[0].caption, undefined);
   });
 });
+
+
+describe("outbound.sendText honours sendChats (D2-01)", () => {
+  const ACCOUNT = "text-acc";
+
+  test("refuses a chat outside the scope and a phone number; passes a listed chat", async () => {
+    rememberSendScope(ACCOUNT, [ "-1001" ]);
+    try {
+      const sent: unknown[] = [];
+      const gram = { sendText: async (args: unknown) => { sent.push(args); return { id: 1 }; }, get replyParseMode() { return undefined; } };
+      const channel = createChannelPlugin(new Map([ [ ACCOUNT, gram ] ]) as unknown as RuntimeMap) as any;
+      const outside = await channel.outbound.sendText({ accountId: ACCOUNT, to: "-2002", text: "привет" });
+      assert.equal(outside?.skipped, "not-allowed");
+      const phone = await channel.outbound.sendText({ accountId: ACCOUNT, to: "+79991234567", text: "привет" });
+      assert.equal(phone?.skipped, "not-allowed");
+      assert.equal(sent.length, 0, "ничего не ушло мимо области");
+      const inside = await channel.outbound.sendText({ accountId: ACCOUNT, to: "-1001", text: "привет" });
+      assert.equal(inside?.ok, true);
+      assert.equal(sent.length, 1);
+    } finally {
+      forgetSendScope(ACCOUNT);
+    }
+  });
+});

@@ -1,7 +1,9 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
-import { createChannelPlugin } from "../src/channel";
+import { createChannelPlugin, resolveAccountOperatorIds } from "../src/channel";
 import {
   classifySystemNotice, forgetOperatorIds, rememberOperatorIds, shouldSuppressGroupSystemNotice,
 } from "../src/system-notice";
@@ -170,5 +172,30 @@ describe("the outbound path suppresses core notices for groups", () => {
 
     assert.equal(sent.length, 1);
     assert.equal((result as any)?.ok, true);
+  });
+});
+
+
+describe("who counts as an operator", () => {
+  it("only an explicit operatorIds list — allowFrom is not a fallback (D2-03)", () => {
+    const cfgAllowOnly = { channels: { clawgram: { accounts: { default: { allowFrom: [ "100200300", "999" ] } } } } };
+    assert.deepEqual(resolveAccountOperatorIds(cfgAllowOnly, "default"), [],
+      "every allowed sender used to become an operator and receive secret-store paths");
+    const cfgExplicit = { channels: { clawgram: { accounts: { default: { allowFrom: [ "*" ], operatorIds: [ " 100200300 " ] } } } } };
+    assert.deepEqual(resolveAccountOperatorIds(cfgExplicit, "default"), [ "100200300" ]);
+  });
+});
+
+describe("the direct-reply path filters core notices too", () => {
+  it("the DM deliver closure calls the same filter as the group path (B5-01)", () => {
+    // Wiring ratchet: the DM `deliver` lives inside handleInboundEvent's
+    // closure behind core's dispatcher, which has no seam for a fake yet.
+    // The filter function itself is covered above; this pins that the
+    // direct branch calls it with targetKind "user" and the account's
+    // operators, so a future split cannot drop it again (A5-11 did).
+    const src = readFileSync(path.join(__dirname, "..", "..", "src", "inbound-pipeline.ts"), "utf8");
+    const directBranch = src.slice(src.indexOf("suppressing silent direct reply"));
+    assert.match(directBranch, /shouldSuppressGroupSystemNotice\(\{\s*targetKind: "user",\s*text: visibleText,\s*to: normalized\.chatId,\s*operatorIds: operatorIdsFor\(accountId\)/);
+    assert.match(directBranch, /suppressing system notice in direct reply/);
   });
 });
