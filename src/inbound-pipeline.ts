@@ -384,6 +384,14 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         senderUsername: normalized.senderUsername,
       });
 
+    // The name of a direct-message sender who may reach the agent. The gate
+    // above stays where B5-04 put it — a blocked sender still costs no
+    // call. A group sender is looked up later, after the mention gate, for
+    // the same reason (see the group branch).
+    if (normalized.chatType === "direct" && senderMayReachAgent) {
+      await resolveNamelessSender(normalized, rawMessage, client);
+    }
+
     // An attachment carries no text of its own, and dropping it as
     // "empty" is how the assistant used to go silent on being spoken
     // to or shown something. Read it into the body instead: for a
@@ -637,16 +645,33 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         return;
       }
 
+      // Who is speaking, resolved only now — past the group gate and the
+      // mention gate, so a message the agent will not even read costs no
+      // call (B5-04). GramJS attaches `_sender` only from its entity cache,
+      // and in a basic group (or after a restart) that cache is empty: the
+      // turn then had nothing but the numeric id, the reply greeting fell
+      // back to it, and a management chat spent 07.09.2026 being addressed
+      // as «890975818, …». One source of truth for the name: the address
+      // the channel would prepend is also what the agent reads, so the
+      // model cannot greet «Вася Ш.» while the channel greets «@vasya».
+      await resolveNamelessSender(normalized, rawMessage, client);
+      const groupSenderLabel = normalized.senderDisplay || normalized.senderUsername || senderId;
+      const groupReplyAddress = buildGroupReplyAddress({
+        senderUsername: normalized.senderUsername,
+        senderDisplay: normalized.senderDisplay,
+        senderId,
+      });
+
       const { storePath, body } = buildEnvelope({
         channel: "Telegram",
-        from: senderLabel,
+        from: groupSenderLabel,
         body: text,
         timestamp: normalized.timestamp,
       });
       const conversationRouteTarget = buildConversationTarget(normalized.chatId);
       const ctxPayload = channelRuntime.reply.finalizeInboundContext({
         Body: body,
-        BodyForAgent: text,
+        BodyForAgent: agentFacingGroupBody({ address: groupReplyAddress, senderId, text }),
         RawBody: text,
         CommandBody: text,
         From: conversationRouteTarget,
@@ -654,7 +679,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         SessionKey: route.sessionKey,
         AccountId: route.accountId ?? accountId,
         ChatType: "group",
-        ConversationLabel: senderLabel,
+        ConversationLabel: groupSenderLabel,
         SenderId: senderId,
         SenderUsername: normalized.senderUsername,
         SenderName: normalized.senderDisplay,
@@ -686,11 +711,6 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         GroupSystemPrompt: groupConfig.systemPrompt,
         OriginatingChannel: "clawgram",
         OriginatingTo: conversationRouteTarget,
-      });
-      const groupReplyAddress = buildGroupReplyAddress({
-        senderUsername: normalized.senderUsername,
-        senderDisplay: normalized.senderDisplay,
-        senderId,
       });
       rememberGroupReplyAddress({
         accountId: route.accountId ?? accountId,
@@ -1066,4 +1086,62 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
     });
   }
 
+}
+
+/**
+ * A sender who arrived without a name or handle gets one profile lookup.
+ *
+ * GramJS attaches `_sender` only from its in-memory entity cache; a basic
+ * group's update carries no users, so after a restart the cache is empty
+ * until something else (a `participants` read) fills it. The lookup may
+ * therefore still come back empty — then the sender stays nameless, the
+ * greeting is omitted and the agent reads `id:<n>`. Callers decide *when*
+ * this runs: after every gate, never for traffic the agent will not read.
+ */
+async function resolveNamelessSender(
+  normalized: { senderId?: string; senderDisplay?: string; senderUsername?: string },
+  rawMessage: any,
+  client: any,
+): Promise<void> {
+  if (!normalized.senderId || normalized.senderDisplay || normalized.senderUsername) {
+    return;
+  }
+  const profile = await resolveSenderProfileWithTimeout(rawMessage, {
+    senderId: normalized.senderId,
+    client,
+  }, 1500);
+  if (profile.username) {
+    normalized.senderUsername = profile.username;
+  }
+  // `toDisplayName` answers "Telegram" when it knows nothing; that is not
+  // a name and must not become one here.
+  if (profile.display && profile.display !== "Telegram") {
+    normalized.senderDisplay = profile.display;
+  }
+}
+
+/**
+ * What the agent reads for a group message: `Адрес: текст`.
+ *
+ * Until 2.27.0 the turn received the bare text. Core's own Telegram channel
+ * prefixes the sender for groups (`formatInboundEnvelope`), and without that
+ * the agent could tell speakers apart only by the numeric id in metadata —
+ * which is exactly what it then used as an address. The prefix is the very
+ * address the channel would prepend to a reply (`buildGroupReplyAddress`),
+ * so what the model addresses and what the channel greets never differ —
+ * a display name in the body with a handle in the greeting would have
+ * produced «@vasya, Вася Ш., готово». No address known: `id:<n>`, marked
+ * so it is never mistaken for a name.
+ */
+export function agentFacingGroupBody(input: {
+  address?: string;
+  senderId?: string;
+  text: string;
+}): string {
+  const address = input.address?.trim();
+  if (address) {
+    return `${address}: ${input.text}`;
+  }
+  const id = input.senderId !== undefined ? String(input.senderId).trim() : "";
+  return id ? `id:${id}: ${input.text}` : input.text;
 }

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { handleInboundEvent } from "../src/inbound-pipeline";
+import { agentFacingGroupBody, handleInboundEvent } from "../src/inbound-pipeline";
 
 /**
  * The inbound path had no test at all until this file.
@@ -46,6 +46,39 @@ function fakeContext(over: Record<string, unknown> = {}) {
     ...over,
   };
   return { ctx, calls };
+}
+
+/**
+ * Enough of the channel runtime for a group message to get past the
+ * mention gate: the route, the store path and the envelope formatter are
+ * what `resolveInboundRouteEnvelopeBuilderWithRuntime` asks for. The turn
+ * still fails later (no session recorder), which the pipeline logs and
+ * swallows — the tests below only need to observe what happened before.
+ */
+function pastTheGates(over: Record<string, unknown> = {}) {
+  return fakeContext({
+    channelRuntime: {
+      reply: Object.assign(() => {}, {
+        resolveEnvelopeFormatOptions: () => ({}),
+        formatAgentEnvelope: ({ body }: { body: string }) => body,
+        finalizeInboundContext: (x: unknown) => x,
+      }),
+      session: {
+        get: () => undefined,
+        set: () => {},
+        resolveStorePath: () => path.join(__dirname, "..", "..", "dist-test", "probe-store"),
+        readSessionUpdatedAt: () => undefined,
+      },
+      commands: { list: () => [] },
+      routing: {
+        resolveAgentRoute: () => ({
+          agentId: "main", accountId: "default", matchedBy: "default",
+          sessionKey: "agent:main:clawgram:group:default:-4242",
+        }),
+      },
+    },
+    ...over,
+  });
 }
 
 describe("the inbound pipeline survives what the network hands it", () => {
@@ -98,6 +131,76 @@ describe("the inbound pipeline survives what the network hands it", () => {
     await handleInboundEvent({ message: { peerId: { userId: 500 }, message: "нет id" } },
       fakeContext({ client }).ctx as never);
     assert.deepEqual(touched, [], "an unnormalizable event should touch nothing");
+  });
+
+  // The turn used to get bare text and the numeric id, the greeting fell
+  // back to that id, and a management chat was addressed «890975818, …»
+  // all day (07.09.2026). A sender who passed the gate and arrived without
+  // a profile — GramJS attaches none in a basic group — is looked up once.
+  it("a sender who passed the gate and has no name is looked up; a blocked one still is not (2.27.0)", async () => {
+    const touched: string[] = [];
+    const client = new Proxy({}, {
+      get: (_t, k) => {
+        if (typeof k !== "string") return undefined;
+        touched.push(k);
+        return async () => ({ firstName: "Вася", lastName: "Ш." });
+      },
+    });
+    const groupCfg = (allowFrom: string[]) => ({
+      channels: { clawgram: { accounts: { default: {
+        allowFrom: [],
+        groups: { "-4242": { enabled: true, groupPolicy: "open", allowFrom } },
+      } } } },
+    });
+    const nameless = { message: { id: 9, peerId: { chatId: 4242 }, senderId: 500, message: "статус?" } };
+
+    await handleInboundEvent(nameless, pastTheGates({ client, cfg: groupCfg([ "999" ]) }).ctx as never);
+    assert.deepEqual(touched, [], `a blocked sender touched the client: ${touched.join(", ")}`);
+
+    await handleInboundEvent(nameless, pastTheGates({ client, cfg: groupCfg([ "*" ]) }).ctx as never);
+    assert.ok(touched.includes("getEntity"), `an allowed nameless sender should be resolved; touched: ${touched.join(", ") || "nothing"}`);
+  });
+
+  // The lookup sits past the mention gate on purpose: under `mention` a
+  // message that names nobody is dropped before the model, and B5-04's
+  // point was that dropped traffic costs no call.
+  it("a message the mention gate drops is not looked up either", async () => {
+    const touched: string[] = [];
+    const client = new Proxy({}, {
+      get: (_t, k) => {
+        if (typeof k !== "string") return undefined;
+        touched.push(k);
+        return async () => ({ firstName: "Вася" });
+      },
+    });
+    const cfg = {
+      channels: { clawgram: { accounts: { default: {
+        allowFrom: [],
+        groups: { "-4242": { enabled: true, groupPolicy: "mention", allowFrom: [ "*" ] } },
+      } } } },
+    };
+    const unaddressed = { message: { id: 10, peerId: { chatId: 4242 }, senderId: 500, message: "обсудим завтра" } };
+    await handleInboundEvent(unaddressed, pastTheGates({ client, cfg }).ctx as never);
+    assert.equal(touched.includes("getEntity"), false, `a dropped message resolved the sender; touched: ${touched.join(", ")}`);
+  });
+});
+
+describe("what the agent reads for a group message", () => {
+  it("carries the address the channel would greet with, in front of the text", () => {
+    // A handle wins over a display name in `buildGroupReplyAddress`, so
+    // the body says «@vasya» too — the model cannot greet a name the
+    // channel then prefixes with a different handle.
+    assert.equal(agentFacingGroupBody({ address: "@vasya", senderId: "500", text: "статус?" }), "@vasya: статус?");
+    assert.equal(agentFacingGroupBody({ address: "Вася Ш.", senderId: "500", text: "статус?" }), "Вася Ш.: статус?");
+  });
+
+  it("falls back to a marked id, so a number is never read as a name", () => {
+    assert.equal(agentFacingGroupBody({ address: undefined, senderId: "500", text: "статус?" }), "id:500: статус?");
+    assert.equal(agentFacingGroupBody({ address: "  ", senderId: "500", text: "статус?" }), "id:500: статус?");
+  });
+
+  it("leaves the text alone when nothing at all is known", () => {
+    assert.equal(agentFacingGroupBody({ address: undefined, senderId: undefined, text: "статус?" }), "статус?");
   });
 });
 

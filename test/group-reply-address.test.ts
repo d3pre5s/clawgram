@@ -59,7 +59,14 @@ describe("group reply addressing follows the message being answered", () => {
   it("builds the address from what the sender actually has", () => {
     assert.equal(buildGroupReplyAddress({ senderUsername: "vasya" }), "@vasya");
     assert.equal(buildGroupReplyAddress({ senderDisplay: "Вася Ш." }), "Вася Ш.");
-    assert.equal(buildGroupReplyAddress({ senderId: "42" }), "42");
+  });
+
+  // The id was the fallback until 2.27.0, and a basic group — where GramJS
+  // attaches no sender profile — spent a day being greeted «890975818, …».
+  it("a numeric id is not an address: nothing known means no greeting", () => {
+    assert.equal(buildGroupReplyAddress({ senderId: "42" }), undefined);
+    assert.equal(buildGroupReplyAddress({ senderId: "42", senderDisplay: "Telegram" }), undefined);
+    assert.equal(buildGroupReplyAddress({}), undefined);
   });
 });
 

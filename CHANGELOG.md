@@ -9,6 +9,40 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.27.0] — 2026-09-07
+
+### Fixed
+
+- **A numeric id is no longer an address.** `buildGroupReplyAddress` fell back
+  to `senderId` when the sender had neither a handle nor a name, and the
+  channel itself opened every reply with «890975818, …». In a basic group
+  GramJS attaches no sender profile to the message, and the profile lookup
+  was gated on `allowFrom` naming an `@handle` (B5-04) — so in the owner's
+  management chat that was every reply of the day (07.09.2026). Nothing
+  known now means no greeting.
+- **A sender who passed the gates is looked up once.** The B5-04 order stands —
+  a foreign group, a blocked sender or a message the mention gate drops still
+  costs no call — but a sender the agent will actually read, arriving without
+  a name or handle, gets one `getEntity` (1.5 s timeout). When GramJS can
+  resolve the entity, the greeting and `SenderName` carry the person; when it
+  cannot (a basic-group update carries no users, and the in-memory entity
+  cache is empty after a restart until something else fills it), the sender
+  stays nameless — no greeting, `id:<n>` in the body — which is still not a
+  number used as a name. Follow-up: on a miss in a group, one cached
+  `getParticipants` and a retry.
+
+### Changed
+
+- **The agent reads `Адрес: текст` for a group message.** `BodyForAgent` was the
+  bare text, so the turn could tell speakers apart only by the numeric id in
+  metadata — and used it as an address. Core's own Telegram channel prefixes
+  the sender for groups; clawgram now does the same (`agentFacingGroupBody`).
+  The prefix is the very address the channel would prepend to the reply
+  (`buildGroupReplyAddress`: handle first, then display name), so the model
+  and the channel never greet the same person two different ways; with no
+  address known it is `id:500`, marked so it is never mistaken for a name.
+  `RawBody` and `CommandBody` are unchanged.
+
 ## [2.26.1] — 2026-09-07
 
 ### Changed
