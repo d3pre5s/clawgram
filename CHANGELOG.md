@@ -9,6 +9,33 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.28.0] — 2026-09-08
+
+### Fixed
+
+- **A picture could be blocked by a leftover directory, and the agent was
+  handed the errno.** The fetch directory had a fixed name in world-writable
+  `/tmp`. When the deployment moved the agent to its own account
+  (04.09.2026) the previous account's directory kept that name;
+  `mkdir(..., { recursive: true })` is a no-op on an existing directory and
+  the `chmod` that follows failed silently, so every fetch died with
+  `EACCES: permission denied, open '/tmp/clawgram-fetched/…'`. From 05.09 to
+  07.09 the agent could not read a single picture and reported to its owner
+  that its "disk access was not restored" — the only reading an errno allows.
+  The fallback root now carries the process uid (`/tmp/clawgram-<uid>`), so
+  two accounts cannot collide, and `ensurePrivateDir` proves the directory is
+  a directory, not a symlink, owned by this process and mode 0700 before
+  anything is written — naming the cause when it is not.
+
+### Security
+
+- The old path was predictable and shared: any local user (this host also runs
+  a deploy runner) could pre-create `/tmp/clawgram-fetched` and read every
+  attachment the agent fetched, since the `chmod` that was supposed to close
+  it failed silently on a directory it did not own. Ownership and mode are now
+  verified rather than assumed, and a symlink on the path is refused instead of
+  followed.
+
 ## [2.27.0] — 2026-09-07
 
 ### Fixed

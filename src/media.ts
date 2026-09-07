@@ -206,6 +206,88 @@ export async function downloadInboundMediaToTempFile(params: {
 }
 
 /**
+ * Why a directory that merely exists is not good enough.
+ *
+ * `mkdir(..., { recursive: true })` is a no-op on an existing directory and
+ * `chmod` on a directory owned by somebody else fails — and that failure used
+ * to be swallowed. The write then hit `EACCES` and the agent was handed the
+ * bare errno with nothing to act on.
+ *
+ * That is not hypothetical: the shared fetch directory had a fixed name in
+ * world-writable `/tmp`, and when the agent moved to its own account
+ * (04.09.2026) the old account's leftover kept the name. Every picture sent
+ * to the agent failed from 05.09 to 07.09 with
+ * `EACCES: permission denied, open '/tmp/clawgram-fetched/…'`, and the agent
+ * told its owner its "disk access was not restored" — the closest reading it
+ * could make of an errno.
+ *
+ * The same shape is a way in, not only an accident: any local user (this host
+ * also runs a deploy runner) could pre-create that predictable path and read
+ * every attachment written into it. So the check is ownership and mode, not
+ * existence.
+ */
+export function describePrivateDirProblem(input: {
+  path: string;
+  isDirectory: boolean;
+  isSymbolicLink?: boolean;
+  uid: number;
+  mode: number;
+  selfUid?: number;
+}): string | undefined {
+  if (input.isSymbolicLink) {
+    return `clawgram: ${input.path} is a symlink — refusing to write attachments through it`;
+  }
+  if (!input.isDirectory) {
+    return `clawgram: ${input.path} exists and is not a directory`;
+  }
+  if (input.selfUid !== undefined && input.uid !== input.selfUid) {
+    return `clawgram: ${input.path} belongs to uid ${input.uid}, this process runs as ${input.selfUid}`
+      + " — a leftover from another account is holding the path; remove it or give it to this account";
+  }
+  const bits = input.mode & 0o777;
+  if ((bits & 0o077) !== 0) {
+    return `clawgram: ${input.path} is readable beyond this account (mode ${bits.toString(8)})`;
+  }
+  return undefined;
+}
+
+/**
+ * Creates the directory, makes it private, and proves it — see above.
+ */
+export async function ensurePrivateDir(dir: string): Promise<void> {
+  const { mkdir, chmod, lstat } = await import("node:fs/promises");
+  // `EEXIST` means something already holds the name — a file, a symlink,
+  // another account's directory. The check below says which, and that is
+  // the whole point; an errno is what the agent could not act on. Any other
+  // failure (no space, read-only mount) is still the caller's problem.
+  await mkdir(dir, { recursive: true, mode: 0o700 }).catch((err: unknown) => {
+    if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
+      throw err;
+    }
+  });
+  // Only tighten what is already our directory: `chmod` on a stray file
+  // would change a mode that is none of our business, and on somebody
+  // else's directory it fails anyway — silently, which is how this stayed
+  // invisible for three days.
+  const found = await lstat(dir);
+  if (found.isDirectory()) {
+    await chmod(dir, 0o700).catch(() => undefined);
+  }
+  const stats = await lstat(dir);
+  const problem = describePrivateDirProblem({
+    path: dir,
+    isDirectory: stats.isDirectory(),
+    isSymbolicLink: stats.isSymbolicLink(),
+    uid: stats.uid,
+    mode: stats.mode,
+    selfUid: typeof process.getuid === "function" ? process.getuid() : undefined,
+  });
+  if (problem) {
+    throw new Error(problem);
+  }
+}
+
+/**
  * Downloads an attachment into a directory the caller names and owns.
  *
  * Split out of the inbound path for `fetch-media`, where the file is the
@@ -241,7 +323,7 @@ export async function downloadMessageMediaToFile(params: {
     return undefined;
   }
 
-  const { mkdir, writeFile, chmod } = await import("node:fs/promises");
+  const { writeFile, chmod } = await import("node:fs/promises");
   const { join } = await import("node:path");
   // Личная переписка на диске: каталог и файл принадлежат только агенту.
   // По умолчанию (umask 022) выходило 0755/0644, то есть вложения из личных
@@ -249,8 +331,7 @@ export async function downloadMessageMediaToFile(params: {
   // gitlab-runner (A5-13). `mode` у mkdir и writeFile маскируется umask,
   // поэтому права выставляются отдельным chmod, как это уже делается для
   // конфига в update-config.ts.
-  await mkdir(params.dir, { recursive: true, mode: 0o700 });
-  await chmod(params.dir, 0o700).catch(() => undefined);
+  await ensurePrivateDir(params.dir);
   const extension = extensionFor(described, understanding);
   const path = join(params.dir, params.fileNameFor({ media: described, extension }));
   await writeFile(path, buffer, { mode: 0o600 });

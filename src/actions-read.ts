@@ -15,7 +15,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { describeMedia, downloadMessageMediaToFile, pruneFetchedMedia } from "./media";
+import { describeMedia, downloadMessageMediaToFile, ensurePrivateDir, pruneFetchedMedia } from "./media";
 import { resolveStateDir } from "./state-dir";
 import { parseTopicsParams } from "./topics";
 
@@ -135,19 +135,23 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
     // that path would pull the file out from under an earlier `both`
     // fetch of the same message that handed the caller a path.
     // Не общий /tmp: там файлы видит каждый локальный пользователь, а на
-    // этом хосте живёт ещё и раннер деплоя. Каталог состояния OpenClaw
-    // принадлежит агенту; если он не задан, остаётся /tmp — но права
-    // 0700/0600 ставятся в любом случае (A5-13).
-    // Каталог состояния принадлежит агенту; при явно заданном
-    // OPENCLAW_STATE_DIR вложения не покидают его.
+    // этом хосте живёт ещё и раннер деплоя (A5-13). При заданном
+    // OPENCLAW_STATE_DIR вложения не покидают каталог состояния; иначе
+    // корень лежит в /tmp и несёт uid процесса в имени.
+    //
+    // Прежде это был `/tmp/clawgram-fetched` — постоянное имя в каталоге,
+    // который делят все пользователи хоста. Когда агент переехал на свою
+    // учётку, имя осталось занято каталогом прежней, и каждая картинка с
+    // 05.09 по 07.09.2026 падала с `EACCES`. Имя с uid разводит учётки, а
+    // `ensurePrivateDir` проверяет, что каталог действительно наш и закрыт.
     const mediaRoot = process.env.OPENCLAW_STATE_DIR?.trim()
       ? path.join(resolveStateDir(), "tmp")
-      : os.tmpdir();
+      : path.join(os.tmpdir(), `clawgram-${typeof process.getuid === "function" ? process.getuid() : "user"}`);
+    await ensurePrivateDir(mediaRoot);
     const sharedFetchDir = path.join(mediaRoot, "clawgram-fetched");
     let fetchDir = sharedFetchDir;
     if (fetchParams.mode === "read") {
-      const { mkdtemp, mkdir } = await import("node:fs/promises");
-      await mkdir(mediaRoot, { recursive: true, mode: 0o700 });
+      const { mkdtemp } = await import("node:fs/promises");
       fetchDir = await mkdtemp(path.join(mediaRoot, "clawgram-media-"));
     } else {
       await pruneFetchedMedia(sharedFetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
