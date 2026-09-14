@@ -5,7 +5,7 @@ import os from "node:os";
 import { readFileSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { describeMedia, downloadInboundMediaToTempFile, inboundMediaUnderstanding } from "../src/media";
+import { describeMedia, downloadInboundMediaToTempFile, fetchMediaUnderstanding, inboundMediaUnderstanding } from "../src/media";
 
 /**
  * Shapes here mirror what GramJS hands over: a `className` string plus the
@@ -265,5 +265,31 @@ describe("inboundMediaUnderstanding", () => {
     assert.equal(inboundMediaUnderstanding({ kind: "document", mimeType: "application/pdf" }), undefined);
     assert.equal(inboundMediaUnderstanding({ kind: "video" }), undefined);
     assert.equal(inboundMediaUnderstanding(undefined), undefined);
+  });
+});
+
+describe("fetchMediaUnderstanding", () => {
+  it("downloads DOCX only when an explicit fetch named it", () => {
+    const docx = {
+      kind: "document" as const,
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      fileName: "основа.docx",
+    };
+
+    assert.equal(inboundMediaUnderstanding(docx), undefined);
+    assert.equal(fetchMediaUnderstanding(docx), "document");
+    assert.equal(fetchMediaUnderstanding({ kind: "document", fileName: "текст.DOCX" }), "document");
+    assert.equal(fetchMediaUnderstanding({ kind: "document", fileName: "таблица.xlsx" }), undefined);
+  });
+
+  it("keeps PDFs as private files for the core PDF tool", () => {
+    assert.equal(fetchMediaUnderstanding({ kind: "document", mimeType: "application/pdf" }), "pdf");
+    assert.equal(fetchMediaUnderstanding({ kind: "document", fileName: "договор.pdf" }), "pdf");
+  });
+
+  it("reads only explicit UTF-8 text formats", () => {
+    assert.equal(fetchMediaUnderstanding({ kind: "document", fileName: "notes.md" }), "document");
+    assert.equal(fetchMediaUnderstanding({ kind: "document", mimeType: "text/csv" }), "document");
+    assert.equal(fetchMediaUnderstanding({ kind: "document", fileName: "table.xlsx" }), undefined);
   });
 });

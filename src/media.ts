@@ -145,7 +145,8 @@ export function describeMedia(media: unknown): HistoryMedia | undefined {
  * audio. The caller owns the file and is responsible for removing it.
  */
 /** What an inbound attachment can be turned into for the agent to read. */
-export type InboundMediaUnderstanding = "transcript" | "description";
+export type MediaUnderstanding = "transcript" | "description" | "document" | "pdf";
+export type InboundMediaUnderstanding = Exclude<MediaUnderstanding, "document" | "pdf">;
 
 /**
  * Decides whether an attachment is worth fetching, and what reading it means.
@@ -163,6 +164,32 @@ export function inboundMediaUnderstanding(media: HistoryMedia | undefined): Inbo
   // A document can be an image sent "as file" — Telegram keeps the pixels,
   // only the envelope differs, so read it rather than announce it.
   if (media.kind === "document" && media.mimeType?.startsWith("image/")) return "description";
+  return undefined;
+}
+
+/** A document is downloaded only after the agent explicitly names its message. */
+export function fetchMediaUnderstanding(media: HistoryMedia | undefined): MediaUnderstanding | undefined {
+  const inbound = inboundMediaUnderstanding(media);
+  if (inbound) return inbound;
+  const fileName = media?.fileName?.toLowerCase() ?? "";
+  if (media?.kind === "document" && (
+    media.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    || fileName.endsWith(".docx")
+  )) {
+    return "document";
+  }
+  if (media?.kind === "document" && (
+    media.mimeType === "application/pdf" || fileName.endsWith(".pdf")
+  )) {
+    return "pdf";
+  }
+  if (media?.kind === "document" && (
+    media.mimeType?.startsWith("text/")
+    || [ "txt", "md", "markdown", "csv", "tsv", "json", "jsonl", "yaml", "yml", "toml", "ini", "cfg", "conf", "xml", "html", "htm", "log", "rtf" ]
+      .some((extension) => fileName.endsWith(`.${extension}`))
+  )) {
+    return "document";
+  }
   return undefined;
 }
 
@@ -196,13 +223,24 @@ export async function downloadInboundMediaToTempFile(params: {
   }
 
   const dir = await mkdtemp(join(params.tmpDir, "clawgram-media-"));
-  return downloadMessageMediaToFile({
+  const downloaded = await downloadMessageMediaToFile({
     client: params.client,
     message: params.message,
     maxBytes: params.maxBytes,
     dir,
     fileNameFor: ({ extension }) => `attachment.${extension}`,
   });
+  // This path asks only for `inboundMediaUnderstanding`, so a document cannot
+  // get here. Keep the runtime guard as the public downloader also serves the
+  // explicit `fetch-media` action, which is allowed to request DOCX files.
+  if (!downloaded || downloaded.understanding === "document" || downloaded.understanding === "pdf") {
+    return undefined;
+  }
+  return {
+    path: downloaded.path,
+    mimeType: downloaded.mimeType,
+    understanding: downloaded.understanding,
+  };
 }
 
 /**
@@ -301,11 +339,12 @@ export async function downloadMessageMediaToFile(params: {
   maxBytes: number;
   dir: string;
   fileNameFor: (info: { media: HistoryMedia; extension: string }) => string;
+  understanding?: MediaUnderstanding;
 }): Promise<
-  { path: string; mimeType?: string; understanding: InboundMediaUnderstanding; media: HistoryMedia } | undefined
+  { path: string; mimeType?: string; understanding: MediaUnderstanding; media: HistoryMedia } | undefined
 > {
   const described = describeMedia((params.message as any)?.media);
-  const understanding = inboundMediaUnderstanding(described);
+  const understanding = params.understanding ?? inboundMediaUnderstanding(described);
   if (!described || !understanding) {
     return undefined;
   }
@@ -376,7 +415,7 @@ export async function pruneFetchedMedia(dir: string, maxAgeMs: number, now: numb
   return removed;
 }
 
-function extensionFor(media: HistoryMedia, understanding: InboundMediaUnderstanding): string {
+function extensionFor(media: HistoryMedia, understanding: MediaUnderstanding): string {
   if (understanding === "description") {
     if (media.mimeType === "image/png") return "png";
     if (media.mimeType === "image/webp") return "webp";
@@ -384,6 +423,10 @@ function extensionFor(media: HistoryMedia, understanding: InboundMediaUnderstand
   }
   if (media.mimeType === "audio/mpeg") return "mp3";
   if (media.mimeType === "audio/mp4") return "m4a";
+  if (understanding === "pdf") return "pdf";
+  if (understanding === "document") {
+    return media.mimeType?.startsWith("text/") ? "txt" : "docx";
+  }
   return "ogg";
 }
 

@@ -15,7 +15,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { describeMedia, downloadMessageMediaToFile, ensurePrivateDir, pruneFetchedMedia } from "./media";
+import { describeMedia, downloadMessageMediaToFile, ensurePrivateDir, fetchMediaUnderstanding, pruneFetchedMedia } from "./media";
 import { resolveStateDir } from "./state-dir";
 import { parseTopicsParams } from "./topics";
 
@@ -157,11 +157,13 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       await pruneFetchedMedia(sharedFetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
     }
 
+    const described = describeMedia((found.message as any)?.media);
     const downloaded = await downloadMessageMediaToFile({
       client: fetchGram.getClient() as any,
       message: found.message,
       maxBytes: INBOUND_MEDIA_MAX_BYTES,
       dir: fetchDir,
+      understanding: fetchMediaUnderstanding(described),
       fileNameFor: ({ media, extension }) => fetchedMediaFileName({
         chatId: fetchChatId,
         messageId: fetchParams.messageId,
@@ -176,7 +178,6 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       // channel does not read (a video, a spreadsheet), and one too
       // large to be worth the transfer. Saying "could not fetch" to all
       // three is how "she ignored the picture" starts.
-      const described = describeMedia((found.message as any)?.media);
       const tooLarge = typeof described?.size === "number" && described.size > INBOUND_MEDIA_MAX_BYTES;
       const error = !described
         ? "no-media"
@@ -212,6 +213,7 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
           filePath: downloaded.path,
           mimeType: downloaded.mimeType,
           understanding: downloaded.understanding,
+          fileName: downloaded.media.fileName,
         });
         if (!read) {
           readError = "read-empty";
@@ -227,7 +229,8 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
     // `read` mode is the inbound contract — the words, not the file — so
     // the bytes go away with the answer. Any other mode keeps them:
     // that is the whole point of asking for a path.
-    if (fetchParams.mode === "read") {
+    const pdfNeedsFile = downloaded.understanding === "pdf";
+    if (fetchParams.mode === "read" && !pdfNeedsFile) {
       try {
         const { rm } = await import("node:fs/promises");
         await rm(fetchDir, { recursive: true, force: true });
@@ -237,6 +240,7 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       }
     }
 
+    const finalReadError = pdfNeedsFile ? "use the PDF tool on filePath to read this PDF" : readError;
     actionLog.info("clawgram fetch-media completed", {
       accountId: fetchAccountId,
       chatId: fetchChatId,
@@ -245,7 +249,7 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       kind: downloaded.media.kind,
       understanding: downloaded.understanding,
       characters: read?.length ?? 0,
-      readError: readError ?? null,
+      readError: finalReadError ?? null,
     });
 
     return jsonResult({
@@ -256,9 +260,9 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       mode: fetchParams.mode,
       media: downloaded.media,
       understanding: downloaded.understanding,
-      filePath: fetchParams.mode === "read" ? undefined : downloaded.path,
+      filePath: fetchParams.mode === "read" && !pdfNeedsFile ? undefined : downloaded.path,
       text: read,
-      readError,
+      readError: finalReadError,
     });
   }
 

@@ -9,6 +9,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 
 import { downloadInboundMediaToTempFile } from "./media";
+import { extractDocxText, extractPlainText, isDocxDocument } from "./docx-text";
 import { resolveStateDir } from "./state-dir";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 
@@ -48,8 +49,19 @@ export async function understandAttachmentFile(params: {
   cfg: any;
   filePath: string;
   mimeType?: string;
-  understanding: "transcript" | "description";
+  understanding: "transcript" | "description" | "document" | "pdf";
+  fileName?: string;
 }): Promise<string | undefined> {
+  if (params.understanding === "document") {
+    const { readFile } = await import("node:fs/promises");
+    const input = await readFile(params.filePath);
+    return isDocxDocument(params.mimeType, params.fileName)
+      ? extractDocxText(input)
+      : extractPlainText(input);
+  }
+  if (params.understanding === "pdf") {
+    return undefined;
+  }
   const media = params.runtime?.mediaUnderstanding;
   if (!media) return undefined;
 
@@ -115,6 +127,7 @@ export async function readInboundAttachment(params: {
       filePath: downloaded.path,
       mimeType: downloaded.mimeType,
       understanding: downloaded.understanding,
+      fileName: undefined,
     });
     if (!read) {
       params.log?.info?.("clawgram attachment read empty", {

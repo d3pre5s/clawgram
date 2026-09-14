@@ -9,6 +9,23 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.28.1] — 2026-09-14
+
+### Fixed
+
+- **Requested documents are now usable, not merely visible in history.**
+  `fetch-media` recognised only images and audio, so an agent could see a file
+  in chat history but could not review it after the user said to do so. An
+  explicitly named `.docx` is now downloaded into the existing private
+  attachment directory and its `word/document.xml` is extracted locally;
+  UTF-8 text documents (`.txt`, `.md`, `.csv`, `.json`, YAML, XML, HTML, RTF
+  and similar) are returned as text; a PDF is retained as a private path for
+  OpenClaw's configured PDF tool. Documents are still never fetched merely
+  because they appeared in a group, and unsupported formats remain
+  metadata-only. The DOCX parser accepts stored and deflated ZIP entries,
+  rejects encrypted or malformed archives, and limits decompressed XML and
+  plain-text input to 2 MB.
+
 ## [2.28.0] — 2026-09-08
 
 ### Fixed
