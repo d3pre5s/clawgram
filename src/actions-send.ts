@@ -3,6 +3,7 @@ import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/pa
 
 import type { ActionContext } from "./action-context";
 import { refuseOutboundOutsideScope, resolveAccountSendChats } from "./account-scopes";
+import { parseEditParams } from "./edits";
 import { consumeGroupReplyAddress, peekGroupReplyAddress } from "./group-reply-address";
 import { hasRecentVisibleGroupReply, rememberTurnSend, rememberVisibleGroupReply } from "./group-visible-reply-guard";
 import {
@@ -84,6 +85,76 @@ export async function handleSendAction(ctx: ActionContext): Promise<unknown> {
       chatId: reactionParams.target,
       messageId: reactionParams.messageId,
       removed: reactionParams.remove,
+    });
+  }
+
+  // Rewriting a message already sent. Gated exactly like `react`: it is a
+  // visible act in someone else's chat under this account's name, so it takes
+  // the outbound scope check and honours `dryRun`, which reading does not need.
+  if (canonical === "edit") {
+    const editParams = parseEditParams(params, toolContext);
+    const editAccountId = resolveRuntimeAccountId(cfg, accountId);
+    if (!editAccountId) {
+      throw new Error("clawgram: no configured account found");
+    }
+
+    if (!isChatSendable(editParams.target, resolveAccountSendChats(cfg, editAccountId))) {
+      refuseOutboundOutsideScope("edit", editAccountId, editParams.target);
+    }
+
+    // The same sentinel guard as `send`, for the same reason: `NO_REPLY` is
+    // OpenClaw's "say nothing", and an explicit tool call is not a path that
+    // strips it. Editing a real answer down to the token would replace a good
+    // message with what looks like a malfunction — worse than the send case,
+    // because the original text is gone.
+    if (isSilentReplyText(editParams.text)) {
+      throw new Error("clawgram: edit refuses a silent-reply sentinel as the new text");
+    }
+
+    // No reply-address prefix, no visible-reply memory, no turn-send memory:
+    // those three exist to shape and de-duplicate NEW messages. An edit
+    // addresses nobody afresh and adds nothing to the chat, so recording it as
+    // "this turn has spoken" would suppress a later genuine answer.
+    const editParseMode = resolveOutboundParseMode(params, cfg, editAccountId);
+
+    actionLog.info("clawgram handleAction edit", {
+      accountId: editAccountId,
+      dryRun: dryRun === true,
+      target: editParams.target,
+      messageId: editParams.messageId,
+    });
+
+    if (dryRun === true) {
+      return jsonResult({
+        ok: true,
+        dryRun: true,
+        accountId: editAccountId,
+        chatId: editParams.target,
+        messageId: editParams.messageId,
+      });
+    }
+
+    const editGram = requireRuntimeFor(editAccountId);
+
+    await editGram.editText({
+      target: editParams.target,
+      messageId: editParams.messageId,
+      text: editParams.text,
+      parseMode: editParseMode,
+    });
+
+    actionLog.info("clawgram handleAction edit completed", {
+      accountId: editAccountId,
+      target: editParams.target,
+      messageId: editParams.messageId,
+    });
+
+    return jsonResult({
+      ok: true,
+      edited: true,
+      accountId: editAccountId,
+      chatId: editParams.target,
+      messageId: editParams.messageId,
     });
   }
 

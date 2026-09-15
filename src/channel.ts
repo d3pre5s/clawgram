@@ -553,6 +553,9 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
           // one. `joins` likewise.
           actions: [
             "send", "read", "react", "upload-file",
+            // Rewriting a message this account already sent (2.29.0). Core
+            // knows the name, so it needs no synonym — unlike the reads below.
+            "edit",
             // Reading an attachment that is already in a chat. `read` reports
             // that a photo exists; this is what turns it into something the
             // agent can look at or pass on.

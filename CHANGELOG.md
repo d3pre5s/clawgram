@@ -9,6 +9,35 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.29.0] — 2026-09-15
+
+### Added
+
+- **`edit` — rewriting a message the account already sent.** Until now a wrong
+  answer could only be followed by a second message correcting it, leaving both
+  standing in the chat. The name was never exotic: `edit` has always been in
+  core's `CHANNEL_MESSAGE_ACTION_NAMES`, so the call reached this channel and
+  was refused as an unsupported action. Accepted spellings are `edit`,
+  `editMessage`, `edit-message` and `update`; the chat is named the same way
+  every other action names it, and `messageId` says which message to rewrite.
+
+  It is gated as an outbound act, not as a read: `sendChats` applies, `dryRun`
+  rehearses without touching Telegram, and the `NO_REPLY` sentinel is refused
+  as replacement text — worse there than in a send, because the original text
+  is gone. Rendering mirrors `send` exactly, so an edited message keeps the
+  formatting the send produced.
+
+  Three things it deliberately does not do: take the message id from tool
+  context (that id belongs to the message being answered — someone else's),
+  prefix a reply address, or count as the turn having spoken. Telegram's own
+  refusals reach the caller unchanged — `MESSAGE_AUTHOR_REQUIRED`,
+  `MESSAGE_EDIT_TIME_EXPIRED`, `MESSAGE_NOT_MODIFIED` — because none of them is
+  retryable and dressing them up would hide which one happened.
+
+  `unsend` and `delete` are also in core's vocabulary and are deliberately not
+  implemented: an edit is reversible in the sense that the message survives, a
+  deletion is not.
+
 ## [2.28.1] — 2026-09-14
 
 ### Fixed

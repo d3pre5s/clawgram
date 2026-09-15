@@ -503,6 +503,43 @@ export class GramJsClientManager {
   }
 
   /**
+   * Rewrites a message this account already sent.
+   *
+   * Rendering mirrors `sendText` deliberately: an edit that parsed its text
+   * differently from the send would change the formatting of a message nobody
+   * asked to reformat — markdown shipped as literal asterisks is exactly the
+   * failure that made `sendText` render HTML itself.
+   *
+   * No chunking here, unlike `sendText`. A send too long for Telegram becomes
+   * several messages; an edit cannot — there is one message to rewrite. Over
+   * the limit the call fails, and that is the honest outcome.
+   *
+   * Telegram's own refusals are left to reach the caller as they are:
+   * MESSAGE_AUTHOR_REQUIRED (not this account's message),
+   * MESSAGE_EDIT_TIME_EXPIRED (past the window Telegram allows) and
+   * MESSAGE_NOT_MODIFIED (the new text equals the old one). None of them is
+   * retryable, and dressing them up would hide which one happened.
+   */
+  async editText(args: {
+    target: unknown;
+    messageId: number;
+    text: string;
+    parseMode?: "markdown" | "html" | "none";
+  }) {
+    const resolved = await this.resolvePeer(args.target);
+
+    return this.client.editMessage(resolved.peer as any, {
+      message: args.messageId,
+      text: args.parseMode === "html" ? renderTelegramHtml(args.text) : args.text,
+      ...(args.parseMode === "none"
+        ? { parseMode: false as any }
+        : args.parseMode
+          ? { parseMode: args.parseMode === "markdown" ? "md" : "html" }
+          : {}),
+    });
+  }
+
+  /**
    * Reads what a chat is: title, type, member count, description, pinned
    * message.
    *

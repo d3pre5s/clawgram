@@ -30,6 +30,15 @@ const ACTION_ALIASES: Record<string, string> = {
   react: "react",
   joins: "joins",
 
+  // Rewriting a message already sent (2.29.0). Core has always known the name
+  // — it is in `CHANNEL_MESSAGE_ACTION_NAMES` — so the call reached this
+  // channel and was refused as unsupported, and a wrong answer could only be
+  // followed by a second message correcting it.
+  edit: "edit",
+  editMessage: "edit",
+  "edit-message": "edit",
+  update: "edit",
+
   "upload-file": "upload-file",
   sendAttachment: "upload-file",
 
@@ -122,6 +131,11 @@ export function canonicalAction(action: string): string {
  * call fell through to the current chat and answered about the wrong one.
  * `readChatTargetParam` is the single list of accepted spellings now.
  *
+ * `edit` (2.29.0) is the third shape: core resolves it as a *message* target,
+ * so both the chat and `messageId` arrive named. It needs no synonym — the
+ * name core uses is the name this channel uses — and it is listed here only so
+ * the suite asserts core still knows it.
+ *
  * These spellings are derived from `ACTION_ALIASES` rather than kept beside
  * it; that core actually knows each of them is asserted against the installed
  * core in `core-action-synonyms.test.ts`.
@@ -129,6 +143,7 @@ export function canonicalAction(action: string): string {
 const CORE_VOCABULARY_SPELLINGS = [
   "thread-list", "channel-list", "channel-info", "member-info", "download-file",
   "channel-create", "addParticipant", "kick", "role-add", "role-remove",
+  "edit",
 ] as const;
 
 export const CORE_ACTION_SYNONYMS: Record<string, string> = Object.fromEntries(
