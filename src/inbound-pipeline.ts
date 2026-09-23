@@ -16,13 +16,6 @@ import {
   createSubsystemLogger,
   } from "openclaw/plugin-sdk/core";
 import {
-  describeMedia,
-  downloadInboundMediaToTempFile,
-  downloadMessageMediaToFile,
-  pruneFetchedMedia, assertLocalMediaWithinRoots } from "./media";
-import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
-import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
-import {
   dispatchInboundDirectDmWithRuntime,
   resolveInboundDirectDmAccessWithRuntime,
 } from "openclaw/plugin-sdk/direct-dm";
@@ -34,49 +27,14 @@ import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-s
 import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
-import { NewMessage, Raw } from "telegram/events";
 import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 import { normalizeTelegramEvent } from "./normalize";
-import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
-import { isChatSendable, isPhoneNumberTarget } from "./send-scope";
-import {
-  appendJoinRecord,
-  parseJoinEvent,
-  parseJoinsParams,
-  readJoinRecords,
-  resolveJoinsJournalPath,
-  selectJoinRecords,
-} from "./joins";
 import { resolveAgentReactionGuidance } from "./reactions";
-import {
-  isChatManageable,
-  isManagementEnabled,
-  parseAddMembersParams,
-  parseCreateGroupParams,
-  parseDemoteAdminParams,
-  parseInviteLinkParams,
-  parsePromoteAdminParams,
-  parseRemoveMemberParams,
-  parseTransferOwnershipParams,
-} from "./manage";
 import { reactToSilentMention } from "./silent-reaction";
 import { shouldSuppressGroupSystemNotice } from "./system-notice";
 import { operatorIdsFor } from "./account-registry";
-import { describeChat, parseChatInfoParams } from "./chat-info";
-import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
-import {
-  applyAccountSecrets,
-  collectAccountSecretRefs,
-  readSecretInput,
-} from "./secret-refs";
-import type { PluginConfig, RuntimeMap } from "./types";
+import type { RuntimeMap } from "./types";
 import { consumeGroupReplyAddress, rememberGroupReplyAddress, buildGroupReplyAddress } from "./group-reply-address";
-import {
-  hadTurnSendJustNow,
-  hasRecentVisibleGroupReply,
-  rememberTurnSend,
-  rememberVisibleGroupReply,
-} from "./group-visible-reply-guard";
 import {
   buildConversationTarget,
   buildScopedGroupPeerId,
@@ -100,7 +58,6 @@ import {
   readAccountReactionModel,
 } from './helpers';
 import { CHANNEL_ID } from './constants';
-import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions";
 import {
   readInboundAttachment,
   } from "./attachments";

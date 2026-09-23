@@ -79,6 +79,23 @@ describe("outbound sendMedia guards", () => {
       `caption should greet the addressee, got ${JSON.stringify(sent[0].caption)}`);
   });
 
+  // The telemetry filter sat on the three text doors and not on this one:
+  // a core notice glued to the payload went out as the caption (r3 C0-11).
+  // The file itself is kept — it is the agent's work — only the caption goes.
+  test("a core notice as the caption is dropped in a group; the file still goes", async () => {
+    const { plugin, sent } = pluginWithRuntime();
+    rememberAccount(ACCOUNT, { sendChats: [ "-1001" ], operatorIds: [] });
+
+    const result = await plugin.outbound.sendMedia({
+      accountId: ACCOUNT, to: "-1001", filePath: "/tmp/x.png",
+      caption: "⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/secrets.json",
+    });
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].caption, undefined);
+    assert.equal((result as any).ok, true);
+  });
+
   test("a file with no caption is still delivered", async () => {
     const { plugin, sent } = pluginWithRuntime();
 

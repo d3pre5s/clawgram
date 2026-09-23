@@ -20,6 +20,27 @@ recorded in `git log` only.
   value from a denylist kept outside git (`CLAWGRAM_PII_DENYLIST`) and on any
   standalone 9–10 digit number that does not look synthetic. Audit r3 C2-01.
 
+### Fixed
+
+- **A PDF read in `read` mode no longer stays on disk for good.** It kept its
+  file for the agent's PDF tool, but in a private temp directory that only the
+  non-PDF branch removed. It now lands in the shared fetch directory, which is
+  pruned by age (r3 C2-02).
+- **A core notice sent as a media caption is dropped.** The telemetry filter
+  covered the three text doors and not `outbound.sendMedia`; the file still
+  goes, without the caption (r3 C0-11).
+- `sendChats` is dated 2.22.0 in the schema and README, not 2.18.0 (r3 C0-14).
+
+### Changed
+
+- One definition of a readable document: `fetchMediaUnderstanding` uses
+  `isDocxDocument`/`isTextDocument` instead of a second extension list (r3 C2-03).
+- `noUnusedLocals` is on; 29 unused imports removed. The log-content scan now
+  covers every file in `src/` instead of a fixed list of nine, which the
+  `actions-*.ts` split had outgrown (r3 C0-12, C0-15).
+- Comments of the outbound gate speak of "this account", not "the owner":
+  the channel runs on its own account (r3 C2-05).
+
 ## [2.29.0] — 2026-09-15
 
 ### Added

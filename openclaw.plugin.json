@@ -468,7 +468,7 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "Chat ids the account may SEND to (2.18.0): send, upload-file, react, edit and core's delivery path. Same shape as readChats — absent means no restriction, [] denies everything, [\"*\"] allows every chat. A phone number is refused in every configuration, wildcard included: messaging a raw number starts a conversation with someone who never interacted with the account. Without this list an injected turn can message strangers from the owner's personal account or carry a work chat's content into a DM one send at a time."
+                  "description": "Chat ids the account may SEND to (2.22.0): send, upload-file, react, edit and core's delivery path. Same shape as readChats — absent means no restriction, [] denies everything, [\"*\"] allows every chat. A phone number is refused in every configuration, wildcard included: messaging a raw number starts a conversation with someone who never interacted with the account. Without this list an injected turn can message strangers from this account or carry a work chat's content into a DM one send at a time."
                 },
                 "manageChats": {
                   "type": "array",

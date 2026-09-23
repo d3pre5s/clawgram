@@ -13,6 +13,7 @@
 
 import { realpathSync } from "node:fs";
 import path from "node:path";
+import { isDocxDocument, isTextDocument } from "./docx-text";
 import { readNumber } from "./util";
 import type { OutboundMediaFile } from "./types";
 
@@ -171,25 +172,13 @@ export function inboundMediaUnderstanding(media: HistoryMedia | undefined): Inbo
 export function fetchMediaUnderstanding(media: HistoryMedia | undefined): MediaUnderstanding | undefined {
   const inbound = inboundMediaUnderstanding(media);
   if (inbound) return inbound;
-  const fileName = media?.fileName?.toLowerCase() ?? "";
-  if (media?.kind === "document" && (
-    media.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    || fileName.endsWith(".docx")
-  )) {
-    return "document";
-  }
-  if (media?.kind === "document" && (
-    media.mimeType === "application/pdf" || fileName.endsWith(".pdf")
-  )) {
-    return "pdf";
-  }
-  if (media?.kind === "document" && (
-    media.mimeType?.startsWith("text/")
-    || [ "txt", "md", "markdown", "csv", "tsv", "json", "jsonl", "yaml", "yml", "toml", "ini", "cfg", "conf", "xml", "html", "htm", "log", "rtf" ]
-      .some((extension) => fileName.endsWith(`.${extension}`))
-  )) {
-    return "document";
-  }
+  if (media?.kind !== "document") return undefined;
+  // One definition of "a document we can read": the same predicates decide
+  // how it is read in `understandAttachmentFile`, so a format added there
+  // cannot be downloaded here and then decoded as the wrong thing (r3 C2-03).
+  if (isDocxDocument(media.mimeType, media.fileName)) return "document";
+  if (media.mimeType === "application/pdf" || media.fileName?.toLowerCase().endsWith(".pdf")) return "pdf";
+  if (isTextDocument(media.mimeType, media.fileName)) return "document";
   return undefined;
 }
 

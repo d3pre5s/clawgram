@@ -1,5 +1,4 @@
 import { buildChannelOutboundSessionRoute, createSubsystemLogger } from "openclaw/plugin-sdk/core";
-import path from "node:path";
 
 /**
  * How long a file fetched by `fetch-media` stays on disk.

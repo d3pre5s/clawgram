@@ -276,6 +276,34 @@ describe("the fetch-media action", () => {
     assert.equal(result.filePath, undefined);
   });
 
+  // A PDF in `read` mode keeps its file for the agent's PDF tool. It used to
+  // land in a private temp directory that only the non-PDF branch removes, so
+  // every PDF read stayed on disk for good (audit r3 C2-02). It now goes to
+  // the shared directory, which `pruneFetchedMedia` ages out.
+  it("keeps a PDF read in the pruned shared directory, not a private temp one", async () => {
+    const pdfMessage = {
+      className: "Message",
+      media: {
+        className: "MessageMediaDocument",
+        document: {
+          mimeType: "application/pdf",
+          size: 1024,
+          attributes: [ { className: "DocumentAttributeFilename", fileName: "contract.pdf" } ],
+        },
+      },
+    };
+
+    const result = await fetchMedia(withRuntime({ message: pdfMessage }), { mode: "read" });
+
+    assert.equal(result.ok, true);
+    assert.ok(result.filePath, "the PDF tool needs a path");
+    assert.equal(existsSync(result.filePath), true);
+    assert.equal(path.basename(path.dirname(result.filePath)), "clawgram-fetched",
+      `PDF landed in ${path.dirname(result.filePath)} — outside the directory the TTL prunes`);
+    assert.match(result.readError, /PDF tool/);
+    rmSync(result.filePath, { force: true });
+  });
+
   it("keeps the fetch when the reading fails", async () => {
     const channel = withRuntime({
       describe: async () => {

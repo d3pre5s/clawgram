@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test, { describe } from "node:test";
 
@@ -93,10 +93,10 @@ describe("no message bodies or credentials in logs", () => {
   // Список файлов, а не один channel.ts: правило про запрещённые поля в логах
 // обязано ехать за кодом. Когда исходящий контур переехал в outbound.ts,
 // проверка осталась бы зелёной, охраняя пустое место (A6-11).
-for (const file of [
-  "channel.ts", "inbound-pipeline.ts", "outbound.ts", "attachments.ts", "actions.ts",
-  "gramjs-client.ts", "history.ts", "joins.ts", "normalize.ts",
-]) {
+// Список — весь src/, а не перечень: разрез handleAction на actions-*.ts
+// (2.26.1) вывел 16 лог-вызовов из-под фиксированного списка из девяти
+// файлов, и никто не заметил (аудит r3 C0-12).
+for (const file of readdirSync(SRC).filter((f) => f.endsWith(".ts")).sort()) {
     test(`${file} log calls carry no content or credential keys`, () => {
       const offenders = collectLogCalls(read(file))
         .map((call) => ({ ...call, bad: call.keys.filter(isForbiddenLogKey) }))

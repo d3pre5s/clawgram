@@ -149,15 +149,21 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       : path.join(os.tmpdir(), `clawgram-${typeof process.getuid === "function" ? process.getuid() : "user"}`);
     await ensurePrivateDir(mediaRoot);
     const sharedFetchDir = path.join(mediaRoot, "clawgram-fetched");
+    const described = describeMedia((found.message as any)?.media);
+    // A PDF is not read here: the agent is handed the path for its PDF tool,
+    // so even in `read` mode the file has to outlive the answer. It goes to
+    // the shared directory, which is pruned by age — a private temp directory
+    // is removed only by the `read` branch below, and a PDF skips that branch,
+    // so every PDF read used to stay on disk for good (audit r3 C2-02).
+    const keepsFile = fetchParams.mode !== "read" || fetchMediaUnderstanding(described) === "pdf";
     let fetchDir = sharedFetchDir;
-    if (fetchParams.mode === "read") {
+    if (keepsFile) {
+      await pruneFetchedMedia(sharedFetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
+    } else {
       const { mkdtemp } = await import("node:fs/promises");
       fetchDir = await mkdtemp(path.join(mediaRoot, "clawgram-media-"));
-    } else {
-      await pruneFetchedMedia(sharedFetchDir, FETCHED_MEDIA_TTL_MS, Date.now());
     }
 
-    const described = describeMedia((found.message as any)?.media);
     const downloaded = await downloadMessageMediaToFile({
       client: fetchGram.getClient() as any,
       message: found.message,
@@ -230,13 +236,16 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
     // the bytes go away with the answer. Any other mode keeps them:
     // that is the whole point of asking for a path.
     const pdfNeedsFile = downloaded.understanding === "pdf";
-    if (fetchParams.mode === "read" && !pdfNeedsFile) {
+    // Only the private temp directory is ever removed here — never the shared
+    // one, which other fetches still point at.
+    if (!keepsFile) {
       try {
         const { rm } = await import("node:fs/promises");
         await rm(fetchDir, { recursive: true, force: true });
       } catch {
-        // A file left behind is pruned within a day; failing the call
-        // over it would throw away a reading that already succeeded.
+        // A private temp directory left behind is litter, not a leak of
+        // anything the agent was not already shown; failing the call over it
+        // would throw away a reading that already succeeded.
       }
     }
 

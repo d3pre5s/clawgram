@@ -261,7 +261,7 @@ loud where it does occur.
 | `groups` | object | `{}` | Allowed groups map keyed by explicit group id or `*` |
 | `proxy` | object | unset | Optional SOCKS4/SOCKS5 proxy for this account — see [Proxy (SOCKS4/SOCKS5)](#proxy-socks4socks5) |
 | `manageChats` | string[] | unset | Chats the assistant may **manage** — see [Chat management](#chat-management). Absent or empty = management off; `["*"]` = every chat |
-| `sendChats` | string[] | unset | Chats the assistant may **send to** — `send`, `upload-file`, `react`, `edit` and core's own delivery path (`--deliver`, sub-agent announcements). Absent = every chat; `[]` = none. Phone-number targets are refused regardless (2.18.0; core delivery covered since 2.25.0) |
+| `sendChats` | string[] | unset | Chats the assistant may **send to** — `send`, `upload-file`, `react`, `edit` and core's own delivery path (`--deliver`, sub-agent announcements). Absent = every chat; `[]` = none. Phone-number targets are refused regardless (2.22.0; core delivery covered since 2.25.0) |
 | `replyParseMode` | `"html"` \| `"markdown"` \| `"none"` | unset | Outbound format for replies, core-delivered text, captions and `send` calls that omit `parseMode` — see [Message formatting](#message-formatting) |
 | `twoFaPassword` | string \| SecretRef | unset | The account's Telegram 2FA password; read only by `transferOwnership` |
 | `reactionModel` | string | unset | Model ref or alias for the emoji pick on a silent mention. Unset = the agent's own model. Needs `plugins.entries.clawgram.llm.allowModelOverride: true` in the gateway config; without it the override is refused and the pick quietly falls back to the default model |

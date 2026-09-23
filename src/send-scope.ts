@@ -6,8 +6,8 @@ import { chatKeyCandidates, normalizeScopeList } from "./history";
  * Reading has had a declared scope since 2.x (`readChats`), management has
  * one (`manageChats`), and sending had none: `send`, `upload-file` and
  * `react` resolved whatever target the caller named and delivered it. The
- * account is a person's own Telegram account, so an injected turn could
- * message strangers under the owner's name, or carry a work chat's content
+ * account is a real Telegram account, so an injected turn could message
+ * strangers under this account's name, or carry a work chat's content
  * into an attacker's DM one `send` at a time (finding A5-12).
  *
  * Two decisions worth stating, because both could reasonably have gone the

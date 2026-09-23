@@ -50,7 +50,7 @@ export async function handleSendAction(ctx: ActionContext): Promise<unknown> {
       throw new Error("clawgram: no configured account found");
     }
 
-    // Реакция — видимое действие от имени владельца в чужом чате, и
+    // Реакция — видимое действие от имени этой учётки в чужом чате, и
     // адресуется она так же, как сообщение: та же область (A5-12).
     if (!isChatSendable(reactionParams.target, resolveAccountSendChats(cfg, reactionAccountId))) {
       refuseOutboundOutsideScope("react", reactionAccountId, String(reactionParams.target));

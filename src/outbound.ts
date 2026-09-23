@@ -10,45 +10,10 @@ import {
   } from "openclaw/plugin-sdk/core";
 import {
   assertLocalMediaWithinRoots, loadOutboundMedia } from "./media";
-import { fetchedMediaFileName, parseFetchMediaParams } from "./fetch-media";
-import { readStringOrNumberParam, readStringParam } from "openclaw/plugin-sdk/param-readers";
-import {
-  dispatchInboundDirectDmWithRuntime,
-  resolveInboundDirectDmAccessWithRuntime,
-} from "openclaw/plugin-sdk/direct-dm";
-import { NewMessage, Raw } from "telegram/events";
-import { isChatReadable, parseListMessagesParams, parseListParticipantsParams } from "./history";
 import { describeSendRefusal, isChatSendable } from "./send-scope";
 import { operatorIdsFor, requireRuntime, sendScopeFor } from "./account-registry";
-import {
-  appendJoinRecord,
-  parseJoinEvent,
-  parseJoinsParams,
-  readJoinRecords,
-  resolveJoinsJournalPath,
-  selectJoinRecords,
-} from "./joins";
-import { parseReactionParams, resolveAgentReactionGuidance } from "./reactions";
-import {
-  isChatManageable,
-  isManagementEnabled,
-  parseAddMembersParams,
-  parseCreateGroupParams,
-  parseDemoteAdminParams,
-  parseInviteLinkParams,
-  parsePromoteAdminParams,
-  parseRemoveMemberParams,
-  parseTransferOwnershipParams,
-} from "./manage";
 import { shouldSuppressGroupSystemNotice } from "./system-notice";
-import { describeChat, parseChatInfoParams } from "./chat-info";
-import { isChatDiscoveryEnabled, parseDialogsParams } from "./dialogs";
-import {
-  applyAccountSecrets,
-  collectAccountSecretRefs,
-  readSecretInput,
-} from "./secret-refs";
-import type { PluginConfig, RuntimeMap } from "./types";
+import type { RuntimeMap } from "./types";
 import { consumeGroupReplyAddress} from "./group-reply-address";
 import {
   hadTurnSendJustNow,
@@ -60,12 +25,6 @@ import {
   prefixReplyTextToAddress,
   isSilentReplyText,
   } from './helpers';
-import { CORE_ACTION_SYNONYMS, MANAGE_ACTIONS, canonicalAction } from "./actions";
-import {
-  INBOUND_MEDIA_MAX_BYTES,
-  readInboundAttachment,
-  understandAttachmentFile,
-} from "./attachments";
 import { parseOptionalThreadId } from "./helpers";
 
 const actionLog = createSubsystemLogger("channels/clawgram");
@@ -309,7 +268,7 @@ export function createOutbound(runtimes: RuntimeMap) {
 
       // Молчаливый ответ: подпись с токеном молчания означает «ничего не
       // говорить», и отправлять файл с ним в подписи — тем более.
-      const mediaCaption = ctx.caption ?? ctx.text;
+      let mediaCaption = ctx.caption ?? ctx.text;
       if (mediaCaption?.trim() && isSilentReplyText(mediaCaption)) {
         actionLog.info("clawgram suppressing silent outbound media", {
           accountId: ctx.accountId,
@@ -326,12 +285,31 @@ export function createOutbound(runtimes: RuntimeMap) {
         replyToId: ctx.replyToId,
       });
 
-      // Чего здесь НЕТ намеренно:
-      // — подавление эха хода (`hadTurnSendJustNow`): у текста дубль стоит
-      //   лишнего сообщения, а у медиа отказ стоит потерянного файла —
-      //   картинку агент готовил, и второй раз она не появится;
-      // — подавление служебных сообщений ядра в группах: они текстовые,
-      //   медиа-доставка ими не бывает.
+      // Служебное уведомление ядра, склеенное с payload, уходило подписью:
+      // фильтр телеметрии стоял на трёх текстовых дверях и не стоял здесь
+      // (аудит r3 C0-11, «чинить каждый путь»). Файл при этом не теряется —
+      // уходит без подписи: картинку агент готовил, второй раз её не будет.
+      const captionNotice = mediaCaption?.trim()
+        ? shouldSuppressGroupSystemNotice({
+          targetKind: inferOutboundTargetKind(ctx.to),
+          text: mediaCaption,
+          to: ctx.to,
+          operatorIds: operatorIdsFor(ctx.accountId),
+        })
+        : undefined;
+      if (captionNotice) {
+        actionLog.warn("clawgram suppressing system notice in media caption", {
+          accountId: ctx.accountId,
+          rawTo: ctx.to,
+          noticeKind: captionNotice,
+          captionLength: mediaCaption.length,
+        });
+        mediaCaption = undefined;
+      }
+
+      // Чего здесь НЕТ намеренно: подавления эха хода (`hadTurnSendJustNow`):
+      // у текста дубль стоит лишнего сообщения, а у медиа отказ стоит
+      // потерянного файла.
 
       const messageThreadId = parseOptionalThreadId(ctx.threadId);
       // Same normalization `sendText` does two functions up. Without it the

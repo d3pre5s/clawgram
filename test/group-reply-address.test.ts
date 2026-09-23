@@ -1,6 +1,5 @@
 import { strict as assert } from "node:assert";
 import { describe, it, beforeEach } from "node:test";
-import { parseResult } from "./helpers";
 
 import {
   buildGroupReplyAddress,
