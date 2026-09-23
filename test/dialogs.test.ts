@@ -40,16 +40,16 @@ describe("normalizeDialogs", () => {
     isGroup: true,
     isChannel: true,
     id: -1000000000003,
-    title: "Старший брат",
-    entity: { className: "Channel", id: 4428871220, title: "Старший брат", megagroup: true, forum: true },
+    title: "Форум проекта",
+    entity: { className: "Channel", id: 1000000001, title: "Форум проекта", megagroup: true, forum: true },
   };
   const basicGroup = {
     isUser: false,
     isGroup: true,
     isChannel: false,
-    id: -5350166084,
-    title: "Иллюминаты",
-    entity: { className: "Chat", id: 5350166084, title: "Иллюминаты" },
+    id: -1000000002,
+    title: "Рабочая группа",
+    entity: { className: "Chat", id: 1000000002, title: "Рабочая группа" },
   };
   const person = {
     isUser: true,
@@ -62,13 +62,13 @@ describe("normalizeDialogs", () => {
 
   test("reports a forum supergroup with the id the config is written in", () => {
     assert.deepEqual(normalizeDialogs([ supergroup ]), [
-      { chatId: "-1000000000003", title: "Старший брат", type: "supergroup", isForum: true },
+      { chatId: "-1000000000003", title: "Форум проекта", type: "supergroup", isForum: true },
     ]);
   });
 
   test("reports a basic group, which has no topics and says so by omission", () => {
     assert.deepEqual(normalizeDialogs([ basicGroup ]), [
-      { chatId: "-5350166084", title: "Иллюминаты", type: "group" },
+      { chatId: "-1000000002", title: "Рабочая группа", type: "group" },
     ]);
   });
 
@@ -77,13 +77,13 @@ describe("normalizeDialogs", () => {
   // surveillance the read scope was built to prevent.
   test("never reports direct chats", () => {
     assert.deepEqual(normalizeDialogs([ person ]), []);
-    assert.deepEqual(normalizeDialogs([ person, basicGroup ]).map((d) => d.chatId), [ "-5350166084" ]);
+    assert.deepEqual(normalizeDialogs([ person, basicGroup ]).map((d) => d.chatId), [ "-1000000002" ]);
   });
 
   test("filters by title when asked", () => {
     const all = [ supergroup, basicGroup ];
 
-    assert.deepEqual(normalizeDialogs(all, { query: "старший" }).map((d) => d.chatId), [ "-1000000000003" ]);
+    assert.deepEqual(normalizeDialogs(all, { query: "форум" }).map((d) => d.chatId), [ "-1000000000003" ]);
     assert.deepEqual(normalizeDialogs(all, { query: "нет такого" }), []);
   });
 
@@ -101,7 +101,7 @@ describe("the dialogs action", () => {
       listDialogs: (args: Record<string, unknown>) => {
         calls.push(args);
         return Promise.resolve({
-          dialogs: [ { chatId: "-1000000000003", title: "Старший брат", type: "supergroup", isForum: true } ],
+          dialogs: [ { chatId: "-1000000000003", title: "Форум проекта", type: "supergroup", isForum: true } ],
           truncated: false,
         });
       },
@@ -157,7 +157,7 @@ describe("the dialogs action", () => {
     assert.deepEqual(gram.calls, [ { limit: 10, query: "Старший" } ]);
     assert.equal(payload.count, 1);
     assert.deepEqual(payload.dialogs, [
-      { chatId: "-1000000000003", title: "Старший брат", type: "supergroup", isForum: true },
+      { chatId: "-1000000000003", title: "Форум проекта", type: "supergroup", isForum: true },
     ]);
   });
 

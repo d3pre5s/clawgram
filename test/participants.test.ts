@@ -109,10 +109,10 @@ describe("buildParticipantsQuery", () => {
 describe("normalizeParticipants", () => {
   test("reads the plain username when the account has just one", () => {
     const people = normalizeParticipants([
-      { id: 890975818, username: "Rus9jke", bot: false },
+      { id: 500000001, username: "example_user", bot: false },
     ], { includeNames: false });
 
-    assert.deepEqual(people, [ { userId: "890975818", username: "Rus9jke", isBot: false } ]);
+    assert.deepEqual(people, [ { userId: "500000001", username: "example_user", isBot: false } ]);
   });
 
   test("finds the handle of a multi-username account, where the plain field is empty", () => {

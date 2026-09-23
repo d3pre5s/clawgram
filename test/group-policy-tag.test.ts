@@ -13,15 +13,15 @@ import { hasExplicitTelegramMention, resolveGroups } from "../src/helpers";
  * `mention` every one of those conversational uses would start a full turn.
  */
 describe("hasExplicitTelegramMention", () => {
-  const self = "vorontina";
+  const self = "agentnick";
 
   test("the @username tags her", () => {
-    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "@vorontina доработай файл" }), true);
-    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "спасибо @VoronTina" }), true);
+    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "@agentnick доработай файл" }), true);
+    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "спасибо @AgentNick" }), true);
   });
 
   test("a leading @ is tolerated on the configured username", () => {
-    assert.equal(hasExplicitTelegramMention({ selfUsername: "@vorontina", text: "@vorontina тут?" }), true);
+    assert.equal(hasExplicitTelegramMention({ selfUsername: "@agentnick", text: "@agentnick тут?" }), true);
   });
 
   test("the name alone does not", () => {
@@ -37,12 +37,12 @@ describe("hasExplicitTelegramMention", () => {
   });
 
   test("somebody else's tag does not", () => {
-    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "@ed_ratkevich @kvedrov сюда" }), false);
+    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "@iv_petrovich @petrova сюда" }), false);
   });
 
-  // A prefix match would fire for @vorontina_bot, a different account.
+  // A prefix match would fire for @agentnick_bot, a different account.
   test("a longer username that starts with hers does not", () => {
-    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "@vorontina_bot глянь" }), false);
+    assert.equal(hasExplicitTelegramMention({ selfUsername: self, text: "@agentnick_bot глянь" }), false);
   });
 
   test("Telegram's own mentioned flag counts", () => {
@@ -55,11 +55,11 @@ describe("hasExplicitTelegramMention", () => {
   test("a mention entity pointing at her counts, one pointing elsewhere does not", () => {
     const entities = (offset: number, length: number) => [ { className: "MessageEntityMention", offset, length } ];
     assert.equal(
-      hasExplicitTelegramMention({ selfUsername: self, text: "@vorontina тут", message: { entities: entities(0, 11) } }),
+      hasExplicitTelegramMention({ selfUsername: self, text: "@agentnick тут", message: { entities: entities(0, 11) } }),
       true,
     );
     assert.equal(
-      hasExplicitTelegramMention({ selfUsername: self, text: "@kvedrov тут", message: { entities: entities(0, 8) } }),
+      hasExplicitTelegramMention({ selfUsername: self, text: "@petrova тут", message: { entities: entities(0, 8) } }),
       false,
     );
   });
@@ -67,8 +67,8 @@ describe("hasExplicitTelegramMention", () => {
   // Without a known username there is no `@` to look for, and guessing from
   // the display name is exactly the loose matching this rung exists to avoid.
   test("an unknown self username matches nothing", () => {
-    assert.equal(hasExplicitTelegramMention({ selfUsername: undefined, text: "@vorontina тут?" }), false);
-    assert.equal(hasExplicitTelegramMention({ selfUsername: "  ", text: "@vorontina тут?" }), false);
+    assert.equal(hasExplicitTelegramMention({ selfUsername: undefined, text: "@agentnick тут?" }), false);
+    assert.equal(hasExplicitTelegramMention({ selfUsername: "  ", text: "@agentnick тут?" }), false);
   });
 });
 

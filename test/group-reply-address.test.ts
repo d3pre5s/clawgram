@@ -62,7 +62,7 @@ describe("group reply addressing follows the message being answered", () => {
   });
 
   // The id was the fallback until 2.27.0, and a basic group — where GramJS
-  // attaches no sender profile — spent a day being greeted «890975818, …».
+  // attaches no sender profile — spent a day being greeted «<numeric id>, …».
   it("a numeric id is not an address: nothing known means no greeting", () => {
     assert.equal(buildGroupReplyAddress({ senderId: "42" }), undefined);
     assert.equal(buildGroupReplyAddress({ senderId: "42", senderDisplay: "Telegram" }), undefined);

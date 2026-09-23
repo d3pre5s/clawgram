@@ -33,7 +33,7 @@ function event(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const QUOTE = "742000914 (@FENNY_SKETCH), 787573662 (@rinarinchic)";
+const QUOTE = "500000002 (@EXAMPLE_NICK), 500000003 (@example_one)";
 
 describe("normalizeTelegramEvent: reply quote", () => {
   test("carries the highlighted fragment", () => {

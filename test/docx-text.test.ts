@@ -38,10 +38,10 @@ function wordDocument(xml: string): Buffer {
 describe("extractDocxText", () => {
   it("extracts paragraphs, breaks and XML entities from word/document.xml", () => {
     const text = extractDocxText(wordDocument(
-      '<w:document><w:body><w:p><w:r><w:t>Старший &amp; брат</w:t></w:r></w:p><w:p><w:r><w:t>Вторая</w:t><w:br/><w:t>строка</w:t></w:r></w:p></w:body></w:document>',
+      '<w:document><w:body><w:p><w:r><w:t>Первый &amp; второй</w:t></w:r></w:p><w:p><w:r><w:t>Вторая</w:t><w:br/><w:t>строка</w:t></w:r></w:p></w:body></w:document>',
     ));
 
-    assert.equal(text, "Старший & брат\nВторая\nстрока");
+    assert.equal(text, "Первый & второй\nВторая\nстрока");
   });
 
   it("refuses a file that is not a DOCX zip", () => {

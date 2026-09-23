@@ -651,7 +651,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
       // and in a basic group (or after a restart) that cache is empty: the
       // turn then had nothing but the numeric id, the reply greeting fell
       // back to it, and a management chat spent 07.09.2026 being addressed
-      // as «890975818, …». One source of truth for the name: the address
+      // as «<numeric id>, …». One source of truth for the name: the address
       // the channel would prepend is also what the agent reads, so the
       // model cannot greet «Вася Ш.» while the channel greets «@vasya».
       await resolveNamelessSender(normalized, rawMessage, client);

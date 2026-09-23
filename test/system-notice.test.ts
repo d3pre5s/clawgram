@@ -118,7 +118,7 @@ describe("the outbound path suppresses core notices for groups", () => {
 
     const result = await channel.outbound.sendText({
       accountId: "default",
-      to: "-5350166084",
+      to: "-1000000002",
       text: "⚠️ ✉️ Message failed",
     });
 
@@ -167,7 +167,7 @@ describe("the outbound path suppresses core notices for groups", () => {
 
     const result = await channel.outbound.sendText({
       accountId: "default",
-      to: "-5350166084",
+      to: "-1000000002",
       text: "Готово: учётка rtomovich, логин скинула.",
     });
 

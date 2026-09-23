@@ -46,13 +46,13 @@ describe("resolveReplyParent", () => {
           id: 1011,
           out: true,
           senderId: SELF_ID,
-          message: "В личку написал @someone (890975818, не в реестре)",
+          message: "В личку написал @someone (500000001, не в реестре)",
         }),
       }),
       { selfId: SELF_ID, selfLabel: "@tina" },
     );
     assert.equal(parent.isSelf, true);
-    assert.equal(parent.body, "В личку написал @someone (890975818, не в реестре)");
+    assert.equal(parent.body, "В личку написал @someone (500000001, не в реестре)");
     assert.equal(parent.sender, "@tina");
   });
 

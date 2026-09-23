@@ -9,6 +9,17 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Security
+
+- **No real person's Telegram identity in the package or the repository.**
+  2.27.0–2.29.0 carried a third party's numeric id in `dist/` through a source
+  comment; tests carried real handles, chat ids and chat titles from the
+  deployment that motivated each fix. All replaced with synthetic values
+  (`500000001`, `example_user`, `1000000002`). `scripts/check-pii.mjs` now runs
+  first in `npm test` (and therefore in `prepublishOnly` and CI): it fails on a
+  value from a denylist kept outside git (`CLAWGRAM_PII_DENYLIST`) and on any
+  standalone 9–10 digit number that does not look synthetic. Audit r3 C2-01.
+
 ## [2.29.0] — 2026-09-15
 
 ### Added
@@ -88,7 +99,7 @@ recorded in `git log` only.
 
 - **A numeric id is no longer an address.** `buildGroupReplyAddress` fell back
   to `senderId` when the sender had neither a handle nor a name, and the
-  channel itself opened every reply with «890975818, …». In a basic group
+  channel itself opened every reply with «<numeric id>, …». In a basic group
   GramJS attaches no sender profile to the message, and the profile lookup
   was gated on `allowFrom` naming an `@handle` (B5-04) — so in the owner's
   management chat that was every reply of the day (07.09.2026). Nothing

@@ -116,7 +116,7 @@ export function buildGroupReplyAddress(input: {
   // No handle and no name means no greeting, not a numeric one. The id
   // used to be the fallback, and in a basic group — where GramJS attaches
   // no sender profile to the message — every reply of a day opened with
-  // «890975818, …» (07.09.2026). A person does not know their own
+  // «<numeric id>, …» (07.09.2026). A person does not know their own
   // telegram id and reads it as a malfunction.
   return undefined;
 }

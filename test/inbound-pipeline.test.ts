@@ -134,7 +134,7 @@ describe("the inbound pipeline survives what the network hands it", () => {
   });
 
   // The turn used to get bare text and the numeric id, the greeting fell
-  // back to that id, and a management chat was addressed «890975818, …»
+  // back to that id, and a management chat was addressed «<numeric id>, …»
   // all day (07.09.2026). A sender who passed the gate and arrived without
   // a profile — GramJS attaches none in a basic group — is looked up once.
   it("a sender who passed the gate and has no name is looked up; a blocked one still is not (2.27.0)", async () => {
