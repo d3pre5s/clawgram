@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.29.1] — 2026-09-23
+
 ### Security
 
 - **No real person's Telegram identity in the package or the repository.**
