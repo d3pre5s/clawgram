@@ -9,6 +9,25 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An inbound attachment no longer leaves a directory behind when its
+  download throws or brings nothing.** The reader removes only a path it was
+  handed; the temp directory was created before the download and left in
+  `/tmp` on every other way out. Audit r3 V1-10, the inbound half — the
+  `fetch-media` half was fixed in 2.29.1.
+- **`clawgram-media-*` directories older than an hour are swept** from the
+  media root and from the temp directory, at most once per ten minutes per
+  root. Such a directory lives for one call; an old one was left by a crash
+  or by a version before 2.29.1, and nothing removed it.
+
+### Security
+
+- **The shape check in `check-pii` covers 8 and 11 digits** and a supergroup
+  id with up to 11 digits after `-100`: 8-digit ids belong to accounts from
+  before 2016, 11 digits is where ids go next. A calendar date (`20260805`)
+  counts as synthetic. Audit r3 V1-07.
+
 ## [2.29.1] — 2026-09-23
 
 ### Security

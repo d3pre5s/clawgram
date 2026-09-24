@@ -212,17 +212,31 @@ export async function downloadInboundMediaToTempFile(params: {
   }
 
   const dir = await mkdtemp(join(params.tmpDir, "clawgram-media-"));
-  const downloaded = await downloadMessageMediaToFile({
-    client: params.client,
-    message: params.message,
-    maxBytes: params.maxBytes,
-    dir,
-    fileNameFor: ({ extension }) => `attachment.${extension}`,
-  });
+  // The caller removes only a path it was handed. Every other way out — an
+  // empty download, a document, a throw — removes the directory here, or it
+  // stays in the temp directory for good (audit r3 V1-10, the inbound path).
+  const discard = async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  };
+  let downloaded: Awaited<ReturnType<typeof downloadMessageMediaToFile>>;
+  try {
+    downloaded = await downloadMessageMediaToFile({
+      client: params.client,
+      message: params.message,
+      maxBytes: params.maxBytes,
+      dir,
+      fileNameFor: ({ extension }) => `attachment.${extension}`,
+    });
+  } catch (err) {
+    await discard();
+    throw err;
+  }
   // This path asks only for `inboundMediaUnderstanding`, so a document cannot
   // get here. Keep the runtime guard as the public downloader also serves the
   // explicit `fetch-media` action, which is allowed to request DOCX files.
   if (!downloaded || downloaded.understanding === "document" || downloaded.understanding === "pdf") {
+    await discard();
     return undefined;
   }
   return {
@@ -402,6 +416,58 @@ export async function pruneFetchedMedia(dir: string, maxAgeMs: number, now: numb
     }
   }
   return removed;
+}
+
+/**
+ * A private `clawgram-media-*` directory lives for one call: the inbound
+ * reader and `fetch-media mode=read` remove it when they are done. One that is
+ * an hour old was left by a crash, or by a version before 2.29.1, which kept a
+ * directory on every error branch and every PDF read (audit r3 C2-02, V1-10).
+ */
+export const ORPHAN_MEDIA_DIR_TTL_MS = 60 * 60 * 1000;
+const ORPHAN_SWEEP_EVERY_MS = 10 * 60 * 1000;
+const lastOrphanSweep = new Map<string, number>();
+
+/** Removes `clawgram-media-*` directories in `root` older than `maxAgeMs`. */
+export async function pruneOrphanMediaDirs(root: string, maxAgeMs: number, now: number): Promise<number> {
+  const { readdir, stat, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+
+  let entries: string[];
+  try {
+    entries = await readdir(root);
+  } catch {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.startsWith("clawgram-media-")) continue;
+    const path = join(root, entry);
+    try {
+      const info = await stat(path);
+      // In a shared /tmp another account's directory fails `rm` on the
+      // sticky bit and is skipped; only our own leftovers go.
+      if (info.isDirectory() && now - info.mtimeMs > maxAgeMs) {
+        await rm(path, { recursive: true, force: true });
+        removed += 1;
+      }
+    } catch {
+      // Gone already, or not ours.
+    }
+  }
+  return removed;
+}
+
+/**
+ * `pruneOrphanMediaDirs` at most once per ten minutes per root: it reads the
+ * whole temp directory, and it runs on the path of every inbound attachment.
+ */
+export async function sweepOrphanMediaDirs(root: string, now: number): Promise<number> {
+  const last = lastOrphanSweep.get(root);
+  if (last !== undefined && now - last < ORPHAN_SWEEP_EVERY_MS) return 0;
+  lastOrphanSweep.set(root, now);
+  return pruneOrphanMediaDirs(root, ORPHAN_MEDIA_DIR_TTL_MS, now).catch(() => 0);
 }
 
 function extensionFor(media: HistoryMedia, understanding: MediaUnderstanding): string {

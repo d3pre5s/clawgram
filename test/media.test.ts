@@ -2,10 +2,14 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
 import os from "node:os";
-import { readFileSync, rmSync } from "node:fs";
+import path from "node:path";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { describeMedia, downloadInboundMediaToTempFile, fetchMediaUnderstanding, inboundMediaUnderstanding } from "../src/media";
+import {
+  describeMedia, downloadInboundMediaToTempFile, fetchMediaUnderstanding, inboundMediaUnderstanding,
+  ORPHAN_MEDIA_DIR_TTL_MS, pruneOrphanMediaDirs,
+} from "../src/media";
 
 /**
  * Shapes here mirror what GramJS hands over: a `className` string plus the
@@ -172,6 +176,24 @@ describe("downloadInboundMediaToTempFile", () => {
     assert.equal(result, undefined);
   });
 
+  it("removes its temp directory when the download throws or brings nothing (V1-10)", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "clawgram-inbound-leak-"));
+    try {
+      const throwing = { downloadMedia: async () => { throw new Error("network"); } };
+      await assert.rejects(downloadInboundMediaToTempFile({
+        client: throwing, message: { media: { className: "MessageMediaPhoto" } }, maxBytes: 1_000_000, tmpDir: root,
+      }));
+      const empty = { downloadMedia: async () => undefined };
+      const result = await downloadInboundMediaToTempFile({
+        client: empty, message: { media: { className: "MessageMediaPhoto" } }, maxBytes: 1_000_000, tmpDir: root,
+      });
+      assert.equal(result, undefined);
+      assert.deepEqual(readdirSync(root), []);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("downloads a photo so the picture can be described", async () => {
     const client = { downloadMedia: async () => Buffer.from("fake-jpeg-bytes") };
 
@@ -291,5 +313,30 @@ describe("fetchMediaUnderstanding", () => {
     assert.equal(fetchMediaUnderstanding({ kind: "document", fileName: "notes.md" }), "document");
     assert.equal(fetchMediaUnderstanding({ kind: "document", mimeType: "text/csv" }), "document");
     assert.equal(fetchMediaUnderstanding({ kind: "document", fileName: "table.xlsx" }), undefined);
+  });
+});
+
+describe("pruneOrphanMediaDirs", () => {
+  it("removes only clawgram-media-* directories older than the limit", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "clawgram-orphan-"));
+    try {
+      const old = path.join(root, "clawgram-media-old");
+      const fresh = path.join(root, "clawgram-media-new");
+      const other = path.join(root, "something-else");
+      for (const dir of [old, fresh, other]) mkdirSync(dir);
+      writeFileSync(path.join(old, "attachment.pdf"), "x");
+      const longAgo = Date.now() / 1000 - 3 * 60 * 60;
+      utimesSync(old, longAgo, longAgo);
+      utimesSync(other, longAgo, longAgo);
+
+      assert.equal(await pruneOrphanMediaDirs(root, ORPHAN_MEDIA_DIR_TTL_MS, Date.now()), 1);
+      assert.deepEqual(readdirSync(root).sort(), ["clawgram-media-new", "something-else"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("says nothing was removed when the root does not exist", async () => {
+    assert.equal(await pruneOrphanMediaDirs(path.join(os.tmpdir(), `clawgram-orphan-absent-${process.pid}`), 1, Date.now()), 0);
   });
 });

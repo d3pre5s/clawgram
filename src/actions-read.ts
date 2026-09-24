@@ -15,7 +15,7 @@ import {
   resolveJoinsJournalPath,
   selectJoinRecords,
 } from "./joins";
-import { describeMedia, downloadMessageMediaToFile, ensurePrivateDir, fetchMediaUnderstanding, pruneFetchedMedia } from "./media";
+import { describeMedia, downloadMessageMediaToFile, ensurePrivateDir, fetchMediaUnderstanding, pruneFetchedMedia, sweepOrphanMediaDirs } from "./media";
 import { resolveStateDir } from "./state-dir";
 import { parseTopicsParams } from "./topics";
 
@@ -148,6 +148,7 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       ? path.join(resolveStateDir(), "tmp")
       : path.join(os.tmpdir(), `clawgram-${typeof process.getuid === "function" ? process.getuid() : "user"}`);
     await ensurePrivateDir(mediaRoot);
+    await sweepOrphanMediaDirs(mediaRoot, Date.now());
     const sharedFetchDir = path.join(mediaRoot, "clawgram-fetched");
     const described = describeMedia((found.message as any)?.media);
     // A PDF is not read here: the agent is handed the path for its PDF tool,

@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { existsSync } from "node:fs";
 
-import { downloadInboundMediaToTempFile } from "./media";
+import { downloadInboundMediaToTempFile, sweepOrphanMediaDirs } from "./media";
 import { extractDocxText, extractPlainText, isDocxDocument } from "./docx-text";
 import { resolveStateDir } from "./state-dir";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
@@ -98,6 +98,7 @@ export async function readInboundAttachment(params: {
     return undefined;
   }
 
+  await sweepOrphanMediaDirs(os.tmpdir(), Date.now());
   let downloaded: Awaited<ReturnType<typeof downloadInboundMediaToTempFile>>;
   try {
     downloaded = await downloadInboundMediaToTempFile({

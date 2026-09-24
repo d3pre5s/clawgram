@@ -23,6 +23,8 @@ const SCRIPT = path.resolve(__dirname, "..", "..", "scripts", "check-pii.mjs");
 const REAL_USER = [ "17", "34", "51", "29", "86" ].join("");   // ten digits, 17…: a current user id
 const REAL_SHORT = [ "73", "45", "12", "98", "6" ].join("");   // nine digits
 const REAL_CHAT = "-100" + REAL_USER;                          // a current supergroup
+const REAL_OLD = [ "48", "31", "57", "92" ].join("");          // eight digits: an account from before 2016
+const REAL_NEXT = REAL_USER + "3";                              // eleven digits: where ids go next
 const HANDLE = [ "probe", "handle", "q" ].join("_");
 
 const scratch = mkdtempSync(path.join(os.tmpdir(), "clawgram-check-pii-"));
@@ -87,6 +89,22 @@ describe("check-pii: the shape net (V1-07)", () => {
       `t.me/c/${REAL_USER}/5`,
     ]) {
       assert.equal(shapeHits(text).length, 1, `missed: ${text.replace(/\d{6,}/g, "<id>")}`);
+    }
+  });
+
+  it("catches eight and eleven digits, and a supergroup with eleven after -100", async () => {
+    const { looksSynthetic, shapeHits } = await load();
+    assert.equal(looksSynthetic(REAL_OLD), false);
+    assert.equal(looksSynthetic(REAL_NEXT), false);
+    for (const text of [
+      `senderId: ${REAL_OLD},`,
+      `userId: "${REAL_NEXT}"`,
+      `chatId: "-100${REAL_NEXT}"`,
+    ]) {
+      assert.equal(shapeHits(text).length, 1, `missed: ${text.replace(/\d{6,}/g, "<id>")}`);
+    }
+    for (const date of [ "20260805", "19991231" ]) {
+      assert.equal(looksSynthetic(date), true, date);
     }
   });
 

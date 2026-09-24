@@ -15,8 +15,9 @@
 //      tests/denylist.local.txt next to this checkout, else skipped with a note.
 //      Matched without regard to case and to a leading `@`: the file holds
 //      `@handle`, a fixture writes `username: "Handle"` (audit r3 V1-05);
-//   2. a shape check: a standalone 9–10 digit number or a -100 supergroup id
-//      that is not visibly synthetic. Synthetic means typed on purpose — few
+//   2. a shape check: a standalone 8–11 digit number or a -100 supergroup id
+//      that is not visibly synthetic (8 digits: accounts from before 2016;
+//      11: where ids go next — audit r3 V1-07). Synthetic means typed on purpose — few
 //      distinct digits, a round number, a counting run, or a listed fixture. There is no
 //      "looks like a unix timestamp" exemption any more: 15…–19… is exactly
 //      where today's user ids and supergroup ids live (audit r3 V1-07). Write
@@ -53,22 +54,24 @@ export function looksSynthetic(digits) {
   if (SYNTHETIC_IDS.has(digits)) return true;
   if (new Set(digits).size <= 4) return true;                  // 500000001, 1000000002
   if (/0{6}$/.test(digits)) return true;                       // 1_785_000_000: a round number
+  // A calendar date, as in `openclaw.json.bak-20260805-084914`.
+  if (/^(19|20)\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(digits)) return true;
   // A counting run of seven anywhere: 123456789, 1001234567, 9876543210.
   if (/0123456|1234567|2345678|3456789|9876543|8765432|7654321|6543210/.test(digits)) return true;
   return false;
 }
 
-// `-100` + 9–10 digits (a supergroup/channel), or a bare 9–10 digit number
+// `-100` + 9–11 digits (a supergroup/channel), or a bare 8–11 digit number
 // (a user, a basic group, a channel id without its prefix). `_` separators
 // and a BigInt `n` are the same number. Not preceded by a letter, a digit or a
 // dot (hashes, versions, decimals); not followed by a letter or digit.
-const SHAPE = /(?<![0-9A-Za-z.])(-100(?:_?\d){9,10}|-?\d(?:_?\d){8,9})n?(?![0-9A-Za-z])/g;
+const SHAPE = /(?<![0-9A-Za-z.])(-100(?:_?\d){9,11}|-?\d(?:_?\d){7,10})n?(?![0-9A-Za-z])/g;
 
 export function shapeHits(text) {
   const hits = [];
   for (const m of text.matchAll(SHAPE)) {
     const plain = m[1].replace(/_/g, '');
-    const digits = plain.replace(/^-100(?=\d{9,10}$)/, '').replace(/^-/, '');
+    const digits = plain.replace(/^-100(?=\d{9,11}$)/, '').replace(/^-/, '');
     if (!looksSynthetic(digits)) hits.push({ index: m.index, value: m[1] });
   }
   return hits;
