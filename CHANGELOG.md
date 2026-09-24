@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.29.2] — 2026-09-24
+
 ### Fixed
 
 - **An inbound attachment no longer leaves a directory behind when its
