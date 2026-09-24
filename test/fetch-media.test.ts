@@ -4,7 +4,7 @@ import { parseResult } from "./helpers";
 
 import os from "node:os";
 import path from "node:path";
-import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 
 import { createChannelPlugin } from "../src/channel";
 import {
@@ -505,5 +505,96 @@ describe("fetched attachments are not readable by the rest of the host", () => {
     } finally {
       await rm(base, { recursive: true, force: true });
     }
+  });
+});
+
+describe("a read-mode fetch leaves no private temp directory behind on any branch", () => {
+  // `read` makes a private `clawgram-media-*` directory before it knows whether
+  // anything will be downloaded. Only the success branch removed it: a message
+  // without media, an attachment this channel does not read, and a download
+  // that threw each left one on disk for good (audit r3 V1-10).
+  const cfg = { channels: { clawgram: { accounts: { default: {} } } } };
+
+  const channelWith = (message: unknown, downloadMedia: () => Promise<Buffer>) => createChannelPlugin(
+    new Map([ [ "default", {
+      getMessageById: async () => ({ chatId: "-1001234", message }),
+      getClient: () => ({ downloadMedia }),
+    } ] ]) as unknown as RuntimeMap,
+    {
+      mediaUnderstanding: {
+        describeImageFile: async () => ({ text: "картинка" }),
+        transcribeAudioFile: async () => ({ text: "words" }),
+      },
+    } as any,
+  ) as any;
+
+  const privateDirs = (stateDir: string) => {
+    const root = path.join(stateDir, "tmp");
+    return existsSync(root) ? readdirSync(root).filter((name) => name.startsWith("clawgram-media-")) : [];
+  };
+
+  const withStateDir = async (body: (stateDir: string) => Promise<void>) => {
+    const saved = process.env.OPENCLAW_STATE_DIR;
+    const stateDir = mkdtempSync(path.join(os.tmpdir(), "clawgram-v110-"));
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+    try {
+      await body(stateDir);
+    } finally {
+      if (saved === undefined) delete process.env.OPENCLAW_STATE_DIR;
+      else process.env.OPENCLAW_STATE_DIR = saved;
+      rmSync(stateDir, { recursive: true, force: true });
+    }
+  };
+
+  const readMode = (channel: any) => channel.actions.handleAction({
+    action: "fetch-media",
+    params: { chatId: "-1001234", messageId: 42, mode: "read" },
+    cfg,
+    accountId: "default",
+  });
+
+  const pixels = async () => Buffer.from("pixels");
+
+  it("a message with no attachment", async () => {
+    await withStateDir(async (stateDir) => {
+      const result = parseResult(await readMode(channelWith({ className: "Message" }, pixels)));
+      assert.equal(result.error, "no-media");
+      assert.deepEqual(privateDirs(stateDir), []);
+    });
+  });
+
+  it("an attachment this channel does not read", async () => {
+    await withStateDir(async (stateDir) => {
+      const video = {
+        className: "Message",
+        media: {
+          className: "MessageMediaDocument",
+          document: { mimeType: "video/mp4", attributes: [ { className: "DocumentAttributeVideo", duration: 12 } ] },
+        },
+      };
+      const result = parseResult(await readMode(channelWith(video, pixels)));
+      assert.equal(result.error, "unsupported-media");
+      assert.deepEqual(privateDirs(stateDir), []);
+    });
+  });
+
+  it("a download that throws", async () => {
+    await withStateDir(async (stateDir) => {
+      const photo = { className: "Message", media: { className: "MessageMediaPhoto" } };
+      await assert.rejects(
+        readMode(channelWith(photo, async () => { throw new Error("FILE_REFERENCE_EXPIRED"); })),
+        /FILE_REFERENCE_EXPIRED/,
+      );
+      assert.deepEqual(privateDirs(stateDir), []);
+    });
+  });
+
+  it("a successful read (control)", async () => {
+    await withStateDir(async (stateDir) => {
+      const photo = { className: "Message", media: { className: "MessageMediaPhoto" } };
+      const result = parseResult(await readMode(channelWith(photo, pixels)));
+      assert.equal(result.ok, true);
+      assert.deepEqual(privateDirs(stateDir), []);
+    });
   });
 });

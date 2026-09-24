@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
+import { forgetAccount, rememberAccount } from "../src/account-registry";
 import { agentFacingGroupBody, handleInboundEvent } from "../src/inbound-pipeline";
 
 /**
@@ -182,6 +183,101 @@ describe("the inbound pipeline survives what the network hands it", () => {
     const unaddressed = { message: { id: 10, peerId: { chatId: 4242 }, senderId: 500, message: "обсудим завтра" } };
     await handleInboundEvent(unaddressed, pastTheGates({ client, cfg }).ctx as never);
     assert.equal(touched.includes("getEntity"), false, `a dropped message resolved the sender; touched: ${touched.join(", ")}`);
+  });
+});
+
+/**
+ * The DM half of C0-12, through the real entrance (audit r3 V1-12).
+ *
+ * `visibleReplyText` has its own unit test, but the DM `deliver` closure is
+ * the thing that must call it — and until now nothing proved it did. Here a
+ * direct message goes through `handleInboundEvent`, the real SDK
+ * `dispatchInboundDirectDmWithRuntime` routes it, and only the reply engine
+ * is faked: it answers with core's telemetry notice, the way core glues it to
+ * a turn whose tool failed. A stranger in `allowFrom` must not receive it; the
+ * named operator must.
+ */
+describe("core telemetry in a direct reply, end to end", () => {
+  const PEER = "500000001";
+  const NOTICE = "⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/secrets.json";
+
+  function dmTurn(replyText: string) {
+    const sent: Array<{ target: unknown; text: string }> = [];
+    const dispatched: string[] = [];
+    const { ctx } = pastTheGates({
+      cfg: { channels: { clawgram: { accounts: { default: { allowFrom: [ PEER ] } } } } },
+      client: new Proxy({}, { get: () => async () => undefined }),
+      gram: {
+        sendText: async (args: { target: unknown; text: string }) => { sent.push(args); return { id: 1 }; },
+        withTyping: async (_t: unknown, fn: () => unknown) => fn(),
+        replyParseMode: undefined,
+      },
+    });
+    const runtime = (ctx as any).channelRuntime;
+    runtime.routing.resolveAgentRoute = () => ({
+      agentId: "main", accountId: "default", matchedBy: "default",
+      sessionKey: `agent:main:clawgram:direct:default:${PEER}`,
+    });
+    runtime.session.recordInboundSession = async () => {};
+    runtime.commands = {
+      shouldComputeCommandAuthorized: () => false,
+      resolveCommandAuthorizedFromAuthorizers: () => false,
+    };
+    runtime.reply.dispatchReplyWithBufferedBlockDispatcher = async (args: any) => {
+      dispatched.push("dispatch");
+      await args.dispatcherOptions.deliver({ text: replyText });
+      return { queuedFinal: true, counts: { final: 1 } };
+    };
+    const event = {
+      message: {
+        id: 8, peerId: { userId: Number(PEER) }, senderId: Number(PEER), message: "почему упало?",
+        sender: { firstName: "Вася", username: "vasya" },
+      },
+    };
+    return { run: () => handleInboundEvent(event, ctx as never), sent, dispatched };
+  }
+
+  it("a stranger in allowFrom does not receive the notice", async () => {
+    rememberAccount("default", { sendChats: undefined, operatorIds: [ "500000002" ] });
+    try {
+      const turn = dmTurn(NOTICE);
+      await turn.run();
+      assert.deepEqual(turn.dispatched, [ "dispatch" ], "the turn never reached the reply engine — the test proves nothing");
+      assert.deepEqual(turn.sent, [], "core telemetry reached a DM that is not the operator's");
+    } finally {
+      forgetAccount("default");
+    }
+  });
+
+  it("with no operator named at all, nobody receives it", async () => {
+    forgetAccount("default");
+    const turn = dmTurn(NOTICE);
+    await turn.run();
+    assert.deepEqual(turn.dispatched, [ "dispatch" ]);
+    assert.deepEqual(turn.sent, []);
+  });
+
+  it("the named operator does", async () => {
+    rememberAccount("default", { sendChats: undefined, operatorIds: [ PEER ] });
+    try {
+      const turn = dmTurn(NOTICE);
+      await turn.run();
+      assert.equal(turn.sent.length, 1, "the operator's own diagnostics were swallowed");
+      assert.equal(turn.sent[ 0 ].text, NOTICE);
+    } finally {
+      forgetAccount("default");
+    }
+  });
+
+  it("an ordinary answer still reaches the stranger (control)", async () => {
+    rememberAccount("default", { sendChats: undefined, operatorIds: [ "500000002" ] });
+    try {
+      const turn = dmTurn("Упало на сборке, уже чиню.");
+      await turn.run();
+      assert.equal(turn.sent.length, 1);
+    } finally {
+      forgetAccount("default");
+    }
   });
 });
 

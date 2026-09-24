@@ -30,6 +30,24 @@ jobs:
 
       - run: npm ci
 
+      # check-pii (run by `npm test`, and again by prepublishOnly on publish)
+      # compares against a denylist that must never be in git. The repository
+      # secret CLAWGRAM_PII_DENYLIST holds that file's contents. Without it —
+      # a pull request from a fork, or before the owner adds it — only the
+      # shape check runs, and the log says so in a warning (audit r3 V1-06).
+      - name: Hand check-pii its denylist
+        env:
+          DENYLIST: ${{ secrets.CLAWGRAM_PII_DENYLIST }}
+        run: |
+          if [ -z "${DENYLIST}" ]; then
+            echo "::warning::CLAWGRAM_PII_DENYLIST secret is not set — check-pii runs the shape check only"
+            exit 0
+          fi
+          file="${RUNNER_TEMP}/clawgram-pii-denylist.txt"
+          ( umask 077; printf '%s\n' "${DENYLIST}" > "${file}" )
+          echo "CLAWGRAM_PII_DENYLIST=${file}" >> "$GITHUB_ENV"
+          echo "check-pii denylist: $(grep -cvE '^[[:space:]]*(#|$)' "${file}") entries"
+
       - name: Build
         run: npm run build
 

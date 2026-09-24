@@ -164,115 +164,121 @@ export async function handleReadAction(ctx: ActionContext): Promise<unknown> {
       fetchDir = await mkdtemp(path.join(mediaRoot, "clawgram-media-"));
     }
 
-    const downloaded = await downloadMessageMediaToFile({
-      client: fetchGram.getClient() as any,
-      message: found.message,
-      maxBytes: INBOUND_MEDIA_MAX_BYTES,
-      dir: fetchDir,
-      understanding: fetchMediaUnderstanding(described),
-      fileNameFor: ({ media, extension }) => fetchedMediaFileName({
-        chatId: fetchChatId,
-        messageId: fetchParams.messageId,
-        extension,
-        fileName: media.fileName,
-      }),
-    });
+    // Every way out of here removes the private temp directory — the early
+    // "nothing to fetch" answer and a download that throws included. Only the
+    // success branch used to, so a message without media, a video, or a
+    // failed download each left a directory behind for good (audit r3 V1-10).
+    try {
+      const downloaded = await downloadMessageMediaToFile({
+        client: fetchGram.getClient() as any,
+        message: found.message,
+        maxBytes: INBOUND_MEDIA_MAX_BYTES,
+        dir: fetchDir,
+        understanding: fetchMediaUnderstanding(described),
+        fileNameFor: ({ media, extension }) => fetchedMediaFileName({
+          chatId: fetchChatId,
+          messageId: fetchParams.messageId,
+          extension,
+          fileName: media.fileName,
+        }),
+      });
 
-    if (!downloaded) {
-      // Three different nothings, and the agent has to be able to tell
-      // them apart: a message with no attachment, an attachment this
-      // channel does not read (a video, a spreadsheet), and one too
-      // large to be worth the transfer. Saying "could not fetch" to all
-      // three is how "she ignored the picture" starts.
-      const tooLarge = typeof described?.size === "number" && described.size > INBOUND_MEDIA_MAX_BYTES;
-      const error = !described
-        ? "no-media"
-        : tooLarge
-          ? "media-too-large"
-          : "unsupported-media";
+      if (!downloaded) {
+        // Three different nothings, and the agent has to be able to tell
+        // them apart: a message with no attachment, an attachment this
+        // channel does not read (a video, a spreadsheet), and one too
+        // large to be worth the transfer. Saying "could not fetch" to all
+        // three is how "she ignored the picture" starts.
+        const tooLarge = typeof described?.size === "number" && described.size > INBOUND_MEDIA_MAX_BYTES;
+        const error = !described
+          ? "no-media"
+          : tooLarge
+            ? "media-too-large"
+            : "unsupported-media";
 
-      actionLog.info("clawgram fetch-media returned nothing", {
+        actionLog.info("clawgram fetch-media returned nothing", {
+          accountId: fetchAccountId,
+          chatId: fetchChatId,
+          messageId: fetchParams.messageId,
+          kind: described?.kind ?? null,
+          error,
+        });
+
+        return jsonResult({
+          ok: false,
+          accountId: fetchAccountId,
+          chatId: fetchChatId,
+          messageId: String(fetchParams.messageId),
+          media: described ?? null,
+          error,
+        });
+      }
+
+      let read: string | undefined;
+      let readError: string | undefined;
+      if (fetchParams.mode !== "file") {
+        try {
+          read = await understandAttachmentFile({
+            runtime: pluginRuntime,
+            cfg,
+            filePath: downloaded.path,
+            mimeType: downloaded.mimeType,
+            understanding: downloaded.understanding,
+            fileName: downloaded.media.fileName,
+          });
+          if (!read) {
+            readError = "read-empty";
+          }
+        } catch (err) {
+          // The bytes are already here. A failed reading is worth
+          // reporting, but it does not undo a successful fetch: the file
+          // still exists and can still be forwarded.
+          readError = String(err);
+        }
+      }
+
+      // `read` mode is the inbound contract — the words, not the file — so
+      // the bytes go away with the answer. Any other mode keeps them:
+      // that is the whole point of asking for a path.
+      const pdfNeedsFile = downloaded.understanding === "pdf";
+      const finalReadError = pdfNeedsFile ? "use the PDF tool on filePath to read this PDF" : readError;
+      actionLog.info("clawgram fetch-media completed", {
         accountId: fetchAccountId,
         chatId: fetchChatId,
         messageId: fetchParams.messageId,
-        kind: described?.kind ?? null,
-        error,
+        mode: fetchParams.mode,
+        kind: downloaded.media.kind,
+        understanding: downloaded.understanding,
+        characters: read?.length ?? 0,
+        readError: finalReadError ?? null,
       });
 
       return jsonResult({
-        ok: false,
+        ok: true,
         accountId: fetchAccountId,
         chatId: fetchChatId,
         messageId: String(fetchParams.messageId),
-        media: described ?? null,
-        error,
+        mode: fetchParams.mode,
+        media: downloaded.media,
+        understanding: downloaded.understanding,
+        filePath: fetchParams.mode === "read" && !pdfNeedsFile ? undefined : downloaded.path,
+        text: read,
+        readError: finalReadError,
       });
-    }
-
-    let read: string | undefined;
-    let readError: string | undefined;
-    if (fetchParams.mode !== "file") {
-      try {
-        read = await understandAttachmentFile({
-          runtime: pluginRuntime,
-          cfg,
-          filePath: downloaded.path,
-          mimeType: downloaded.mimeType,
-          understanding: downloaded.understanding,
-          fileName: downloaded.media.fileName,
-        });
-        if (!read) {
-          readError = "read-empty";
+    } finally {
+      // Only the private temp directory is ever removed here — never the
+      // shared one, which other fetches still point at.
+      if (!keepsFile) {
+        try {
+          const { rm } = await import("node:fs/promises");
+          await rm(fetchDir, { recursive: true, force: true });
+        } catch {
+          // A private temp directory left behind is litter, not a leak of
+          // anything the agent was not already shown; failing the call over it
+          // would throw away a reading that already succeeded.
         }
-      } catch (err) {
-        // The bytes are already here. A failed reading is worth
-        // reporting, but it does not undo a successful fetch: the file
-        // still exists and can still be forwarded.
-        readError = String(err);
       }
     }
-
-    // `read` mode is the inbound contract — the words, not the file — so
-    // the bytes go away with the answer. Any other mode keeps them:
-    // that is the whole point of asking for a path.
-    const pdfNeedsFile = downloaded.understanding === "pdf";
-    // Only the private temp directory is ever removed here — never the shared
-    // one, which other fetches still point at.
-    if (!keepsFile) {
-      try {
-        const { rm } = await import("node:fs/promises");
-        await rm(fetchDir, { recursive: true, force: true });
-      } catch {
-        // A private temp directory left behind is litter, not a leak of
-        // anything the agent was not already shown; failing the call over it
-        // would throw away a reading that already succeeded.
-      }
-    }
-
-    const finalReadError = pdfNeedsFile ? "use the PDF tool on filePath to read this PDF" : readError;
-    actionLog.info("clawgram fetch-media completed", {
-      accountId: fetchAccountId,
-      chatId: fetchChatId,
-      messageId: fetchParams.messageId,
-      mode: fetchParams.mode,
-      kind: downloaded.media.kind,
-      understanding: downloaded.understanding,
-      characters: read?.length ?? 0,
-      readError: finalReadError ?? null,
-    });
-
-    return jsonResult({
-      ok: true,
-      accountId: fetchAccountId,
-      chatId: fetchChatId,
-      messageId: String(fetchParams.messageId),
-      mode: fetchParams.mode,
-      media: downloaded.media,
-      understanding: downloaded.understanding,
-      filePath: fetchParams.mode === "read" && !pdfNeedsFile ? undefined : downloaded.path,
-      text: read,
-      readError: finalReadError,
-    });
   }
 
   /**

@@ -238,12 +238,12 @@ describe("describeChat and multi-username accounts", () => {
       username: null,
       usernames: [
         { username: "retired_handle", active: false },
-        { username: "top1ceo", active: true },
+        { username: "active_handle", active: true },
       ],
-      firstName: "Константин",
+      firstName: "Иван",
     }, undefined);
 
-    assert.equal(info.username, "top1ceo");
+    assert.equal(info.username, "active_handle");
   });
 
   it("still reads a single plain username", () => {

@@ -120,12 +120,12 @@ describe("normalizeParticipants", () => {
       {
         id: 100200300,
         username: null,
-        usernames: [ { username: "top1ceo", active: true, editable: true } ],
+        usernames: [ { username: "active_handle", active: true, editable: true } ],
         bot: false,
       },
     ], { includeNames: false });
 
-    assert.equal(people[ 0 ].username, "top1ceo");
+    assert.equal(people[ 0 ].username, "active_handle");
   });
 
   test("takes the active handle, not merely the first one listed", () => {
@@ -134,12 +134,12 @@ describe("normalizeParticipants", () => {
         id: 1,
         usernames: [
           { username: "retired_handle", active: false },
-          { username: "top1ceo", active: true },
+          { username: "active_handle", active: true },
         ],
       },
     ], { includeNames: false });
 
-    assert.equal(people[ 0 ].username, "top1ceo");
+    assert.equal(people[ 0 ].username, "active_handle");
   });
 
   test("an account with no handle at all stays without one", () => {

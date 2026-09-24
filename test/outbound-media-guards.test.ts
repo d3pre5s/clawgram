@@ -82,19 +82,51 @@ describe("outbound sendMedia guards", () => {
   // The telemetry filter sat on the three text doors and not on this one:
   // a core notice glued to the payload went out as the caption (r3 C0-11).
   // The file itself is kept — it is the agent's work — only the caption goes.
-  test("a core notice as the caption is dropped in a group; the file still goes", async () => {
-    const { plugin, sent } = pluginWithRuntime();
-    rememberAccount(ACCOUNT, { sendChats: [ "-1001" ], operatorIds: [] });
+  //
+  // Core hands the caption over as `text` (`sendMedia: async (caption…) =>
+  // ({ text: caption })`), not as `caption`. The first version of this test stayed green with
+  // `?? ctx.text` removed, so the path core actually takes was not pinned
+  // (audit r3 V1-11). Both fields, both kinds of chat.
+  const NOTICE = "⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/secrets.json";
 
-    const result = await plugin.outbound.sendMedia({
-      accountId: ACCOUNT, to: "-1001", filePath: "/tmp/x.png",
-      caption: "⚠️ 🛠️ Bash failed: cat /opt/openclaw-secrets/secrets.json",
+  for (const field of [ "caption", "text" ] as const) {
+    test(`a core notice in \`${field}\` is dropped in a group; the file still goes`, async () => {
+      const { plugin, sent } = pluginWithRuntime();
+      rememberAccount(ACCOUNT, { sendChats: [ "-1001" ], operatorIds: [] });
+
+      const result = await plugin.outbound.sendMedia({
+        accountId: ACCOUNT, to: "-1001", filePath: "/tmp/x.png", [ field ]: NOTICE,
+      });
+
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0].caption, undefined);
+      assert.equal((result as any).ok, true);
     });
 
-    assert.equal(sent.length, 1);
-    assert.equal(sent[0].caption, undefined);
-    assert.equal((result as any).ok, true);
-  });
+    test(`a core notice in \`${field}\` is dropped in a DM to someone who is not the operator`, async () => {
+      const { plugin, sent } = pluginWithRuntime();
+      rememberAccount(ACCOUNT, { sendChats: [ "500000001" ], operatorIds: [ "500000002" ] });
+
+      await plugin.outbound.sendMedia({
+        accountId: ACCOUNT, to: "500000001", filePath: "/tmp/x.png", [ field ]: NOTICE,
+      });
+
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0].caption, undefined);
+    });
+
+    test(`the operator's DM keeps a notice in \`${field}\` — that is who it is for`, async () => {
+      const { plugin, sent } = pluginWithRuntime();
+      rememberAccount(ACCOUNT, { sendChats: [ "500000001" ], operatorIds: [ "500000001" ] });
+
+      await plugin.outbound.sendMedia({
+        accountId: ACCOUNT, to: "500000001", filePath: "/tmp/x.png", [ field ]: NOTICE,
+      });
+
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0].caption, NOTICE);
+    });
+  }
 
   test("a file with no caption is still delivered", async () => {
     const { plugin, sent } = pluginWithRuntime();

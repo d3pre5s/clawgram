@@ -21,6 +21,26 @@ recorded in `git log` only.
   first in `npm test` (and therefore in `prepublishOnly` and CI): it fails on a
   value from a denylist kept outside git (`CLAWGRAM_PII_DENYLIST`) and on any
   standalone 9–10 digit number that does not look synthetic. Audit r3 C2-01.
+- **The check itself had four holes, closed before this release was tagged**
+  (audit r3 V1-05…V1-09):
+  - the denylist is matched without regard to case or a leading `@` — one
+    more real handle, written as `username: "…"` in three tests, had passed
+    it; those tests now use a synthetic handle. A denylisted `-100…` chat is
+    also found by its bare channel id;
+  - the "looks like a unix timestamp" exemption is gone: `15…`–`19…` is where
+    current user and supergroup ids live. Synthetic now means few distinct
+    digits, a round number, a counting run, or a listed fixture value; tests
+    spell instants as `Date.UTC(…) / 1000`. `_` separators and BigInt `n` no
+    longer hide a number;
+  - it ran silently not at all — exit 0, no output — from a path with a space,
+    Cyrillic, or through a symlink; the entry point now compares real paths;
+  - it scans what is published: every tracked file plus the package `files`
+    (the built `dist/`, `openclaw.plugin.json`), not only `src`, `test`,
+    README and CHANGELOG;
+  - CI and the release workflow hand it the denylist from the repository
+    secret `CLAWGRAM_PII_DENYLIST` (the file's contents). Without the secret —
+    a fork's pull request — only the shape check runs, with a warning in the
+    log. A `CLAWGRAM_PII_DENYLIST` path that does not exist is an error.
 
 ### Fixed
 
@@ -28,9 +48,20 @@ recorded in `git log` only.
   file for the agent's PDF tool, but in a private temp directory that only the
   non-PDF branch removed. It now lands in the shared fetch directory, which is
   pruned by age (r3 C2-02).
+- **`fetch-media` in `read` mode leaves no private temp directory behind.**
+  The directory was made before the download and removed only on success, so
+  a message without media, an attachment this channel does not read, or a
+  download that threw each left one on disk. Removal now sits in a `finally`
+  (r3 V1-10).
 - **A core notice sent as a media caption is dropped.** The telemetry filter
   covered the three text doors and not `outbound.sendMedia`; the file still
-  goes, without the caption (r3 C0-11).
+  goes, without the caption (r3 C0-11). The tests now cover the caption in
+  both fields core may use — `caption` and `text`, which is the one core's
+  own path fills — in a group, in a stranger's DM and in the operator's DM
+  (r3 V1-11).
+- A direct message whose turn ends in core's `⚠️ 🛠️ … failed` notice is now
+  tested through the real inbound entrance: a stranger in `allowFrom` gets
+  nothing, the named operator gets the notice (r3 V1-12, second half of C0-12).
 - `sendChats` is dated 2.22.0 in the schema and README, not 2.18.0 (r3 C0-14).
 
 ### Changed

@@ -18,11 +18,14 @@ import {
 
 const SELF = "1000000001";
 const INVITER = "1000000002";
+// 2026-07-25T17:20:00Z, spelled as a date: a bare ten-digit literal reads as a
+// Telegram id to check-pii, and nothing here depends on the exact instant.
+const AT = Date.UTC(2026, 6, 25, 17, 20) / 1000;
 
 function serviceMessage(action: any, extra: Record<string, unknown> = {}) {
   return {
     id: 42,
-    date: 1_785_000_000,
+    date: AT,
     peerId: { channelId: "2000000001" },
     fromId: { userId: INVITER },
     action,
@@ -40,7 +43,7 @@ describe("parseJoinEvent", () => {
     assert.equal(event?.inviterId, INVITER);
     assert.equal(event?.chatId, "-1002000000001");
     assert.equal(event?.messageId, "42");
-    assert.equal(event?.at, new Date(1_785_000_000 * 1000).toISOString());
+    assert.equal(event?.at, new Date(AT * 1000).toISOString());
   });
 
   test("ignores other people being added", () => {

@@ -16,7 +16,7 @@ import {
 import { normalizeTelegramEvent } from "../src/normalize";
 
 const HOUR = 3600;
-const BASE = 1_785_000_000; // arbitrary fixed point; nothing here depends on "now"
+const BASE = Date.UTC(2026, 6, 25, 17, 20) / 1000; // arbitrary fixed point; nothing here depends on "now"
 
 function message(id: number, overrides: Record<string, unknown> = {}) {
   return { id, date: BASE, message: `msg ${id}`, out: false, ...overrides };
@@ -35,7 +35,7 @@ describe("parseTimeBoundary", () => {
   });
 
   test("parses ISO 8601", () => {
-    assert.equal(parseTimeBoundary("2026-08-01T00:00:00Z", "since"), 1785542400);
+    assert.equal(parseTimeBoundary("2026-08-01T00:00:00Z", "since"), Date.UTC(2026, 7, 1) / 1000);
   });
 
   test("parses a numeric string", () => {
@@ -302,9 +302,9 @@ describe("normalizeHistoryMessage", () => {
   });
 
   test("states the instant as ISO 8601 UTC as well as seconds", () => {
-    const normalized = normalizeHistoryMessage(message(1, { date: 1785542400 }));
+    const normalized = normalizeHistoryMessage(message(1, { date: Date.UTC(2026, 7, 1) / 1000 }));
     assert.equal(normalized?.sentAt, "2026-08-01T00:00:00.000Z");
-    assert.equal(normalized?.timestamp, 1785542400);
+    assert.equal(normalized?.timestamp, Date.UTC(2026, 7, 1) / 1000);
   });
 
   test("omits sentAt when the message has no date", () => {
@@ -432,12 +432,12 @@ describe("inbound sender handles", () => {
         senderId: 100200300,
         sender: {
           username: null,
-          usernames: [ { username: "old_one", active: false }, { username: "top1ceo", active: true } ],
+          usernames: [ { username: "old_one", active: false }, { username: "active_handle", active: true } ],
         },
       },
     }, "default");
 
-    assert.equal(normalized?.senderUsername, "top1ceo");
+    assert.equal(normalized?.senderUsername, "active_handle");
   });
 
   test("still reads a plain single handle", () => {
