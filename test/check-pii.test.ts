@@ -103,7 +103,7 @@ describe("check-pii: the shape net (V1-07)", () => {
     ]) {
       assert.equal(shapeHits(text).length, 1, `missed: ${text.replace(/\d{6,}/g, "<id>")}`);
     }
-    for (const date of [ "20260805", "19991231" ]) {
+    for (const date of [ "20260805", "19991231", "10485760", "18874368" ]) {
       assert.equal(looksSynthetic(date), true, date);
     }
   });

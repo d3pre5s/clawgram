@@ -26,7 +26,8 @@ recorded in `git log` only.
 - **The shape check in `check-pii` covers 8 and 11 digits** and a supergroup
   id with up to 11 digits after `-100`: 8-digit ids belong to accounts from
   before 2016, 11 digits is where ids go next. A calendar date (`20260805`)
-  counts as synthetic. Audit r3 V1-07.
+  and a size in bytes that is a whole number of MiB (`10485760`) count as
+  synthetic. Audit r3 V1-07.
 
 ## [2.29.1] — 2026-09-23
 

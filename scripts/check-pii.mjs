@@ -56,6 +56,8 @@ export function looksSynthetic(digits) {
   if (/0{6}$/.test(digits)) return true;                       // 1_785_000_000: a round number
   // A calendar date, as in `openclaw.json.bak-20260805-084914`.
   if (/^(19|20)\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(digits)) return true;
+  // A size in bytes: 10485760 is 10 MiB.
+  if (BigInt(digits) % 1048576n === 0n) return true;
   // A counting run of seven anywhere: 123456789, 1001234567, 9876543210.
   if (/0123456|1234567|2345678|3456789|9876543|8765432|7654321|6543210/.test(digits)) return true;
   return false;
