@@ -292,6 +292,23 @@ describe("account schema accepts what the code reads", () => {
     const number = validateAccount({ ...BASE_ACCOUNT, twoFaPassword: 42 }) as ValidationResult;
     assert.equal(number.ok, false, "a password is a string or a reference, nothing else");
   });
+
+  test("readReceipts and typingIndicator are allowed with every value the code reads", () => {
+    for (const readReceipts of [ true, false ]) {
+      for (const typingIndicator of [ "addressed", "never" ]) {
+        const result = validateAccount({ ...BASE_ACCOUNT, readReceipts, typingIndicator }) as ValidationResult;
+        assert.equal(result.ok, true, errorText(result));
+      }
+    }
+  });
+
+  test("readReceipts must be a boolean and typingIndicator one of its two words", () => {
+    const read = validateAccount({ ...BASE_ACCOUNT, readReceipts: "no" }) as ValidationResult;
+    assert.equal(read.ok, false, "a string where a boolean belongs should be refused");
+
+    const typing = validateAccount({ ...BASE_ACCOUNT, typingIndicator: "always" }) as ValidationResult;
+    assert.equal(typing.ok, false, "an unknown typing mode should be refused by the schema");
+  });
 });
 
 describe("openclaw.plugin.json credential uiHints", () => {

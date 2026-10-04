@@ -21,7 +21,7 @@
         "node": ">=22.22.3"
       },
       "peerDependencies": {
-        "openclaw": ">=2026.5.26"
+        "openclaw": ">=2026.5.27"
       }
     },
     "node_modules/@cryptography/aes": {

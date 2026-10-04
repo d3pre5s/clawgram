@@ -90,6 +90,47 @@ describe("typing indicator", () => {
     );
   });
 
+  // `read: false` is for an account its owner still reads: a handled message
+  // has to stay unread there, or it never shows up as new.
+  test("read: false with typing: false touches nothing at all", async () => {
+    const { manager, invoked, read } = managerWithFakeClient();
+    let resolved = 0;
+    manager.resolvePeer = async () => { resolved += 1; return { peer: { id: 1 } }; };
+
+    const result = await manager.withTyping("-100", slowTurn, { readMessageId: 42, typing: false, read: false });
+
+    assert.equal(result, "done");
+    assert.deepEqual(invoked, []);
+    assert.deepEqual(read, []);
+    assert.equal(resolved, 0, "nothing to show, so nothing to resolve");
+  });
+
+  test("read: false keeps the indicator and drops only the receipt", async () => {
+    const { manager, invoked, read } = managerWithFakeClient();
+
+    await manager.withTyping("-100", slowTurn, { readMessageId: 42, read: false });
+
+    assert.deepEqual(invoked, [ "SendMessageTypingAction", "SendMessageCancelAction" ]);
+    assert.deepEqual(read, []);
+  });
+
+  test("read: true is the same as omitting it", async () => {
+    const { manager, read } = managerWithFakeClient();
+
+    await manager.withTyping("-100", slowTurn, { readMessageId: 42, read: true });
+
+    assert.deepEqual(read, [ "markRead" ]);
+  });
+
+  test("read: false still propagates what the turn threw", async () => {
+    const { manager } = managerWithFakeClient();
+
+    await assert.rejects(
+      manager.withTyping("-100", async () => { throw new Error("dispatch blew up"); }, { typing: false, read: false }),
+      /dispatch blew up/,
+    );
+  });
+
   // A chat the account cannot resolve must not cost the turn: the indicator is
   // decoration, the dispatch is the work.
   test("typing: false still runs the turn when the peer cannot be resolved", async () => {

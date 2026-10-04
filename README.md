@@ -45,11 +45,14 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 
 ## Requirements
 
-- OpenClaw >= 2026.5.26 — earlier releases carry published high-severity advisories
+- OpenClaw >= 2026.5.27 — earlier releases carry published high-severity advisories
   (among them a pairing-scoped session that could restore revoked node-token authority, fixed in
   `2026.5.26`). Since this plugin reads messages and acts on an account, running it on a vulnerable
-  Gateway widens the blast radius, so 2.1.0 refuses to install below that version. Built and tested
-  against `2026.7.1-2`.
+  Gateway widens the blast radius, so 2.1.0 refuses to install below `2026.5.26`. The floor is
+  now `2026.5.27`, the first release whose `plugin-sdk/channel-inbound` and
+  `plugin-sdk/channel-outbound` carry everything that used to come from `direct-dm` and
+  `channel-runtime` — the two subpaths OpenClaw 2026.8 removed. Built and tested against
+  `2026.7.1-2`; the SDK imports also resolve on 2026.8 and 2026.9.
 - Telegram API credentials from [my.telegram.org](https://my.telegram.org)
 - Node.js >= 22
 
@@ -264,6 +267,8 @@ loud where it does occur.
 | `sendChats` | string[] | unset | Chats the assistant may **send to** — `send`, `upload-file`, `react`, `edit` and core's own delivery path (`--deliver`, sub-agent announcements). Absent = every chat; `[]` = none. Phone-number targets are refused regardless (2.22.0; core delivery covered since 2.25.0) |
 | `replyParseMode` | `"html"` \| `"markdown"` \| `"none"` | unset | Outbound format for replies, core-delivered text, captions and `send` calls that omit `parseMode` — see [Message formatting](#message-formatting) |
 | `twoFaPassword` | string \| SecretRef | unset | The account's Telegram 2FA password; read only by `transferOwnership` |
+| `readReceipts` | boolean | `true` | Mark a message read when the agent handles it. `false` leaves it unread in the account's own Telegram and shows the sender no receipt — see [A quiet inbox](#a-quiet-inbox) |
+| `typingIndicator` | `"addressed"` \| `"never"` | `"addressed"` | When the sender sees "typing…" during a turn: only for a message that addressed the agent (every DM does), or never — see [A quiet inbox](#a-quiet-inbox) |
 | `reactionModel` | string | unset | Model ref or alias for the emoji pick on a silent mention. Unset = the agent's own model. Needs `plugins.entries.clawgram.llm.allowModelOverride: true` in the gateway config; without it the override is refused and the pick quietly falls back to the default model |
 
 Group config fields:
@@ -299,6 +304,34 @@ Two things are worth knowing before reaching for `open`:
 
 Emoji reactions are unaffected by the rung: the channel leaves one only where
 the agent was genuinely addressed, so background reading stays unmarked.
+
+### A quiet inbox
+
+While the agent handles a message, the account marks it read and — if the
+message addressed the agent, which a DM always does — shows the sender
+"typing…" until the turn ends. That suits an agent that answers. It does not
+suit a person's own account used as an inbox the agent reads silently: every
+handled message disappears from the owner's unread list, and senders watch a
+"typing…" that no reply follows.
+
+```json
+"accounts": {
+  "default": {
+    "readReceipts": false,
+    "typingIndicator": "never"
+  }
+}
+```
+
+- `readReceipts: false` — nothing is marked read on the agent's behalf; the
+  owner's Telegram shows the message as new, and so does the sender's.
+- `typingIndicator: "never"` — no typing indicator in DMs or groups.
+  `"addressed"` (the default) keeps today's rule.
+
+The two are independent. Neither changes what the agent does — only what the
+sender is shown while it does it. Replies the agent does send are still sent,
+and in groups a silent mention can still leave a reaction unless
+`reactionLevel` is `"off"`.
 
 ### Per-group tools, skills and system prompt
 
