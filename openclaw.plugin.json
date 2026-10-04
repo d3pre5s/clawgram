@@ -542,6 +542,20 @@
                     "none"
                   ],
                   "description": "Outbound format for replies, core-delivered text, captions and send calls that omit parseMode. html (2.15.0) renders agent markdown and Telegram HTML into entities; markdown is GramJS's five-delimiter parser; none disables parsing entirely. Absent keeps GramJS's historical default, which is its markdown parser — not plain text."
+                },
+                "readReceipts": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Mark a message read when the agent handles it. `false` leaves every message unread in the account's own Telegram and shows the sender no read receipt — for an account its owner still reads, with the agent as a silent inbox. Messages the agent never handles are not marked either way."
+                },
+                "typingIndicator": {
+                  "type": "string",
+                  "enum": [
+                    "addressed",
+                    "never"
+                  ],
+                  "default": "addressed",
+                  "description": "When the sender sees the account \"typing\" during a turn. `addressed` — only for a message that addressed the agent (every DM does; in a group a mention or a reply to it); `never` — not at all, for an agent that mostly stays silent."
                 }
               },
               "required": [
@@ -634,6 +648,16 @@
           "label": "Proxy Timeout",
           "help": "Optional proxy connection timeout in seconds (GramJS default: 5).",
           "placeholder": "10"
+        },
+        "accounts.*.readReceipts": {
+          "label": "Read Receipts",
+          "help": "Mark handled messages read. Turn off to leave them unread in the owner's own Telegram.",
+          "advanced": true
+        },
+        "accounts.*.typingIndicator": {
+          "label": "Typing Indicator",
+          "help": "addressed: show typing for messages that addressed the agent (every DM). never: never show it.",
+          "advanced": true
         }
       }
     }

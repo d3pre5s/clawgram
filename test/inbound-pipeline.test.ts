@@ -373,3 +373,95 @@ describe("a group turn reaches the reply engine", () => {
     assert.deepEqual(turn.dispatched, [ "record", "dispatch" ]);
   });
 });
+
+/**
+ * What the sender is shown while the agent works: a read receipt and, for a
+ * message that addressed it, a typing indicator. Both stay on by default;
+ * `readReceipts: false` and `typingIndicator: "never"` exist for an account
+ * whose owner still reads it in their own Telegram while the agent works as
+ * a silent inbox — every handled message used to turn read there, and every
+ * DM showed the sender a "typing…" that no answer followed.
+ */
+describe("what the sender is shown while the agent works", () => {
+  const PEER = "500000001";
+
+  function turn(kind: "dm" | "group", account: Record<string, unknown>, text = "статус?") {
+    const shown: Array<Record<string, unknown>> = [];
+    const { ctx } = pastTheGates({
+      cfg: {
+        channels: { clawgram: { accounts: { default: {
+          allowFrom: [ PEER ],
+          groups: { "-4242": { enabled: true, groupPolicy: "open", allowFrom: [ "*" ] } },
+          ...account,
+        } } } },
+      },
+      client: new Proxy({}, { get: () => async () => undefined }),
+      gram: {
+        sendText: async () => ({ id: 1 }),
+        withTyping: async (_t: unknown, fn: () => unknown, options: Record<string, unknown>) => {
+          shown.push(options);
+          return fn();
+        },
+        replyParseMode: undefined,
+      },
+    });
+    const runtime = (ctx as any).channelRuntime;
+    if (kind === "dm") {
+      runtime.routing.resolveAgentRoute = () => ({
+        agentId: "main", accountId: "default", matchedBy: "default",
+        sessionKey: `agent:main:clawgram:direct:default:${PEER}`,
+      });
+    }
+    runtime.session.recordInboundSession = async () => {};
+    runtime.commands = {
+      shouldComputeCommandAuthorized: () => false,
+      resolveCommandAuthorizedFromAuthorizers: () => false,
+    };
+    runtime.reply.dispatchReplyWithBufferedBlockDispatcher = async () => ({ queuedFinal: false, counts: { final: 0 } });
+    const message = kind === "dm"
+      ? { id: 8, peerId: { userId: Number(PEER) }, senderId: Number(PEER), message: text }
+      : { id: 11, peerId: { chatId: 4242 }, senderId: 500, message: text };
+    const event = { message: { ...message, sender: { firstName: "Вася", username: "vasya" } } };
+    return { run: () => handleInboundEvent(event, ctx as never), shown };
+  }
+
+  const pick = (o: Record<string, unknown>) => ({ typing: o.typing, read: o.read });
+
+  it("by default a DM is marked read and shows typing, as before", async () => {
+    const t = turn("dm", {});
+    await t.run();
+    assert.deepEqual(t.shown.map(pick), [ { typing: true, read: true } ]);
+  });
+
+  it("a DM to a quiet account is neither marked read nor announced", async () => {
+    const t = turn("dm", { readReceipts: false, typingIndicator: "never" });
+    await t.run();
+    assert.deepEqual(t.shown.map(pick), [ { typing: false, read: false } ]);
+  });
+
+  it("the two settings are independent", async () => {
+    const unread = turn("dm", { readReceipts: false });
+    await unread.run();
+    assert.deepEqual(unread.shown.map(pick), [ { typing: true, read: false } ]);
+
+    const untyped = turn("dm", { typingIndicator: "never" });
+    await untyped.run();
+    assert.deepEqual(untyped.shown.map(pick), [ { typing: false, read: true } ]);
+  });
+
+  it("in a group, typing still needs an address, and readReceipts reaches that path too", async () => {
+    const unaddressed = turn("group", {});
+    await unaddressed.run();
+    assert.deepEqual(unaddressed.shown.map(pick), [ { typing: false, read: true } ]);
+
+    const quiet = turn("group", { readReceipts: false, typingIndicator: "never" }, "@agent статус?");
+    await quiet.run();
+    assert.deepEqual(quiet.shown.map(pick), [ { typing: false, read: false } ]);
+  });
+
+  it("an addressed group message shows typing by default", async () => {
+    const t = turn("group", {}, "@agent статус?");
+    await t.run();
+    assert.deepEqual(t.shown.map(pick), [ { typing: true, read: true } ]);
+  });
+});

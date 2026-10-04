@@ -9,6 +9,17 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Added
+
+- **`readReceipts` and `typingIndicator` on the account**, for a person's own
+  account that the agent reads as a silent inbox. Every handled message used
+  to be marked read — gone from the owner's unread list — and every DM showed
+  the sender "typing…" for the length of a turn that usually ended in
+  silence. `readReceipts: false` marks nothing read; `typingIndicator:
+  "never"` shows no indicator in DMs or groups. The defaults (`true`,
+  `"addressed"`) keep the behaviour unchanged. `withTyping` takes a matching
+  `read: false`.
+
 ### Fixed
 
 - **Loads and answers on OpenClaw 2026.8 and 2026.9.** 2026.8 removed the

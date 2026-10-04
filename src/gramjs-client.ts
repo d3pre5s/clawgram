@@ -854,13 +854,25 @@ export class GramJsClientManager {
    * печатает…» for 20–26 seconds on each of four messages that were never
    * addressed to her, and nothing followed. An indicator that is not owed to
    * anyone is worse than no indicator.
+   *
+   * `read: false` drops the read receipt as well. That is for an account
+   * whose owner still reads the chat in their own Telegram: a message the
+   * agent handled must stay unread there, or the owner never sees it arrive.
+   * With both off, the sender is shown nothing at all.
    */
   async withTyping<T>(target: unknown, fn: () => Promise<T>, options?: {
     readMessageId?: number;
     messageThreadId?: number;
     typing?: boolean;
+    read?: boolean;
   }): Promise<T> {
+    const read = options?.read !== false;
+
     if (options?.typing === false) {
+      if (!read) {
+        return await fn();
+      }
+
       // Still a read receipt: she did read it, and the chat may show that.
       const resolvedPeer = await this.resolvePeer(target).then((r) => r.peer).catch(() => undefined);
       if (resolvedPeer) {
@@ -885,7 +897,7 @@ export class GramJsClientManager {
         return;
       }
 
-      if (!readMarked) {
+      if (read && !readMarked) {
         readMarked = true;
         await this.markRead(peer, options?.readMessageId, {
           messageThreadId: options?.messageThreadId,

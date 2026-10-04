@@ -1162,3 +1162,33 @@ export function readAccountReactionModel(cfg: any, accountId?: string | null): s
   const raw = cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ]?.reactionModel;
   return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
 }
+
+export type InboundPresence = {
+  /** Mark a handled message read. */
+  readReceipts: boolean;
+  /** `addressed`: typing only for a message that addressed the agent (every DM does). */
+  typingIndicator: "addressed" | "never";
+};
+
+/**
+ * What the account shows a sender while the agent handles their message.
+ *
+ * The defaults are what the channel always did: the message is marked read,
+ * and a message that addressed the agent gets a typing indicator. Both can be
+ * turned off per account, because the account is a person's own: when the
+ * agent works as a silent inbox — it reads everything and mostly answers
+ * nothing — a read receipt hides the message from its owner's unread list,
+ * and an indicator promises the sender an answer that will not come.
+ *
+ * Anything other than the documented values falls back to the default; the
+ * manifest schema rejects them before they get here.
+ */
+export function readAccountInboundPresence(cfg: any, accountId?: string | null): InboundPresence {
+  const resolvedAccountId = resolveConfiguredAccountId(cfg, accountId);
+  const account = resolvedAccountId ? cfg?.channels?.[ CHANNEL_ID ]?.accounts?.[ resolvedAccountId ] : undefined;
+
+  return {
+    readReceipts: account?.readReceipts !== false,
+    typingIndicator: account?.typingIndicator === "never" ? "never" : "addressed",
+  };
+}

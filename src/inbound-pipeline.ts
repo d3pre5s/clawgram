@@ -55,6 +55,7 @@ import {
   parseOptionalThreadId,
   readAccountReactionLevel,
   readAccountReactionModel,
+  readAccountInboundPresence,
 } from './helpers';
 import { CHANNEL_ID } from './constants';
 import {
@@ -677,6 +678,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
 
       const messageThreadId = parseOptionalThreadId(normalized.messageThreadId);
       const groupTypingTarget = normalized.chatId;
+      const presence = readAccountInboundPresence(cfg, accountId);
 
       await gram.withTyping(groupTypingTarget, async () => {
         log?.info?.("clawgram dispatching group reply", {
@@ -876,7 +878,9 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         // to someone who addressed her. Under `open` the turn runs on
         // every message in the chat, so without this the whole room
         // watches her "type" through conversations she is only reading.
-        typing: mentionDecision.effectiveWasMentioned || wasReplyToSelf,
+        typing: presence.typingIndicator === "addressed"
+          && (mentionDecision.effectiveWasMentioned || wasReplyToSelf),
+        read: presence.readReceipts,
       });
 
       log?.info?.("clawgram group inbound handled", {
@@ -938,6 +942,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
     // the agent's own message as the person's — the owner answers a
     // notice she sent — and neither text is available any other way.
     const replyParent = await resolveReplyParent(rawMessage, { selfId, selfLabel });
+    const presence = readAccountInboundPresence(cfg, accountId);
 
     await gram.withTyping(conversationTarget, async () => {
       await dispatchInboundDirectDmWithRuntime({
@@ -1010,6 +1015,9 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
       });
     }, {
       readMessageId: Number(normalized.messageId),
+      // A DM always addresses the agent, so `addressed` means typing here.
+      typing: presence.typingIndicator === "addressed",
+      read: presence.readReceipts,
     });
 
     log?.info?.("clawgram inbound handled", {
