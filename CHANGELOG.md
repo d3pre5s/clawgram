@@ -9,6 +9,25 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Loads and answers on OpenClaw 2026.8 and 2026.9.** 2026.8 removed the
+  `plugin-sdk/channel-runtime` and `plugin-sdk/direct-dm` subpaths, so the
+  plugin failed to load; `waitUntilAbort` now comes from
+  `plugin-sdk/channel-outbound` and the two direct-DM helpers from
+  `plugin-sdk/channel-inbound`, where core moved them unchanged. 2026.8 also
+  stopped exporting `buildInboundReplyDispatchBase`: with the imports patched
+  by hand the channel registered, and then every group turn threw inside the
+  pipeline's catch. The group path now calls the runtime's
+  `dispatchReplyWithBufferedBlockDispatcher` directly — all that helper ever
+  repackaged. The `ChannelCapabilities` type comes from
+  `plugin-sdk/channel-contract` instead of the removed root barrel.
+
+### Changed
+
+- **Minimum OpenClaw is `2026.5.27`** (was `2026.5.26`): the first release
+  whose `channel-inbound` and `channel-outbound` carry all three helpers.
+
 ## [2.29.2] — 2026-09-24
 
 ### Fixed

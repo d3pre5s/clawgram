@@ -329,3 +329,47 @@ describe("the context is wired, not merely typed", () => {
     assert.deepEqual(declared, destructured, "the type and the destructuring disagree");
   });
 });
+
+/**
+ * A group turn has to reach the reply engine, through the real entrance.
+ *
+ * The group path used to build its dispatcher with core's
+ * `buildInboundReplyDispatchBase`. OpenClaw 2026.8 stopped exporting it; the
+ * compiled `require` then handed back `undefined`, the channel still loaded
+ * and registered, and every group turn died with "is not a function" inside
+ * the pipeline's catch — logged, never answered. Nothing here exercised the
+ * group dispatch, so nothing noticed.
+ */
+describe("a group turn reaches the reply engine", () => {
+  function groupTurn() {
+    const dispatched: string[] = [];
+    const { ctx } = pastTheGates({
+      cfg: {
+        channels: { clawgram: { accounts: { default: {
+          allowFrom: [],
+          groups: { "-4242": { enabled: true, groupPolicy: "open", allowFrom: [ "*" ] } },
+        } } } },
+      },
+      client: new Proxy({}, { get: () => async () => undefined }),
+    });
+    const runtime = (ctx as any).channelRuntime;
+    runtime.session.recordInboundSession = async () => { dispatched.push("record"); };
+    runtime.reply.dispatchReplyWithBufferedBlockDispatcher = async () => {
+      dispatched.push("dispatch");
+      return { queuedFinal: false, counts: { final: 0 } };
+    };
+    const event = {
+      message: {
+        id: 11, peerId: { chatId: 4242 }, senderId: 500, message: "статус?",
+        sender: { firstName: "Вася", username: "vasya" },
+      },
+    };
+    return { run: () => handleInboundEvent(event, ctx as never), dispatched };
+  }
+
+  it("records the session and dispatches, with nothing in between from core's dispatch-base helper", async () => {
+    const turn = groupTurn();
+    await turn.run();
+    assert.deepEqual(turn.dispatched, [ "record", "dispatch" ]);
+  });
+});

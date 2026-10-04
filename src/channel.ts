@@ -38,9 +38,11 @@ const CHANNEL_CAPABILITIES: ChannelCapabilities = {
     },
   },
 };
-import { waitUntilAbort } from "openclaw/plugin-sdk/channel-runtime";
+// `channel-runtime` is gone since OpenClaw 2026.8; `channel-outbound` is where
+// core moved `waitUntilAbort`, unchanged (2026.5.27+).
+import { waitUntilAbort } from "openclaw/plugin-sdk/channel-outbound";
 import { extractToolSend } from "openclaw/plugin-sdk/tool-send";
-import type { ChannelCapabilities } from "openclaw/plugin-sdk";
+import type { ChannelCapabilities } from "openclaw/plugin-sdk/channel-contract";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
 import { NewMessage, Raw } from "telegram/events";
 import { GramJsClientManager } from "./gramjs-client";
