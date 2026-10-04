@@ -15,18 +15,17 @@
 import {
   createSubsystemLogger,
   } from "openclaw/plugin-sdk/core";
+// `direct-dm` is gone since OpenClaw 2026.8; `channel-inbound` has carried
+// both helpers since 2026.5.27, which is why that is the floor.
 import {
   dispatchInboundDirectDmWithRuntime,
   resolveInboundDirectDmAccessWithRuntime,
-} from "openclaw/plugin-sdk/direct-dm";
-import {
   resolveInboundMentionDecision,
 } from "openclaw/plugin-sdk/channel-inbound";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
 import { resolveInboundRouteEnvelopeBuilderWithRuntime } from "openclaw/plugin-sdk/inbound-envelope";
 import type { ResolvedAgentRoute } from "openclaw/plugin-sdk/routing";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
-import { buildInboundReplyDispatchBase } from "openclaw/plugin-sdk/inbound-reply-dispatch";
 import { TELEGRAM_SERVICE_CHAT_ID } from "./constants";
 import { normalizeTelegramEvent } from "./normalize";
 import { resolveAgentReactionGuidance } from "./reactions";
@@ -708,15 +707,6 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
           },
         });
 
-        const dispatchBase = buildInboundReplyDispatchBase({
-          cfg,
-          channel: "clawgram",
-          accountId: route.accountId ?? accountId,
-          route,
-          storePath,
-          ctxPayload,
-          core: { channel: channelRuntime },
-        });
         const { onModelSelected, ...replyPipeline } = createChannelReplyPipeline({
           cfg,
           agentId: route.agentId,
@@ -727,7 +717,10 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         // written after this instant may be salvaged. Same clock as
         // the transcript writer — both live in this process.
         const dispatchStartedAt = Date.now();
-        const dispatchResult = await dispatchBase.dispatchReplyWithBufferedBlockDispatcher({
+        // Straight to the runtime: `buildInboundReplyDispatchBase` only
+        // repackaged this function, and OpenClaw 2026.8 stopped exporting
+        // it — the import resolved to undefined and every group turn threw.
+        const dispatchResult = await channelRuntime.reply.dispatchReplyWithBufferedBlockDispatcher({
           ctx: ctxPayload,
           cfg,
           dispatcherOptions: {
