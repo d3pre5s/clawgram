@@ -58,6 +58,8 @@ import {
   readAccountReactionModel,
 } from './helpers';
 import { CHANNEL_ID } from './constants';
+import { resolveAccountReadChats } from "./account-scopes";
+import { NEARBY_GUIDANCE, readNearbyConversation, type NearbyConversation } from "./nearby-conversation";
 import {
   readInboundAttachment,
   } from "./attachments";
@@ -131,6 +133,7 @@ export type InboundContext = {
   client: any;
   selfUsername: string | undefined;
   selfLabel: string | undefined;
+  nearbyConversation?: NearbyConversation;
 };
 
 /**
@@ -192,7 +195,7 @@ export function visibleReplyText(params: {
 
 export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
   const { accountId, cfg, channelRuntime, client, gram, log,
-    pluginRuntime, runtimes, selfId, selfLabel, selfUsername } = ctx;
+    pluginRuntime, runtimes, selfId, selfLabel, selfUsername, nearbyConversation } = ctx;
 
   try {
     const rawMessage = (event as any)?.message;
@@ -563,10 +566,12 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
       // reply does not carry on its own.
       const replyParent = await resolveReplyParent(rawMessage, { selfId, selfLabel });
       const wasReplyToSelf = replyParent.isSelf;
+      const nearbyKey = nearbyConversation?.key(normalized.chatId, normalized.messageThreadId, senderId);
+      const isContinuation = nearbyKey !== undefined && nearbyConversation.has(nearbyKey);
       const mentionDecision = resolveInboundMentionDecision({
         facts: {
           canDetectMention: true,
-          wasMentioned,
+          wasMentioned: wasMentioned || isContinuation,
           hasAnyMention: /(^|\s)@[a-zA-Z0-9_]{5,}\b/.test(addressableText),
         },
         policy: {
@@ -602,6 +607,25 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         return;
       }
 
+      let nearbyText: string | undefined;
+      if (nearbyConversation && (wasMentioned || wasReplyToSelf || isContinuation)) {
+        const collected = await nearbyConversation.collect(nearbyKey!, text, wasMentioned || wasReplyToSelf);
+        if (collected === undefined) return;
+        text = collected;
+        try {
+          nearbyText = await readNearbyConversation({
+            gram,
+            chatId: normalized.chatId,
+            messageId: normalized.messageId,
+            threadId: parseOptionalThreadId(normalized.messageThreadId),
+            timestamp: normalized.timestamp,
+            readChats: resolveAccountReadChats(cfg, accountId),
+          });
+        } catch {
+          log?.warn?.("clawgram nearby conversation read failed", { accountId, chatId: normalized.chatId });
+        }
+      }
+
       // Who is speaking, resolved only now — past the group gate and the
       // mention gate, so a message the agent will not even read costs no
       // call (B5-04). GramJS attaches `_sender` only from its entity cache,
@@ -628,7 +652,8 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
       const conversationRouteTarget = buildConversationTarget(normalized.chatId);
       const ctxPayload = channelRuntime.reply.finalizeInboundContext({
         Body: body,
-        BodyForAgent: agentFacingGroupBody({ address: groupReplyAddress, senderId, text }),
+        BodyForAgent: agentFacingGroupBody({ address: groupReplyAddress, senderId, text }) +
+          (nearbyText ? `\n\n[Соседние сообщения чата — контекст]\n${nearbyText}` : ""),
         RawBody: text,
         CommandBody: text,
         From: conversationRouteTarget,
@@ -665,7 +690,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
         // Trusted per-group prompt block from `groups.<id>.systemPrompt`.
         // Core normalizes it (`normalizeTrustedTextField`) and appends
         // it to the system prompt for this turn. Undefined = no block.
-        GroupSystemPrompt: groupConfig.systemPrompt,
+        GroupSystemPrompt: [ groupConfig.systemPrompt, NEARBY_GUIDANCE ].filter(Boolean).join("\n\n"),
         OriginatingChannel: "clawgram",
         OriginatingTo: conversationRouteTarget,
       });

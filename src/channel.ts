@@ -81,6 +81,7 @@ import {
 export { resolveAccountOperatorIds };
 import { createOutbound } from "./outbound";
 import { handleInboundEvent } from "./inbound-pipeline";
+import { NearbyConversation } from "./nearby-conversation";
 
 // Словарь имён живёт в ./actions. Реэкспорт — ради вызывающих снаружи:
 // тесты и другие модули знают его по этому файлу с 2.19.4.
@@ -324,9 +325,11 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
 
         const client = gram.getClient();
         const eventBuilder = new NewMessage({});
+        const nearbyConversation = new NearbyConversation();
         const eventHandler = async (event: unknown) => handleInboundEvent(event, {
           accountId, cfg, channelRuntime, client, gram, log,
           pluginRuntime, runtimes, selfId, selfLabel, selfUsername,
+          nearbyConversation,
         });
         client.addEventHandler(eventHandler, eventBuilder);
 
@@ -361,6 +364,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         client.addEventHandler(joinEventHandler, joinEventBuilder);
 
         await waitUntilAbort(ctx.abortSignal, async () => {
+          nearbyConversation.close();
           client.removeEventHandler(eventHandler, eventBuilder);
           client.removeEventHandler(joinEventHandler, joinEventBuilder);
           forgetAccount(accountId);

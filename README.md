@@ -300,6 +300,17 @@ Two things are worth knowing before reaching for `open`:
 Emoji reactions are unaffected by the rung: the channel leaves one only where
 the agent was genuinely addressed, so background reading stays unmarked.
 
+An isolated `@mention` waits up to 60 seconds for an explanation. Short
+addresses wait for 6 seconds of quiet; consecutive messages by the same sender
+in the same chat/topic are collected into one turn within a 2-minute window.
+An unanswered bare tag can still receive a late continuation within that window.
+Other senders and topics do not inherit the address. Detailed requests proceed
+immediately. Before answering an address, the agent receives up to 12 recent
+messages from the same chat/topic (3 minutes before the triggering message,
+including explanations that arrived afterwards), subject to `readChats`.
+History failures leave the original request usable. Attachment metadata includes
+message ids so the agent can read a relevant image with `fetchMedia`.
+
 ### Per-group tools, skills and system prompt
 
 Since 2.17.0 a group entry can narrow what the assistant does *in that chat*

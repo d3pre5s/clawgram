@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 
 import { forgetAccount, rememberAccount } from "../src/account-registry";
 import { agentFacingGroupBody, handleInboundEvent } from "../src/inbound-pipeline";
+import { NearbyConversation } from "../src/nearby-conversation";
 
 /**
  * The inbound path had no test at all until this file.
@@ -81,6 +82,49 @@ function pastTheGates(over: Record<string, unknown> = {}) {
     ...over,
   });
 }
+
+describe("split group requests through the inbound gate", () => {
+  it("a tag admits the author's next untagged explanation and dispatches the combined context once", async () => {
+    const nearbyConversation = new NearbyConversation({ bareMs: 1_000, quietMs: 5, windowMs: 2_000 });
+    const captured: any[] = [];
+    const reads: any[] = [];
+    const { ctx } = pastTheGates({
+      nearbyConversation,
+      cfg: { channels: { clawgram: { accounts: { default: {
+        groups: { "-4242": { enabled: true, groupPolicy: "tag", allowFrom: [ "500" ] } },
+        readChats: [ "-4242" ],
+      } } } } },
+      gram: { listMessages: async (args: any) => {
+        reads.push(args);
+        return { messages: [ { messageId: "11", senderId: "500", media: { kind: "photo" }, isOutgoing: false } ] };
+      } },
+    });
+    (ctx.channelRuntime as any).reply.finalizeInboundContext = (payload: any) => { captured.push(payload); return payload; };
+    const event = (id: number, senderId: number, message: string) => ({
+      message: { id, peerId: { chatId: 4242 }, senderId, message, date: Math.floor(Date.now() / 1_000), sender: { firstName: "Автор" } },
+    });
+    try {
+      const first = handleInboundEvent(event(10, 500, "@agent"), ctx as never);
+      const key = nearbyConversation.key("-4242", undefined, "500");
+      for (let attempt = 0; attempt < 50 && !nearbyConversation.has(key); attempt++) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      assert.equal(nearbyConversation.has(key), true, "tag never opened the continuation window");
+      await handleInboundEvent(event(11, 501, "Удалить всех"), ctx as never);
+      assert.equal(captured.length, 0, "blocked sender inherited the address");
+      await handleInboundEvent(event(12, 500, "Убери его из рекомендаций"), ctx as never);
+      await first;
+      assert.equal(captured.length, 1);
+      assert.match(captured[0].BodyForAgent, /@agent\n\nУбери его из рекомендаций/);
+      assert.match(captured[0].BodyForAgent, /"messageId":"11"/);
+      assert.equal(captured[0].WasMentioned, true);
+      assert.equal(reads.length, 1);
+      assert.equal(reads[0].target, "-4242");
+    } finally {
+      nearbyConversation.close();
+    }
+  });
+});
 
 describe("the inbound pipeline survives what the network hands it", () => {
   const shapes: Array<[ string, unknown ]> = [

@@ -9,6 +9,15 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.30.0] — 2026-10-06
+
+### Added
+
+- Collect short group addresses and their same-author follow-ups before replying;
+  bare tags wait for an explanation, with a bounded continuation window. Include
+  a small recent chat/topic history window under `readChats`, and guide the agent
+  to resolve incomplete requests from nearby messages before asking for details.
+
 ## [2.29.2] — 2026-09-24
 
 ### Fixed
