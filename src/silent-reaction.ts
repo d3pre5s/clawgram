@@ -41,6 +41,7 @@ export function buildEmojiSystemPrompt(
     // rather than being touched by it.
     "Three situations have a fixed answer. Use it, and do not substitute a similar emoji:",
     `- the assistant is praised or thanked, or someone speaks well of it → ❤ (never \u{1F44D} here)`,
+    "A greeting, welcome back or congratulations addressed to the assistant is also a complete social address: acknowledge it with ❤, not NONE. No task or question is needed.",
     `- the assistant is asked or told to do something → \u{1FAE1}, or \u{1F44C} for a small routine request`,
     `- the message is about producing something written — a text, a reply, a document, a draft → ✍`,
     "Otherwise match the mood: a joke gets something amused, bad news something",
@@ -203,6 +204,9 @@ export type SilentReactionDeps = {
     allowedCount?: number;
     model?: string;
     modelFellBack?: true;
+    /** Distinguishes deliberate silence from an unusable completion without logging private text. */
+    reason?: "declined" | "empty-answer" | "invalid-answer" | "reactions-disabled";
+    retried?: true;
   }) => void;
 };
 
@@ -221,11 +225,12 @@ async function completeEmoji(params: {
   model: string | undefined;
   systemPrompt: string;
   content: string;
+  maxTokens?: number;
 }): Promise<{ answer?: { text?: string }; fellBack: boolean }> {
   const request = {
     messages: [ { role: "user", content: params.content } ],
     systemPrompt: params.systemPrompt,
-    maxTokens: 8,
+    maxTokens: params.maxTokens ?? 8,
     purpose: "clawgram: emoji reaction for a silent mention",
   };
 
@@ -285,18 +290,30 @@ export async function reactToSilentMention(params: {
   // Reactions switched off for the whole chat: nothing to pick from, and no
   // reason to spend a model call finding that out.
   if (allowed !== undefined && allowed.length === 0) {
-    params.deps.onDecision?.({ messageId, appetite, chose: "none", allowedCount: 0 });
+    params.deps.onDecision?.({ messageId, appetite, chose: "none", allowedCount: 0, reason: "reactions-disabled" });
     return undefined;
   }
 
-  const { answer, fellBack } = await completeEmoji({
+  const request = {
     deps: params.deps,
     model: params.model,
     systemPrompt: buildEmojiSystemPrompt(appetite, allowed),
     content: String(params.messageText ?? "").slice(0, MAX_JUDGED_CHARS),
-  });
+  };
+  let { answer, fellBack } = await completeEmoji(request);
+  let emoji = parseEmojiChoice(answer?.text, allowed);
+  let retried = false;
+  // NONE is a valid choice (for example, a conflict between colleagues).
+  // Empty/malformed completions are not that choice. Give them one bounded
+  // retry with enough room to finish an emoji; never invent a generic reaction.
+  if (!emoji && !/^none$/i.test(answer?.text?.trim() ?? "")) {
+    retried = true;
+    const retry = await completeEmoji({ ...request, maxTokens: 64 });
+    answer = retry.answer;
+    fellBack ||= retry.fellBack;
+    emoji = parseEmojiChoice(answer?.text, allowed);
+  }
 
-  const emoji = parseEmojiChoice(answer?.text, allowed);
   params.deps.onDecision?.({
     messageId,
     appetite,
@@ -305,6 +322,9 @@ export async function reactToSilentMention(params: {
     allowedCount: allowed?.length,
     ...params.model ? { model: params.model } : {},
     ...fellBack ? { modelFellBack: true as const } : {},
+    ...retried ? { retried: true as const } : {},
+    ...!emoji ? { reason: /^none$/i.test(answer?.text?.trim() ?? "")
+      ? "declined" as const : answer?.text?.trim() ? "invalid-answer" as const : "empty-answer" as const } : {},
   });
   if (!emoji) {
     return undefined;

@@ -1,6 +1,17 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { addressWaitMs, NearbyConversation, readNearbyConversation } from "../src/nearby-conversation";
+import { addressWaitMs, NearbyConversation, readNearbyConversation, NEARBY_GUIDANCE } from "../src/nearby-conversation";
+
+test("complete social addresses are not treated as an unfinished task or a bare tag", async () => {
+  const nearby = new NearbyConversation({ bareMs: 100, quietMs: 1, windowMs: 1_000 });
+  const key = nearby.key("-1", undefined, "42");
+  const greeting = "Тина с возвращением в мир живых";
+  assert.equal(await nearby.collect(key, greeting, true), greeting);
+  assert.equal(nearby.has(key), false);
+  assert.match(NEARBY_GUIDANCE, /уже законченное обращение/);
+  assert.match(NEARBY_GUIDANCE, /коротко ответь по-человечески/);
+  nearby.close();
+});
 
 test("a bare tag waits longer than a short request; a detailed request proceeds immediately", () => {
   assert.equal(addressWaitMs("@assistant_bot 👋"), 60_000);

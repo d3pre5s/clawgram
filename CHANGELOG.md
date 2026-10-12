@@ -9,6 +9,16 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.30.1] — 2026-10-12
+
+### Fixed
+
+- Treat greetings, thanks and welcomes addressed to the assistant as complete
+  social messages even while nearby-message collection is enabled.
+- Explicitly acknowledge social addresses in the silent-reaction prompt; retry
+  empty or malformed emoji completions once and distinguish them from deliberate
+  `NONE` decisions in diagnostics without logging private message text.
+
 ## [2.30.0] — 2026-10-06
 
 ### Added

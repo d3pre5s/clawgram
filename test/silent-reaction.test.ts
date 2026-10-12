@@ -239,7 +239,30 @@ describe("reacting to a silent mention end to end", () => {
       chose: "none",
       emoji: undefined,
       allowedCount: undefined,
+      reason: "declined",
     } ]);
+    assert.equal(h.asked.length, 1, "a deliberate NONE is not retried");
+  });
+
+  it("retries an unusable completion instead of silently treating it as NONE", async () => {
+    const answers = [ "", "❤" ];
+    const h = harness(async () => ({ text: answers.shift() }));
+    assert.equal(await call(h.deps, { messageText: "Тина с возвращением в мир живых" }), "❤");
+    assert.equal(h.asked.length, 2);
+    assert.equal(h.asked[1].maxTokens, 64);
+    assert.equal(h.decisions[0].retried, true);
+    assert.equal(h.sent.length, 1);
+  });
+
+  it("bounds invalid-answer retries and distinguishes them from deliberate silence", async () => {
+    for (const [answer, reason] of [["", "empty-answer"], ["I would use ❤", "invalid-answer"]]) {
+      const h = harness(answer);
+      assert.equal(await call(h.deps), undefined);
+      assert.equal(h.asked.length, 2);
+      assert.equal(h.sent.length, 0);
+      assert.equal(h.decisions[0].reason, reason);
+      assert.doesNotMatch(JSON.stringify(h.decisions), /I would|спасла/);
+    }
   });
 
   it("offers the model only what a restricted chat permits", async () => {
@@ -264,6 +287,7 @@ describe("reacting to a silent mention end to end", () => {
       appetite: "extensive",
       chose: "none",
       allowedCount: 0,
+      reason: "reactions-disabled",
     } ]);
   });
 
@@ -367,6 +391,12 @@ describe("the emoji prompt", () => {
     assert.match(prompt, /praised or thanked.*→ ❤/);
     assert.match(prompt, /asked or told to do something → 🫡, or 👌/);
     assert.match(prompt, /something written.*→ ✍/);
+  });
+
+  it("acknowledges a complete social address even without a task", () => {
+    const prompt = buildEmojiSystemPrompt("extensive");
+    assert.match(prompt, /greeting, welcome back or congratulations/);
+    assert.match(prompt, /acknowledge it with ❤, not NONE/);
   });
 
   it("spells the fixed answers the way Telegram accepts them", () => {
