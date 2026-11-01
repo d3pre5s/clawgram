@@ -1,13 +1,5 @@
 name: Release
 
-# Publishing is driven by tags: push v2.2.0 and this builds, tests and
-# publishes clawgram@2.2.0 from a clean checkout. Nothing is published from
-# a laptop any more, and provenance ties the tarball on npm back to the exact
-# commit this workflow ran on.
-#
-# The same job can be run by hand as a rehearsal (workflow_dispatch): it does
-# everything up to and including `npm publish --dry-run`, so the release path
-# can be verified without putting a version into the registry forever.
 on:
   push:
     tags: ['v*']
@@ -24,58 +16,68 @@ on:
 
 permissions:
   contents: read
-  id-token: write # required for npm provenance
+
+# Registry writes never overlap, and a newer push cannot interrupt an upload.
+concurrency:
+  group: clawgram-release
+  cancel-in-progress: false
+
+env:
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.clawhub_only }}
+  RECOVER_CLAWHUB: ${{ inputs.clawhub_only == true }}
+  RELEASE_REF: ${{ inputs.clawhub_only && inputs.release_tag || github.ref_name }}
 
 jobs:
-  publish:
+  npm:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment: npm-publish
-
-    env:
-      # Manual runs rehearse by default; explicit recovery only writes ClawHub.
-      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.clawhub_only }}
-      RECOVER_CLAWHUB: ${{ inputs.clawhub_only }}
-      RELEASE_TAG: ${{ inputs.release_tag }}
-
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing and provenance; no stored npm token
+    outputs:
+      commit: ${{ steps.publish.outputs.commit }}
+      release_ref: ${{ steps.publish.outputs.release_ref }}
+    defaults:
+      run:
+        working-directory: source
     steps:
       - name: Validate recovery tag
         if: inputs.clawhub_only
+        working-directory: ${{ github.workspace }}
         run: |
-          [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+          [[ "${RELEASE_REF}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
             echo "ClawHub recovery requires an existing stable release tag." >&2
             exit 1
           }
 
-      - uses: actions/checkout@v4
+      # Recovery uses current safeguards even for tags predating these scripts.
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.clawhub_only && inputs.release_tag || github.ref }}
+          path: release-tools
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
         with:
-          node-version: '22'
-          cache: npm
+          path: source
+          ref: ${{ env.RELEASE_REF }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
-      # A tag that disagrees with package.json would publish a version nobody
-      # asked for, under a tag that points somewhere else. Refuse instead.
       - name: Tag must match package.json version
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.clawhub_only
         run: |
-          tag_version="${GITHUB_REF_NAME#v}"
           pkg_version="$(node -p "require('./package.json').version")"
-          if [ "$tag_version" != "$pkg_version" ]; then
-            echo "tag ${GITHUB_REF_NAME} implies ${tag_version}, package.json says ${pkg_version}" >&2
-            exit 1
-          fi
-          echo "publishing clawgram@${pkg_version}"
+          test "${RELEASE_REF}" = "v${pkg_version}" || { echo "Tag/version mismatch." >&2; exit 1; }
 
       - run: npm ci
 
-      # check-pii (run by `npm test`, and again by prepublishOnly on publish)
-      # compares against a denylist that must never be in git. The repository
-      # secret CLAWGRAM_PII_DENYLIST holds that file's contents. Without it —
-      # a pull request from a fork, or before the owner adds it — only the
-      # shape check runs, and the log says so in a warning (audit r3 V1-06).
       - name: Hand check-pii its denylist
         env:
           DENYLIST: ${{ secrets.CLAWGRAM_PII_DENYLIST }}
@@ -95,136 +97,47 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Verify recovery matches published npm release
-        if: inputs.clawhub_only
-        run: |
-          pkg_version="$(node -p "require('./package.json').version")"
-          test "${RELEASE_TAG}" = "v${pkg_version}" || { echo "Tag/version mismatch." >&2; exit 1; }
-          RELEASE_COMMIT="$(git rev-parse HEAD)"
-          export RELEASE_COMMIT
-          metadata="${RUNNER_TEMP}/clawgram-published-release.json"
-          curl --fail --silent --show-error --retry 2 --max-time 30 \
-            "https://registry.npmjs.org/clawgram/${pkg_version}" -o "${metadata}"
-          node -e '
-            const fs = require("node:fs");
-            const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            const expected = require("./package.json");
-            if (p.name !== "clawgram" || p.version !== expected.version || p.gitHead !== process.env.RELEASE_COMMIT) {
-              console.error("Published npm artifact does not match the checked-out release tag.");
-              process.exit(1);
-            }' "${metadata}"
+      # An existing version is safe to skip only when its npm gitHead matches.
+      # Manual runs rehearse; recovery verifies npm without a publish attempt.
+      - name: Publish or verify npm release
+        id: publish
+        run: node ../release-tools/scripts/release-npm.mjs
 
-      # Publishing the same version twice fails the job anyway; checking first
-      # gives a readable reason instead of a registry error. A rehearsal skips
-      # this on purpose — the current version is normally already published.
-      - name: Version must not already exist on npm
-        if: github.event_name == 'push'
-        run: |
-          pkg_version="$(node -p "require('./package.json').version")"
-          if npm view "clawgram@${pkg_version}" version >/dev/null 2>&1; then
-            echo "clawgram@${pkg_version} is already published — bump the version first" >&2
-            exit 1
-          fi
+  clawhub:
+    needs: npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: npm-publish
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: release-tools
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
-      # Catches the most common release failure — a missing or wrong-scoped
-      # NPM_TOKEN — before the publish step, and with a clear message.
-      - name: Check npm credentials
-        if: ${{ !inputs.clawhub_only }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "${NODE_AUTH_TOKEN}" ]; then
-            echo "NPM_TOKEN secret is not set — publishing will fail." >&2
-            echo "Add an npm automation token as the NPM_TOKEN secret." >&2
-            exit 1
-          fi
-          if ! npm_user="$(npm whoami)"; then
-            echo "NPM_TOKEN is invalid or expired — replace the GitHub Actions secret with a token allowed to publish clawgram." >&2
-            exit 1
-          fi
-          echo "authenticated to npm as: ${npm_user}"
+      - uses: actions/checkout@v6
+        with:
+          path: source
+          ref: ${{ needs.npm.outputs.commit }}
+          persist-credentials: false
 
-      - name: Publish to npm
-        if: ${{ !inputs.clawhub_only }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ "${DRY_RUN}" = "true" ]; then
-            echo "rehearsal: packing without publishing"
-            npm publish --dry-run --access public
-          else
-            npm publish --provenance --access public
-          fi
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
 
-      # ClawHub is a second registry, not a mirror: it carries its own scan
-      # verdict and its own install path. It fell two versions behind npm once
-      # already because publishing here was a separate manual step.
-      #
-      # npm is the primary path, so a ClawHub failure must not undo a release
-      # that already reached npm — but it does fail the job, because "npm has
-      # it, ClawHub does not" is exactly the state worth being told about.
-      - name: Publish to ClawHub
+      - run: npm ci
+      - run: npm run build
+      - run: npm install --global --no-fund --no-audit clawhub@0.25.0
+
+      - name: Publish or verify ClawHub release
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+          RELEASE_REF: ${{ needs.npm.outputs.release_ref }}
         run: |
-          if [ -z "${CLAWHUB_TOKEN}" ]; then
-            if [ "${RECOVER_CLAWHUB}" = true ]; then
-              echo "CLAWHUB_TOKEN is required for ClawHub recovery." >&2
-              exit 1
-            fi
-            echo "::warning::CLAWHUB_TOKEN is not set — skipped ClawHub. npm is unaffected."
-            exit 0
-          fi
-
-          npm install --global --no-fund --no-audit clawhub@0.23.1
-
-          # Retry only explicit throttling. Auth errors and ambiguous network
-          # failures stay failures; no command arguments (tokens) are logged.
-          clawhub_retry() {
-            local attempt output code delay
-            for attempt in 1 2 3; do
-              if output="$(clawhub "$@" 2>&1)"; then
-                printf '%s\n' "$output"
-                return 0
-              else
-                code=$?
-              fi
-              printf '%s\n' "$output" >&2
-              if [[ "$attempt" = 3 ]] || ! grep -qiE 'too many writes|rate.?limit|HTTP 429' <<<"$output"; then
-                return "$code"
-              fi
-              delay="$(sed -nE 's/.*reset in ([0-9]+)s.*/\1/p' <<<"$output" | head -1)"
-              [[ "$delay" =~ ^[0-9]{1,2}$ ]] || delay=30
-              delay=$((10#$delay))
-              (( delay < 60 )) || delay=60
-              echo "ClawHub throttled; retrying in $((delay + 1))s (attempt $attempt/3)." >&2
-              sleep "$((delay + 1))"
-            done
-          }
-
-          # The CLI takes the token as an argument; the runner is ephemeral and
-          # single-use, so argv exposure is bounded to this job.
-          clawhub_retry login --token "${CLAWHUB_TOKEN}" >/dev/null
-
-          pkg_version="$(node -p "require('./package.json').version")"
-          listing="$(clawhub_retry package explore clawgram --family code-plugin)"
-          published="$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' <<<"${listing}" | head -1 | tr -d 'v' || true)"
-          source_ref="${RELEASE_TAG:-${GITHUB_REF_NAME}}"
-          source_commit="$(git rev-parse HEAD)"
-
-          if [ "${published}" = "${pkg_version}" ]; then
-            echo "ClawHub already carries ${pkg_version} — nothing to do"
-            exit 0
-          fi
-
-          if [ "${DRY_RUN}" = "true" ]; then
-            echo "rehearsal: ClawHub publish without uploading"
-            clawhub_retry package publish . --family code-plugin --version "${pkg_version}" \
-              --source-repo d3pre5s/clawgram --source-ref "${source_ref}" \
-              --source-commit "${source_commit}" --dry-run
-            exit 0
-          fi
-
-          clawhub_retry package publish . --family code-plugin --version "${pkg_version}" \
-            --source-repo d3pre5s/clawgram --source-ref "${source_ref}" \
-            --source-commit "${source_commit}"
+          args=()
+          if [ "${DRY_RUN}" = true ]; then args+=(--dry-run); fi
+          node ../release-tools/scripts/publish-clawhub.mjs "${args[@]}"

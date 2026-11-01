@@ -11,10 +11,13 @@ recorded in `git log` only.
 
 ### Fixed
 
-- Retry explicit ClawHub rate limits up to three times. A manual ClawHub-only
-  recovery verifies the existing tag against npm and skips npm publishing.
-- Stop the release immediately when npm rejects the publishing token; a failed
-  `whoami` can no longer be hidden by a successful `echo`.
+- Publish npm releases with short-lived GitHub OIDC credentials instead of an
+  expiring `NPM_TOKEN`; document the one-time trusted publisher setup.
+- Separate npm and ClawHub jobs, serialize releases, and safely skip npm versions
+  already published from the same commit when retrying a partial release.
+- Retry explicit ClawHub throttling, wait for definitive publication, and verify
+  the exact version's source commit. Recovery waits for an existing security scan
+  without uploading the same version again. Auth and scan failures stay visible.
 
 ## [2.31.0] — 2026-11-01
 

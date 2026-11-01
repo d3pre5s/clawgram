@@ -958,11 +958,35 @@ npm run clawgram-cli:auth
 
 ## Releases
 
-If npm publishing succeeds but ClawHub fails, run the **Release** workflow from
-`main` with `clawhub_only=true` and `release_tag` set to the existing release tag.
-Recovery checks out that tag, builds and tests it, verifies its commit against
-the published npm version, then publishes only to ClawHub. Explicit rate limits
-are retried up to three times. Manual runs without this option remain rehearsals.
+The **Release** workflow uses npm [trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+through GitHub OIDC. npm issues short-lived credentials per run; `NPM_TOKEN` is
+not used. One-time setup in the npm package's **Settings → Trusted publishing**:
+
+| Field | Value |
+|---|---|
+| Provider | GitHub Actions |
+| Organization/user | `d3pre5s` |
+| Repository | `clawgram` |
+| Workflow filename | `release.yml` |
+| Environment | `npm-publish` |
+| Allowed actions | Enable `npm publish` |
+
+Complete the first real publish within two days of creating the trust. A dry
+run does not validate OIDC. After a successful OIDC release, revoke the old npm
+publishing token and remove its unused GitHub secret.
+
+npm and ClawHub run as separate jobs, with release writes serialized. Re-running
+a release skips an existing npm version only if its `gitHead` matches the release
+commit. If npm succeeds but ClawHub fails, run **Release** from `main` with
+`clawhub_only=true` and `release_tag` set to the existing tag. Recovery uses current
+release safeguards with the original tag's code, builds and tests it, and never
+publishes to npm. Manual runs without this option remain rehearsals.
+
+ClawHub still uses `CLAWHUB_TOKEN` for tag releases: its OIDC path currently only
+supports `workflow_dispatch` via its official reusable workflow. Explicit rate
+limits are retried up to four times. An existing pending release is polled without
+another upload, for up to 30 minutes. Success requires public availability and a
+matching source commit; failed scans, auth errors and timeouts remain failures.
 
 Every push and pull request is built and tested on Node 22 and 24. Releases are cut by pushing a
 `v<version>` tag: CI then builds from a clean checkout and publishes to npm with
