@@ -17,6 +17,8 @@ recorded in `git log` only.
   expiring `NPM_TOKEN`; document the one-time trusted publisher setup.
 - Separate npm and ClawHub jobs, serialize releases, and safely skip npm versions
   already published from the same commit when retrying a partial release.
+- Rehearse with `npm pack --dry-run`; newer npm rejects `publish --dry-run`
+  when that version already exists.
 - Retry explicit ClawHub throttling, wait for definitive publication, and verify
   the exact version's source commit. Recovery waits for an existing security scan
   without uploading the same version again. Auth and scan failures stay visible.

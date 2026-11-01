@@ -205,12 +205,12 @@ function fixture(t) {
   };
 }
 
-test("npm rehearsal needs no npm token or OIDC and publishes only with --dry-run", (t) => {
+test("npm rehearsal packs without auth or a publish attempt, even for an existing version", (t) => {
   const f = fixture(t);
   f.env.DRY_RUN = "true";
   const result = f.run("release-npm.mjs");
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(readFileSync(f.env.CALLS, "utf8"), "publish --access public --dry-run\n");
+  assert.equal(readFileSync(f.env.CALLS, "utf8"), "pack --dry-run\n");
   assert.match(readFileSync(f.env.GITHUB_OUTPUT, "utf8"), new RegExp(`commit=${release.commit}`));
 });
 

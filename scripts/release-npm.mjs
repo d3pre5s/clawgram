@@ -20,7 +20,10 @@ try {
     if (!dryRun && (!process.env.ACTIONS_ID_TOKEN_REQUEST_URL || !process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN)) {
       throw new Error("GitHub OIDC is unavailable; grant id-token: write to the npm job.");
     }
-    execFileSync("npm", ["publish", "--access", "public", dryRun ? "--dry-run" : "--provenance"], { stdio: "inherit" });
+    // Modern npm rejects publish --dry-run for versions already on npm.
+    // Build/tests ran explicitly in CI; pack verifies the rehearsal artifact.
+    const args = dryRun ? ["pack", "--dry-run"] : ["publish", "--access", "public", "--provenance"];
+    execFileSync("npm", args, { stdio: "inherit" });
   };
   if (dryRun) publish();
   else await ensureNpmRelease({ name: pkg.name, version: pkg.version, commit }, { recovery, publish });
