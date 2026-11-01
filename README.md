@@ -958,6 +958,12 @@ npm run clawgram-cli:auth
 
 ## Releases
 
+If npm publishing succeeds but ClawHub fails, run the **Release** workflow from
+`main` with `clawhub_only=true` and `release_tag` set to the existing release tag.
+Recovery checks out that tag, builds and tests it, verifies its commit against
+the published npm version, then publishes only to ClawHub. Explicit rate limits
+are retried up to three times. Manual runs without this option remain rehearsals.
+
 Every push and pull request is built and tested on Node 22 and 24. Releases are cut by pushing a
 `v<version>` tag: CI then builds from a clean checkout and publishes to npm with
 [provenance](https://docs.npmjs.com/generating-provenance-statements), so each published tarball is

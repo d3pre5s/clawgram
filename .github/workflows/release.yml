@@ -12,6 +12,15 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      clawhub_only:
+        description: Recover ClawHub for a release already published to npm
+        type: boolean
+        default: false
+      release_tag:
+        description: Existing release tag, required for ClawHub recovery (for example v2.31.0)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -23,11 +32,23 @@ jobs:
     environment: npm-publish
 
     env:
-      # A manual run is always a rehearsal; only a tag publishes for real.
-      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+      # Manual runs rehearse by default; explicit recovery only writes ClawHub.
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && !inputs.clawhub_only }}
+      RECOVER_CLAWHUB: ${{ inputs.clawhub_only }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
 
     steps:
+      - name: Validate recovery tag
+        if: inputs.clawhub_only
+        run: |
+          [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "ClawHub recovery requires an existing stable release tag." >&2
+            exit 1
+          }
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.clawhub_only && inputs.release_tag || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -74,6 +95,25 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Verify recovery matches published npm release
+        if: inputs.clawhub_only
+        run: |
+          pkg_version="$(node -p "require('./package.json').version")"
+          test "${RELEASE_TAG}" = "v${pkg_version}" || { echo "Tag/version mismatch." >&2; exit 1; }
+          RELEASE_COMMIT="$(git rev-parse HEAD)"
+          export RELEASE_COMMIT
+          metadata="${RUNNER_TEMP}/clawgram-published-release.json"
+          curl --fail --silent --show-error --retry 2 --max-time 30 \
+            "https://registry.npmjs.org/clawgram/${pkg_version}" -o "${metadata}"
+          node -e '
+            const fs = require("node:fs");
+            const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const expected = require("./package.json");
+            if (p.name !== "clawgram" || p.version !== expected.version || p.gitHead !== process.env.RELEASE_COMMIT) {
+              console.error("Published npm artifact does not match the checked-out release tag.");
+              process.exit(1);
+            }' "${metadata}"
+
       # Publishing the same version twice fails the job anyway; checking first
       # gives a readable reason instead of a registry error. A rehearsal skips
       # this on purpose — the current version is normally already published.
@@ -89,6 +129,7 @@ jobs:
       # Catches the most common release failure — a missing or wrong-scoped
       # NPM_TOKEN — before the publish step, and with a clear message.
       - name: Check npm credentials
+        if: ${{ !inputs.clawhub_only }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -104,6 +145,7 @@ jobs:
           echo "authenticated to npm as: ${npm_user}"
 
       - name: Publish to npm
+        if: ${{ !inputs.clawhub_only }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -126,19 +168,49 @@ jobs:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
           if [ -z "${CLAWHUB_TOKEN}" ]; then
+            if [ "${RECOVER_CLAWHUB}" = true ]; then
+              echo "CLAWHUB_TOKEN is required for ClawHub recovery." >&2
+              exit 1
+            fi
             echo "::warning::CLAWHUB_TOKEN is not set — skipped ClawHub. npm is unaffected."
             exit 0
           fi
 
           npm install --global --no-fund --no-audit clawhub@0.23.1
 
+          # Retry only explicit throttling. Auth errors and ambiguous network
+          # failures stay failures; no command arguments (tokens) are logged.
+          clawhub_retry() {
+            local attempt output code delay
+            for attempt in 1 2 3; do
+              if output="$(clawhub "$@" 2>&1)"; then
+                printf '%s\n' "$output"
+                return 0
+              else
+                code=$?
+              fi
+              printf '%s\n' "$output" >&2
+              if [[ "$attempt" = 3 ]] || ! grep -qiE 'too many writes|rate.?limit|HTTP 429' <<<"$output"; then
+                return "$code"
+              fi
+              delay="$(sed -nE 's/.*reset in ([0-9]+)s.*/\1/p' <<<"$output" | head -1)"
+              [[ "$delay" =~ ^[0-9]{1,2}$ ]] || delay=30
+              delay=$((10#$delay))
+              (( delay < 60 )) || delay=60
+              echo "ClawHub throttled; retrying in $((delay + 1))s (attempt $attempt/3)." >&2
+              sleep "$((delay + 1))"
+            done
+          }
+
           # The CLI takes the token as an argument; the runner is ephemeral and
           # single-use, so argv exposure is bounded to this job.
-          clawhub login --token "${CLAWHUB_TOKEN}" >/dev/null
+          clawhub_retry login --token "${CLAWHUB_TOKEN}" >/dev/null
 
           pkg_version="$(node -p "require('./package.json').version")"
-          published="$(clawhub package explore clawgram --family code-plugin 2>/dev/null \
-            | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | tr -d 'v')"
+          listing="$(clawhub_retry package explore clawgram --family code-plugin)"
+          published="$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' <<<"${listing}" | head -1 | tr -d 'v' || true)"
+          source_ref="${RELEASE_TAG:-${GITHUB_REF_NAME}}"
+          source_commit="$(git rev-parse HEAD)"
 
           if [ "${published}" = "${pkg_version}" ]; then
             echo "ClawHub already carries ${pkg_version} — nothing to do"
@@ -147,12 +219,12 @@ jobs:
 
           if [ "${DRY_RUN}" = "true" ]; then
             echo "rehearsal: ClawHub publish without uploading"
-            clawhub package publish . --family code-plugin --version "${pkg_version}" \
-              --source-repo d3pre5s/clawgram --source-ref "${GITHUB_REF_NAME}" \
-              --source-commit "${GITHUB_SHA}" --dry-run
+            clawhub_retry package publish . --family code-plugin --version "${pkg_version}" \
+              --source-repo d3pre5s/clawgram --source-ref "${source_ref}" \
+              --source-commit "${source_commit}" --dry-run
             exit 0
           fi
 
-          clawhub package publish . --family code-plugin --version "${pkg_version}" \
-            --source-repo d3pre5s/clawgram --source-ref "${GITHUB_REF_NAME}" \
-            --source-commit "${GITHUB_SHA}"
+          clawhub_retry package publish . --family code-plugin --version "${pkg_version}" \
+            --source-repo d3pre5s/clawgram --source-ref "${source_ref}" \
+            --source-commit "${source_commit}"

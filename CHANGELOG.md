@@ -11,6 +11,8 @@ recorded in `git log` only.
 
 ### Fixed
 
+- Retry explicit ClawHub rate limits up to three times. A manual ClawHub-only
+  recovery verifies the existing tag against npm and skips npm publishing.
 - Stop the release immediately when npm rejects the publishing token; a failed
   `whoami` can no longer be hidden by a successful `echo`.
 
