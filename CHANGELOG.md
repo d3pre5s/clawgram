@@ -9,6 +9,8 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.31.1] — 2026-11-01
+
 ### Fixed
 
 - Publish npm releases with short-lived GitHub OIDC credentials instead of an
