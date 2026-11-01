@@ -8,14 +8,15 @@ const token = process.env.CLAWHUB_TOKEN;
 const redact = (text) => token ? text.replaceAll(token, "[REDACTED]") : text;
 
 async function clawhub(args, options = {}) {
-  return retryClawhub(() => {
+  const run = () => {
     try {
       return execFileSync("clawhub", args, { encoding: "utf8", stdio: "pipe", timeout: 1900000, maxBuffer: 4 * 1024 * 1024 });
     } catch (error) {
       // execFileSync's default error message includes argv (the login token).
       throw new Error(redact(`${error.stdout ?? ""}\n${error.stderr ?? ""}`.trim()) || "ClawHub command failed without diagnostics.");
     }
-  }, options);
+  };
+  return options.once ? run() : retryClawhub(run, options);
 }
 
 try {
@@ -35,7 +36,7 @@ try {
     if (dryRun) args.push("--dry-run");
     else args.push("--wait", "--wait-timeout", "1800");
     args.push("--json");
-    const result = JSON.parse(await clawhub(args, { readOnly: dryRun }));
+    const result = JSON.parse(await clawhub(args, { readOnly: dryRun, once: !dryRun }));
     console.log(redact(JSON.stringify(result, null, 2)));
     if (!dryRun && result.publicationStatus !== "published") throw new Error("ClawHub did not confirm definitive publication.");
   };
@@ -43,5 +44,6 @@ try {
   else await ensureClawhubRelease({ name: pkg.name, version: pkg.version, commit }, { publish });
 } catch (error) {
   console.error(redact(error.message));
+  if (error.cause) console.error(redact(error.cause.message));
   process.exitCode = 1;
 }

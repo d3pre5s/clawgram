@@ -62,7 +62,22 @@ export async function ensureClawhubRelease(release, options) {
   const log = options.log ?? console.log;
   let state = await read();
   if (state.state === "absent") {
-    await options.publish();
+    await retryClawhub(async () => {
+      try {
+        await options.publish();
+      } catch (error) {
+        // A CLI error can come from polling *after* the upload was accepted.
+        // Retry a throttled write only when a fresh read confirms absence.
+        try {
+          state = await read();
+        } catch (readError) {
+          throw new Error("Cannot determine ClawHub publication state; refusing another upload.", { cause: readError });
+        }
+        if (state.state === "pending" || state.state === "published") return;
+        if (state.state !== "absent") throw new Error(`ClawHub publication is ${state.state}; upload cannot be retried.`);
+        throw error;
+      }
+    }, { sleep: wait, log });
     state = await read();
   }
   for (let attempt = 0; attempt <= (options.polls ?? 60); attempt++) {

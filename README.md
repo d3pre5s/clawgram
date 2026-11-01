@@ -990,8 +990,9 @@ supports `workflow_dispatch` via its official reusable workflow. Explicit rate
 limits are retried up to four times. An existing pending release is polled without
 another upload, for up to 30 minutes. Success requires public availability and a
 matching source commit; failed scans, auth errors and timeouts remain failures.
-Login checks and dry runs also retry transient network failures; an ambiguous
-upload failure does not trigger another upload.
+Login checks and dry runs also retry transient network failures. A failed upload
+command first checks the exact version's state: accepted uploads resume polling;
+only a throttled write confirmed absent can be retried.
 
 Every push and pull request is built and tested on Node 22 and 24. Releases are cut by pushing a
 `v<version>` tag: CI then builds from a clean checkout and publishes to npm with

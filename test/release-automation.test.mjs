@@ -70,6 +70,39 @@ test("ClawHub uploads an absent release once, then verifies its source", async (
   assert.equal(verified, true);
 });
 
+test("ClawHub throttling after an accepted upload resumes checks without another upload", async () => {
+  let reads = 0;
+  let writes = 0;
+  await ensureClawhubRelease(release, {
+    read: async () => ({ state: ["absent", "pending", "published"][Math.min(reads++, 2)] }),
+    publish: async () => { writes++; throw new Error("HTTP 429 while polling accepted upload"); },
+    verify: async () => {}, sleep: async () => {}, log: quiet,
+  });
+  assert.equal(writes, 1);
+});
+
+test("ClawHub retries rejected writes only after confirming the version is still absent", async () => {
+  let writes = 0;
+  await ensureClawhubRelease(release, {
+    read: async () => ({ state: writes < 2 ? "absent" : "published" }),
+    publish: async () => { if (++writes === 1) throw new Error("Too many writes (reset in 2s)"); },
+    verify: async () => {}, sleep: async () => {}, log: quiet,
+  });
+  assert.equal(writes, 2);
+});
+
+test("ClawHub never retries a write when reading its outcome fails", async () => {
+  for (const status of [500, 429]) {
+    let writes = 0;
+    await assert.rejects(ensureClawhubRelease(release, {
+      read: async () => { if (writes) throw new Error(`HTTP ${status}; outcome unknown`); return { state: "absent" }; },
+      publish: async () => { writes++; throw new Error("HTTP 429"); },
+      verify: async () => {}, sleep: async () => {}, log: quiet,
+    }));
+    assert.equal(writes, 1);
+  }
+});
+
 test("ClawHub pending timeout stays a failure", async () => {
   await assert.rejects(ensureClawhubRelease(release, {
     read: async () => ({ state: "pending" }), polls: 3, sleep: async () => {}, log: quiet,

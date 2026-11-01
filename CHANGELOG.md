@@ -13,6 +13,8 @@ recorded in `git log` only.
 
 - Allow up to ten minutes for npm's post-upload processing before verifying a
   newly published version, without sending another upload.
+- Check ClawHub's exact publication state after a publish-command failure;
+  resume accepted uploads instead of repeating them when polling was throttled.
 
 ## [2.31.1] — 2026-11-01
 
