@@ -9,6 +9,11 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Fixed
+
+- Stop the release immediately when npm rejects the publishing token; a failed
+  `whoami` can no longer be hidden by a successful `echo`.
+
 ## [2.31.0] — 2026-11-01
 
 ### Fixed

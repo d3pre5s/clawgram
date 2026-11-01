@@ -97,7 +97,11 @@ jobs:
             echo "Add an npm automation token as the NPM_TOKEN secret." >&2
             exit 1
           fi
-          echo "authenticated to npm as: $(npm whoami)"
+          if ! npm_user="$(npm whoami)"; then
+            echo "NPM_TOKEN is invalid or expired — replace the GitHub Actions secret with a token allowed to publish clawgram." >&2
+            exit 1
+          fi
+          echo "authenticated to npm as: ${npm_user}"
 
       - name: Publish to npm
         env:
