@@ -107,8 +107,10 @@ export async function ensureNpmRelease(release, options) {
   }
   // Registry propagation can lag behind a successful upload. Do not repeat the
   // upload: verify its result instead, including when the connection was lost.
-  for (let attempt = 0; attempt < 4; attempt++) {
-    if (attempt) await wait(attempt * 3000);
+  // npm can accept a release and process it for several minutes before the
+  // public version endpoint exists. Allow ten minutes; never re-upload it.
+  for (let attempt = 0; attempt <= 40; attempt++) {
+    if (attempt) await wait(15000);
     const metadata = await read();
     if (metadata) {
       verifyNpmRelease(release, metadata);

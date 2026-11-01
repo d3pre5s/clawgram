@@ -982,6 +982,8 @@ commit. If npm succeeds but ClawHub fails, run **Release** from `main` with
 release safeguards with the original tag's code, builds and tests it, and never
 publishes to npm. Manual runs without this option build, test and run
 `npm pack --dry-run`, which also works when the version already exists on npm.
+After npm accepts an upload, verification allows up to ten minutes for registry
+processing before failing. It does not repeat the upload while waiting.
 
 ClawHub still uses `CLAWHUB_TOKEN` for tag releases: its OIDC path currently only
 supports `workflow_dispatch` via its official reusable workflow. Explicit rate

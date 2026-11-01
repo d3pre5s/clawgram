@@ -9,6 +9,11 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow up to ten minutes for npm's post-upload processing before verifying a
+  newly published version, without sending another upload.
+
 ## [2.31.1] — 2026-11-01
 
 ### Fixed

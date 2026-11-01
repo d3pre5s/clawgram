@@ -113,6 +113,19 @@ test("new npm release publishes once and checks the resulting version", async ()
   assert.equal(reads, 2);
 });
 
+test("npm waits through registry processing lasting longer than the old 18-second window", async () => {
+  let reads = 0;
+  let writes = 0;
+  const waits = [];
+  assert.equal(await ensureNpmRelease(release, {
+    read: async () => ++reads < 9 ? null : published,
+    publish: () => { writes++; }, sleep: async (ms) => waits.push(ms), log: quiet,
+  }), "published");
+  assert.equal(writes, 1);
+  assert.equal(reads, 9);
+  assert.ok(waits.reduce((total, ms) => total + ms, 0) >= 60000);
+});
+
 test("ambiguous npm write succeeds only if the exact release is found afterwards", async () => {
   for (const landed of [true, false]) {
     let reads = 0;
