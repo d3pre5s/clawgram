@@ -134,6 +134,8 @@ export type InboundContext = {
   selfUsername: string | undefined;
   selfLabel: string | undefined;
   nearbyConversation?: NearbyConversation;
+  /** An observed error makes a durable guard claim uncertain, never automatically retryable. */
+  onInboundError?: () => void;
 };
 
 /**
@@ -195,7 +197,7 @@ export function visibleReplyText(params: {
 
 export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
   const { accountId, cfg, channelRuntime, client, gram, log,
-    pluginRuntime, runtimes, selfId, selfLabel, selfUsername, nearbyConversation } = ctx;
+    pluginRuntime, runtimes, selfId, selfLabel, selfUsername, nearbyConversation, onInboundError } = ctx;
 
   try {
     const rawMessage = (event as any)?.message;
@@ -1023,6 +1025,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
           });
         },
         onRecordError: (err) => {
+          onInboundError?.();
           log?.info?.("clawgram failed to record inbound session", {
             accountId,
             chatId: normalized.chatId,
@@ -1031,6 +1034,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
           })
         },
         onDispatchError: (err, info) => {
+          onInboundError?.();
           log?.info?.("clawgram failed to dispatch reply", {
             accountId,
             chatId: normalized.chatId,
@@ -1053,6 +1057,7 @@ export async function handleInboundEvent(event: unknown, ctx: InboundContext) {
     });
 
   } catch (error) {
+    onInboundError?.();
     const rawMessage = (event as any)?.message;
     log?.error?.("clawgram inbound handling failed", {
       accountId,

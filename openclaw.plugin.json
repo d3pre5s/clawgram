@@ -542,6 +542,17 @@
                     "none"
                   ],
                   "description": "Outbound format for replies, core-delivered text, captions and send calls that omit parseMode. html (2.15.0) renders agent markdown and Telegram HTML into entities; markdown is GramJS's five-delimiter parser; none disables parsing entirely. Absent keeps GramJS's historical default, which is its markdown parser — not plain text."
+                },
+                "inboundGuard": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "description": "Opt-in owner DM recovery. Resolves the single numeric clawgram owner from commands.ownerAllowFrom; respects allowFrom and readChats."
                 }
               },
               "required": [

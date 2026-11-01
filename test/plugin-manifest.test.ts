@@ -38,6 +38,11 @@ function errorText(result: ValidationResult): string {
 }
 
 describe("openclaw.plugin.json account proxy schema", () => {
+  test("inbound recovery is explicit, boolean and does not accept arbitrary owners", () => {
+    assert.equal(validateAccount({ ...BASE_ACCOUNT, inboundGuard: { enabled: true } }).ok, true);
+    assert.equal(validateAccount({ ...BASE_ACCOUNT, inboundGuard: { enabled: "true" } }).ok, false);
+    assert.equal(validateAccount({ ...BASE_ACCOUNT, inboundGuard: { enabled: true, ownerId: "100" } }).ok, false);
+  });
   test("accepts an account without a proxy", () => {
     const result = validateAccount({ ...BASE_ACCOUNT });
 

@@ -656,6 +656,16 @@ export class GramJsClientManager {
     }
   }
 
+  /** Raw messages retain attachment/reply helpers needed by the ordinary inbound path. */
+  async readGuardHistory(target: string, args: { after: number; since: number; limit: number }): Promise<unknown[]> {
+    const resolved = await this.resolvePeer(target);
+    return this.client.getMessages(resolved.peer as any, {
+      reverse: true, minId: args.after,
+      ...(args.after === 0 ? { offsetDate: Math.floor(args.since / 1000) - 1 } : {}),
+      limit: args.limit,
+    });
+  }
+
   /**
    * Reads a window of chat history.
    *

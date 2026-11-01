@@ -23,6 +23,33 @@ Clawgram is a personal-Telegram channel plugin for [OpenClaw](https://github.com
 > see [Security and privacy](#security-and-privacy).
 
 
+## Owner DM recovery guard
+
+Opt in with `channels.clawgram.accounts.<account>.inboundGuard.enabled: true`.
+The guard resolves exactly one numeric `clawgram:<id>` owner from
+`commands.ownerAllowFrom`; the owner must also pass `allowFrom` and `readChats`.
+It checks history every two minutes without an LLM call, gives live events
+60 seconds, and returns a missed DM to the existing inbound pipeline. Replies
+and attachments retain their normal handling. No Gateway restart is performed.
+
+Live events and recovery share durable claims keyed by account, peer and message.
+An uncertain or unfinished claim is retained for manual review after restart;
+it is never automatically executed again. A handler completing does not prove
+that an external action or reply was delivered. Requests older than 24 hours
+are held for review; first activation starts from the current time. Unclaimed
+messages predating the current guard process (including its boundary second)
+are also held for review: another process may have handled them while journalling
+was disabled or broken. Automatic recovery covers misses during the current run.
+Deleting guard state loses its receipt history: do not reset it as a repair.
+
+The read-only Gateway method `clawgram.inboundGuard.status` requires
+`operator.read` and reports counters, timestamps and error codes without message
+text. It accepts no parameters. State is under `OPENCLAW_STATE_DIR/state/clawgram`
+(or the default OpenClaw state directory), isolated by Telegram account and owner.
+Corrupt/unwritable state disables recovery while ordinary live DMs continue.
+History timeouts back off up to 16 minutes. A stopped Gateway cannot run this
+guard; its host/service monitor remains responsible for that failure.
+
 ## Features
 
 - **MTProto Client API** — operates as a user account, not a bot

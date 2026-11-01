@@ -82,6 +82,7 @@ export { resolveAccountOperatorIds };
 import { createOutbound } from "./outbound";
 import { handleInboundEvent } from "./inbound-pipeline";
 import { NearbyConversation } from "./nearby-conversation";
+import { createInboundGuard, type GuardRegistry } from "./inbound-guard-runtime";
 
 // Словарь имён живёт в ./actions. Реэкспорт — ради вызывающих снаружи:
 // тесты и другие модули знают его по этому файлу с 2.19.4.
@@ -117,7 +118,7 @@ function warnAboutHandleAllowlistEntries(cfg: any, accountId: string): void {
   });
 }
 
-export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: PluginRuntime) => {
+export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: PluginRuntime, guards: GuardRegistry = new Map()) => {
   const resolveRuntimeAccountId = (cfg: any, preferred?: string | null): string | undefined => {
     const configured = resolveConfiguredAccountId(cfg, preferred);
     if (configured && runtimes.has(configured)) {
@@ -260,6 +261,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         }
 
         if (runtimes.has(accountId)) {
+          guards.get(accountId)?.stop();
           log?.warn?.("clawgram stale runtime detected, reconnecting", { accountId });
           await runtimes.get(accountId)?.stop().catch(() => undefined);
           runtimes.delete(accountId);
@@ -326,12 +328,24 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         const client = gram.getClient();
         const eventBuilder = new NewMessage({});
         const nearbyConversation = new NearbyConversation();
-        const eventHandler = async (event: unknown) => handleInboundEvent(event, {
-          accountId, cfg, channelRuntime, client, gram, log,
-          pluginRuntime, runtimes, selfId, selfLabel, selfUsername,
-          nearbyConversation,
+        const guard = createInboundGuard({
+          cfg, accountId, selfId,
+          readPage: (owner, args) => gram.readGuardHistory(owner, args),
+          dispatch: async (event) => {
+            let failed = false;
+            await handleInboundEvent(event, {
+              accountId, cfg, channelRuntime, client, gram, log,
+              pluginRuntime, runtimes, selfId, selfLabel, selfUsername, nearbyConversation,
+              onInboundError: () => { failed = true; },
+            });
+            return !failed;
+          },
         });
+        guards.set(accountId, guard);
+        const eventHandler = async (event: unknown) => { await guard.accept(event); };
         client.addEventHandler(eventHandler, eventBuilder);
+        guard.start();
+        if (guard.status().errorCode) log?.warn?.("clawgram inbound guard unavailable", { accountId, errorCode: guard.status().errorCode });
 
         // Being added to a chat arrives as a service message, which `NewMessage`
         // drops — so joins are observed on the raw update stream instead. Only
@@ -364,6 +378,7 @@ export const createChannelPlugin = (runtimes: RuntimeMap, pluginRuntime?: Plugin
         client.addEventHandler(joinEventHandler, joinEventBuilder);
 
         await waitUntilAbort(ctx.abortSignal, async () => {
+          guard.stop();
           nearbyConversation.close();
           client.removeEventHandler(eventHandler, eventBuilder);
           client.removeEventHandler(joinEventHandler, joinEventBuilder);

@@ -9,6 +9,12 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in owner DM recovery guard: two-minute history reconciliation, durable
+  claims shared with live events, bounded catch-up, uncertainty reporting and
+  a read-only heartbeat status RPC. Existing account scopes remain authoritative.
+
 ### Fixed
 
 - Allow up to ten minutes for npm's post-upload processing before verifying a
