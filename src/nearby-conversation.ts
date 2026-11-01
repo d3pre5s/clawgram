@@ -93,8 +93,8 @@ export async function readNearbyConversation(params: {
     params.gram.listMessages({
       target: params.chatId,
       messageThreadId: params.threadId,
-      limit: 12,
-      since: anchor - 180,
+      limit: 100,
+      since: anchor - 600,
       until: now,
     }),
     new Promise<never>((_resolve, reject) => {
@@ -105,7 +105,7 @@ export async function readNearbyConversation(params: {
     message.messageId !== params.messageId &&
     (!params.threadId || message.messageThreadId === String(params.threadId)) &&
     (!message.chatId || message.chatId === params.chatId),
-  ).slice(-12).sort((a, b) => Number(a.messageId) - Number(b.messageId));
+  ).slice(-100).sort((a, b) => Number(a.messageId) - Number(b.messageId));
   if (!messages.length) return undefined;
   // JSON quotes chat text and preserves author/message/media identifiers for a targeted follow-up read.
   return JSON.stringify(messages.map((message) => ({

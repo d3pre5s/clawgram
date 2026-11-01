@@ -635,11 +635,25 @@ export class GramJsClientManager {
   }): Promise<void> {
     const resolved = await this.resolvePeer(args.target);
 
-    await this.client.invoke(new Api.messages.SendReaction({
-      peer: resolved.peer as any,
-      msgId: args.messageId,
-      reaction: args.remove ? [] : [ new Api.ReactionEmoji({ emoticon: args.emoji }) ],
+    const send = (reaction: Api.TypeReaction[]) => this.client.invoke(new Api.messages.SendReaction({
+      peer: resolved.peer as any, msgId: args.messageId, reaction,
     }));
+    try {
+      await send(args.remove ? [] : [ new Api.ReactionEmoji({ emoticon: args.emoji }) ]);
+    } catch (error) {
+      // Unicode such as ❌ is not necessarily a standard Telegram reaction.
+      // A Premium account can use the matching custom emoji. Retry only a
+      // definite rejection, never a timeout with an ambiguous send outcome.
+      if (args.remove || (error as any)?.errorMessage !== "REACTION_INVALID") throw error;
+      const me = await this.client.getMe();
+      if (!(me as Api.User).premium) throw error;
+      const found = await this.client.invoke(new Api.messages.SearchCustomEmoji({
+        emoticon: args.emoji, hash: BigInt(0) as any,
+      }));
+      const documentId = (found as Api.EmojiList).documentId?.[0];
+      if (!documentId) throw error;
+      await send([ new Api.ReactionCustomEmoji({ documentId }) ]);
+    }
   }
 
   /**

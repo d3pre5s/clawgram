@@ -87,6 +87,22 @@ test("nearby history respects read scope and keeps media ids and authors inside 
   assert.deepEqual(rows.map((row: any) => row.messageId), [ "11", "12" ]);
   assert.equal(rows[0].senderId, "42");
   assert.equal(rows[0].media.kind, "photo");
-  assert.equal((queries[0] as any).limit, 12);
+  assert.equal((queries[0] as any).limit, 100);
   assert.equal((queries[0] as any).messageThreadId, 9);
+});
+
+test("nearby history includes the ten-minute boundary and more than twelve messages", async () => {
+  const anchor = Math.floor(Date.now() / 1000);
+  const source = Array.from({ length: 20 }, (_, i) => ({
+    messageId: String(i + 1), chatId: "-1", messageThreadId: "9",
+    senderId: "42", timestamp: anchor - 600 + i, text: `Context ${i}`, isOutgoing: false,
+  }));
+  source.unshift({ ...source[0], messageId: "100", timestamp: anchor - 601 });
+  const gram = { listMessages: async (query: any) => ({
+    messages: source.filter((m) => m.timestamp >= query.since && m.timestamp <= query.until).slice(-query.limit),
+  }) };
+  const rows = JSON.parse((await readNearbyConversation({ gram, chatId: "-1", threadId: 9, messageId: "99", timestamp: anchor * 1000, readChats: [ "-1" ] }))!);
+  assert.equal(rows.length, 20);
+  assert.equal(rows[0].messageId, "1");
+  assert.equal(rows.at(-1).messageId, "20");
 });

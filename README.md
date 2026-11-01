@@ -305,11 +305,18 @@ addresses wait for 6 seconds of quiet; consecutive messages by the same sender
 in the same chat/topic are collected into one turn within a 2-minute window.
 An unanswered bare tag can still receive a late continuation within that window.
 Other senders and topics do not inherit the address. Detailed requests proceed
-immediately. Before answering an address, the agent receives up to 12 recent
-messages from the same chat/topic (3 minutes before the triggering message,
+immediately. Before answering an address, the agent receives up to 100 recent
+messages from the same chat/topic (10 minutes before the triggering message,
 including explanations that arrived afterwards), subject to `readChats`.
 History failures leave the original request usable. Attachment metadata includes
 message ids so the agent can read a relevant image with `fetchMedia`.
+
+Plain replies also carry the original message body, fetched independently of
+the nearby-history window. If Telegram rejects an emoji such as ❌ as a standard
+reaction, a Premium account can send the matching custom emoji instead. The
+`react` action resolves it through Telegram's emoji search; it never substitutes
+a different emoji. Account and chat restrictions still apply, and a failed
+reaction remains an error.
 
 ### Per-group tools, skills and system prompt
 

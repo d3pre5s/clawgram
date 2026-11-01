@@ -9,6 +9,15 @@ recorded in `git log` only.
 
 ## [Unreleased]
 
+## [2.31.0] — 2026-11-01
+
+### Fixed
+
+- Include ten minutes of nearby conversation (up to 100 messages) when the
+  assistant is addressed; reply parents remain available outside that window.
+- Resolve unsupported standard reactions such as ❌ to matching custom emoji
+  for Premium accounts, without substituting another emoji or retrying transport errors.
+
 ## [2.30.1] — 2026-10-12
 
 ### Fixed
