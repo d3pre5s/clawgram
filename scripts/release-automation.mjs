@@ -126,9 +126,13 @@ export async function retryClawhub(operation, options = {}) {
     try {
       return await operation();
     } catch (error) {
-      if (attempt === 4 || !/too many writes|rate.?limit|HTTP 429/i.test(error.message)) throw error;
-      const seconds = Math.min(Number(error.message.match(/reset in (\d+)s/i)?.[1] ?? 30), 60) + 1;
-      log(`ClawHub throttled; retrying in ${seconds}s (attempt ${attempt}/4).`);
+      const throttled = /too many writes|rate.?limit|HTTP 429/i.test(error.message);
+      const readFailure = options.readOnly && /timed out|ETIMEDOUT|ECONNRESET|fetch failed|HTTP 5\d\d/i.test(error.message);
+      if (attempt === 4 || /401|403|unauthorized|forbidden/i.test(error.message) || (!throttled && !readFailure)) throw error;
+      const seconds = throttled
+        ? Math.min(Number(error.message.match(/reset in (\d+)s/i)?.[1] ?? 30), 60) + 1
+        : attempt * 2;
+      log(`ClawHub ${throttled ? "throttled" : "read failed"}; retrying in ${seconds}s (attempt ${attempt}/4).`);
       await wait(seconds * 1000);
     }
   }

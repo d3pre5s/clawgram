@@ -172,6 +172,20 @@ test("ClawHub auth and ambiguous network failures are not retried", async () => 
   }
 });
 
+test("ClawHub retries network timeouts only for explicitly read-only operations", async () => {
+  let calls = 0;
+  const waits = [];
+  assert.equal(await retryClawhub(async () => {
+    if (++calls === 1) throw new Error("Network request failed: the request timed out after 15s");
+    return "authenticated";
+  }, { readOnly: true, sleep: async (ms) => waits.push(ms), log: quiet }), "authenticated");
+  assert.equal(calls, 2);
+  assert.deepEqual(waits, [2000]);
+  await assert.rejects(retryClawhub(async () => { throw new Error("401 Unauthorized"); }, {
+    readOnly: true, sleep: async () => assert.fail("must not retry auth"), log: quiet,
+  }), /401/);
+});
+
 test("persistent ClawHub throttling fails after bounded retries", async () => {
   let calls = 0;
   const waits = [];

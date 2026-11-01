@@ -22,6 +22,8 @@ recorded in `git log` only.
 - Retry explicit ClawHub throttling, wait for definitive publication, and verify
   the exact version's source commit. Recovery waits for an existing security scan
   without uploading the same version again. Auth and scan failures stay visible.
+- Retry transient ClawHub login and rehearsal timeouts without retrying ambiguous
+  uploads or rejected credentials.
 
 ## [2.31.0] — 2026-11-01
 
